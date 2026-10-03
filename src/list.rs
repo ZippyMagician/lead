@@ -59,6 +59,11 @@ impl List {
     }
 
     #[inline(always)]
+    pub fn list_mut(&mut self) -> &mut [Scalar] {
+        &mut self.dt
+    }
+
+    #[inline(always)]
     pub fn dims(&self) -> usize {
         self.ds
     }

@@ -1,7 +1,7 @@
 use std::iter::Peekable;
 use std::str::CharIndices;
 
-use crate::builtins::Symbol;
+use crate::builtins::symbols::Symbol;
 use crate::utils::error::{Error, Status, err, print_error};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -28,6 +28,10 @@ pub enum Token<'a> {
     OpenParen,
     /// `)`
     CloseParen,
+    /// `[`
+    OpenBracket,
+    /// `]`
+    CloseBracket,
 }
 
 pub struct Lexer<'a> {
@@ -106,6 +110,8 @@ impl<'a> Lexer<'a> {
             }
             '(' => Ok(Token::OpenParen),
             ')' => Ok(Token::CloseParen),
+            '[' => Ok(Token::OpenBracket),
+            ']' => Ok(Token::CloseBracket),
             _ => self.consume_symbol(start),
         }
     }

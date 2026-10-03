@@ -4,19 +4,13 @@ use std::num::{ParseFloatError, ParseIntError};
 
 #[derive(Clone, Debug)]
 pub enum Error {
-    Fail,
     LexComplete,
     NaN,
     MemoryFault(&'static str),
-    ContextFail(&'static str),
     Syntax(&'static str),
-    UnsupportedType(&'static str),
-    UndefinedSymbol(&'static str),
-    SymbolRedefinition(&'static str),
-    Unimplemented(&'static str),
-    Runtime(&'static str),
-    Internal(String),
-    Warning(String),
+    Domain,
+    Box,
+    Value,
     // TODO: whatever else I need
 }
 
@@ -27,6 +21,10 @@ macro_rules! err {
 
     ($type:ident) => {
         Err(crate::utils::error::Error::$type)
+    };
+
+    ($type:ident; !) => {
+        crate::utils::error::print_error(crate::utils::error::Error::$type)
     };
 }
 
@@ -40,18 +38,12 @@ impl Display for Error {
 
         match self {
             LexComplete => write!(f, "LexCompletion"),
-            Fail => write!(f, "Error: Program failed."),
-            ContextFail(s) => write!(f, "Error: {s}"),
-            MemoryFault(s) => write!(f, "MemoryFault: {s}"),
-            NaN => write!(f, "TypeError: Not a valid number."),
-            Syntax(s) => write!(f, "SyntaxError: {s}"),
-            UnsupportedType(s) => write!(f, "TypeError: {s}"),
-            UndefinedSymbol(s) => write!(f, "UndefinedError: '{s}' is undefined."),
-            SymbolRedefinition(s) => write!(f, "StackError: Attempted to redefine symbol '{s}'."),
-            Unimplemented(s) => write!(f, "ImplementationError: '{s}' is unimplemented."),
-            Runtime(s) => write!(f, "RuntimeError: {s}"),
-            Internal(s) => write!(f, "InternalError: {s}"),
-            Warning(s) => write!(f, "Warning: {s}"),
+            MemoryFault(s) => write!(f, "MEMORY [-1]: {s}"),
+            NaN => write!(f, "NUMERIC [0]"),
+            Syntax(s) => write!(f, "SYNTAX [1]: {s}"),
+            Domain => write!(f, "DOMAIN [2]"),
+            Box => write!(f, "BOX [3]"),
+            Value => write!(f, "VALUE [4]"),
         }
     }
 }

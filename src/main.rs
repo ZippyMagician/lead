@@ -1,29 +1,45 @@
-use std::rc::Rc;
-
-use seqr::function::Function;
 use seqr::lex;
 use seqr::list::List;
 use seqr::scalar::Scalar;
 use seqr::scope::new_scope;
 
 fn main() {
-    let mut toks = lex::Lexer::new("1 2 3 +* x 4 5 6\n'hello world'4");
-    toks.tokenize();
+    let mut lexer = lex::Lexer::new("1 2 3 +* x 4 5 6\n'hello world'4");
+    lexer.tokenize();
+    let tokens = lexer.tokens();
 
-    println!("{:?}", toks.tokens());
+    println!("-TOKENS-\n{:?}", tokens);
 
     let l = List::from_vec(vec![
         Scalar::Number(4),
-        Scalar::Number(4),
+        Scalar::Number(-4),
         Scalar::Number(2),
         Scalar::Float(1.3),
     ]);
 
+    let r = List::scalar(Scalar::Float(7.32));
+
     println!("{l:?}");
-    println!("{:?}", l.with_rank(&[3, 3]));
+    println!("{:?}", l.clone().with_rank(&[3, 3]));
 
     let scope = new_scope();
     println!("{}", scope.borrow().has("literal"));
 
-    let _left = Function::new(Rc::new(|a, _| a), Rc::new(|a, _, _| a), 99, [99, 99]);
+    if let lex::Token::Symbol(sym) = tokens[3] {
+        let plus_symbol = sym.getfn();
+        println!("\n-M-\n{:?}", plus_symbol.monadic_call(l.clone()));
+        println!("\n-D-\n{:?}", plus_symbol.dyadic_call(l, r));
+
+        let mut build = Vec::with_capacity(10_000_000);
+        for i in 0..10_000_000 {
+            build.push(Scalar::Number(i as i32));
+        }
+        let list = List::from_vec(build);
+        let one = List::scalar(Scalar::Number(1));
+
+        let t1 = std::time::Instant::now();
+        let result = plus_symbol.dyadic_call(list, one);
+        let t2 = std::time::Instant::now();
+        println!("{}: {:?}", result.is_ok(), t2 - t1);
+    }
 }
