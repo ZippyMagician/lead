@@ -4,8 +4,10 @@ use std::ops::*;
 
 use crate::function::Opts;
 use crate::list::List;
-use crate::scalar::{Scalar, scalar_op};
+use crate::scalar::Scalar::{self, Boolean, Float, Number};
+use crate::scalar::scalar_op;
 use crate::utils::error::{Status, err};
+use crate::utils::symbols::foreach_0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(C)]
@@ -19,16 +21,12 @@ pub enum Symbol {
 
 // plusm | + | 0 | Absolute value / Cast to int
 pub(super) fn abs(mut a: List, _: &Opts) -> Status<List> {
-    let values = a.list_mut();
-    for v in values.iter_mut() {
-        *v = match v {
-            Scalar::Number(n) => Scalar::Number(n.abs()),
-            Scalar::Float(n) => Scalar::Float(n.abs()),
-            Scalar::Boolean(n) => Scalar::Number(*n as i32),
-            Scalar::Box(ptr) => Scalar::Number(ptr.addr() as i32),
-        }
-    }
-    Ok(a)
+    foreach_0!(map; a; [v] match v {
+        Number(n) => Number(n.abs()),
+        Float(n) => Float(n.abs()),
+        Boolean(n) => Number(*n as i32),
+        Scalar::Box(ptr) => Number(ptr.addr() as i32),
+    });
 }
 
 // plusd | + | 0, 0 | Addition
