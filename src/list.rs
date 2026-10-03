@@ -88,7 +88,7 @@ impl List {
     pub fn with_rank(mut self, r: &[usize]) -> Status<Self> {
         let count: usize = r.into_iter().product();
         if count == self.ct {
-            if INLINE_SIZE > self.dims() {
+            if INLINE_SIZE >= self.dims() || INLINE_SIZE < r.len() {
                 self.rk = SmallVec::from_slice(r);
             } else {
                 self.rk.clear();
