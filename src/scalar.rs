@@ -2,7 +2,7 @@
 use std::ops::*;
 
 use crate::list::List;
-use crate::utils::error::{Status, err};
+use crate::utils::error::err;
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 #[repr(C)]
@@ -10,28 +10,51 @@ pub enum Scalar {
     Number(i32),
     Float(f32),
     Boolean(bool),
+    Char(char),
     Box(*const List),
 }
 
 impl Scalar {
     #[inline(always)]
-    fn is_num(&self) -> bool {
+    pub fn is_num(&self) -> bool {
         matches!(self, Self::Number(_))
     }
 
     #[inline(always)]
-    fn is_float(&self) -> bool {
+    pub fn is_float(&self) -> bool {
         matches!(self, Self::Float(_))
     }
 
     #[inline(always)]
-    fn is_bool(&self) -> bool {
+    pub fn is_bool(&self) -> bool {
         matches!(self, Self::Boolean(_))
     }
 
     #[inline(always)]
-    fn is_box(&self) -> bool {
+    pub fn is_box(&self) -> bool {
         matches!(self, Self::Box(_))
+    }
+
+    #[inline]
+    pub fn to_num(&self) -> i32 {
+        match self {
+            Self::Number(n) => *n,
+            Self::Float(f) => *f as i32,
+            Self::Char(c) => *c as i32,
+            Self::Boolean(b) => *b as i32,
+            _ => err!(NaN; !),
+        }
+    }
+
+    #[inline]
+    pub fn to_float(&self) -> f32 {
+        match self {
+            Self::Number(n) => *n as f32,
+            Self::Float(f) => *f,
+            Self::Char(c) => *c as u32 as f32,
+            Self::Boolean(b) => *b as u8 as f32,
+            _ => err!(NaN; !),
+        }
     }
 
     #[inline]
@@ -70,52 +93,59 @@ impl Scalar {
 use Scalar::*;
 
 #[inline(always)]
-fn n(i: i32) -> Status<Scalar> {
-    Ok(Scalar::Number(i))
+fn n(i: i32) -> Scalar {
+    Scalar::Number(i)
 }
 
 #[inline(always)]
-fn f(i: f32) -> Status<Scalar> {
-    Ok(Scalar::Float(i))
+fn f(i: f32) -> Scalar {
+    Scalar::Float(i)
 }
 
 #[inline(always)]
-fn b(i: bool) -> Status<Scalar> {
-    Ok(Scalar::Boolean(i))
+fn b(i: bool) -> Scalar {
+    Scalar::Boolean(i)
 }
 
 macro_rules! impl_arith_ops {
     ($($name:ident, $f:ident, [$a1:ident, $a2:ident] $operation:block);*;) => {
         $(
             impl $name for Scalar {
-                type Output = Status<Self>;
+                type Output = Self;
 
                 #[inline]
                 fn $f(self, rhs: Self) -> Self::Output {
-                    match (self, rhs) {
-                        (Number(l), Number(r)) => n(l + r),
-                        (Number(l), Float(r)) => f(l as f32 + r),
-                        (Number(l), Boolean(r)) => n(l + r as i32),
-                        (Float(l), Number(r)) => f(l + r as f32),
-                        (Float(l), Float(r)) => f(l + r),
-                        (Float(l), Boolean(r)) => f(l + r as u8 as f32),
-                        (Boolean(l), Number(r)) => n(l as i32 + r),
-                        (Boolean(l), Float(r)) => f(l as u8 as f32 + r),
-                        (Boolean(l), Boolean(r)) => n(l as i32 + r as i32),
-                        _ => err!(NaN),
+                    // If this first branch is removed, this for some fucking reason
+                    // becomes literally 10x more expensive... ???? despite it being
+                    // checked in to_float and to_num as well.....
+                    if self.is_box() || rhs.is_box() {
+                        err!(NaN; !);
+                    } else if self.is_float() || rhs.is_float() {
+                        let $a1 = self.to_float();
+                        let $a2 = rhs.to_float();
+                        f($operation)
+                    } else {
+                        let $a1 = self.to_num();
+                        let $a2 = rhs.to_num();
+                        n($operation)
                     }
                 }
             }
 
             impl $name<i32> for Scalar {
-                type Output = Status<Self>;
+                type Output = Self;
 
                 fn $f(self, rhs: i32) -> Self::Output {
-                    match self {
-                        Number(l) => n(l + rhs),
-                        Float(l) => f(l + rhs as f32),
-                        Boolean(l) => n(l as i32 + rhs),
-                        _ => err!(NaN),
+                    if self.is_box() {
+                        err!(NaN; !)
+                    } else if let Float(fl) = self {
+                        let $a1 = fl;
+                        let $a2 = rhs as f32;
+                        f($operation)
+                    } else {
+                        let $a1 = self.to_num();
+                        let $a2 = rhs;
+                        n($operation)
                     }
                 }
             }
@@ -130,51 +160,3 @@ impl_arith_ops! {
     Div, div, [l, r] {l / r};
     Rem, rem, [l, r] {l % r};
 }
-
-macro_rules! scalar_op {
-    ($a:ident, $b:ident, $d:ident) => {
-        if $a.len() == $b.len() {
-            let values = $a.list_mut();
-            for (l, r) in values.iter_mut().zip($b.list()) {
-                *l = l.$d(*r)?;
-            }
-            Ok($a)
-        } else if $a.is_empty() {
-            Ok($b)
-        } else if $b.is_empty() {
-            Ok($a)
-        } else if $a.is_scalar() {
-            let a = $a.list()[0];
-            for r in $b.list_mut() {
-                *r = r.$d(a)?;
-            }
-            Ok($b)
-        } else if $b.is_scalar() {
-            let b = $b.list()[0];
-            for l in $a.list_mut() {
-                *l = l.$d(b)?;
-            }
-            Ok($a)
-        } else if $a.len() % $b.len() == 0 || $b.len() % $a.len() == 0 {
-            let m;
-            let o;
-            if $a.len() > $b.len() {
-                m = $a.list_mut();
-                o = $b.list();
-            } else {
-                m = $b.list_mut();
-                o = $a.list();
-            }
-
-            for (l, r) in m.iter_mut().zip(o.iter().cycle()) {
-                *l = l.$d(*r)?;
-            }
-
-            Ok(if $a.len() > $b.len() { $a } else { $b })
-        } else {
-            err!(Domain)
-        }
-    };
-}
-
-pub(crate) use scalar_op;
