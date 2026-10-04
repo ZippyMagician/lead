@@ -1,4 +1,4 @@
-macro_rules! foreach_0 {
+macro_rules! for_0 {
     ($a:ident; [$v:ident] = $b:expr) => {{
         for $v in $a.list_mut() {
             *$v = $b;
@@ -12,7 +12,7 @@ macro_rules! foreach_0 {
     }};
 }
 
-pub(crate) use foreach_0;
+pub(crate) use for_0;
 
 macro_rules! scalar_op {
     ($a:ident, $b:ident, $d:ident) => {
@@ -28,11 +28,11 @@ macro_rules! scalar_op {
             Ok($a)
         } else if $a.is_scalar() {
             let a = $a.list()[0];
-            foreach_0!($b; [r] = r.$d(a));
+            for_0!($b; [r] = r.$d(a));
             Ok($b)
         } else if $b.is_scalar() {
             let b = $b.list()[0];
-            foreach_0!($a; [l] = l.$d(b));
+            for_0!($a; [l] = l.$d(b));
             Ok($a)
         } else if $a.len() % $b.len() == 0 || $b.len() % $a.len() == 0 {
             let m;

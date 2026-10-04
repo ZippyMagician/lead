@@ -12,10 +12,6 @@ pub struct Function {
     d: Rc<dyn Fn(List, List, &Opts) -> Status<List>>,
     // Opts
     op: Opts,
-    // Monadic rank
-    rkm: u8,
-    // Dyadic rank
-    rkd: [u8; 2],
 }
 
 impl Function {
@@ -28,9 +24,7 @@ impl Function {
         Self {
             m,
             d,
-            op: Opts::empty(),
-            rkm,
-            rkd,
+            op: Opts { rm: rkm, rd: rkd },
         }
     }
 
@@ -49,12 +43,6 @@ impl Function {
 #[derive(Clone, Debug)]
 #[repr(C)]
 pub struct Opts {
-    pub ro: Option<[u8; 2]>,
-}
-
-impl Opts {
-    #[inline]
-    pub fn empty() -> Self {
-        Self { ro: None }
-    }
+    pub rm: u8,
+    pub rd: [u8; 2],
 }

@@ -6,7 +6,7 @@ use crate::function::Opts;
 use crate::list::List;
 use crate::scalar::Scalar::{self, Boolean, Char, Float, Number};
 use crate::utils::error::{Status, err};
-use crate::utils::symbols::{foreach_0, scalar_op};
+use crate::utils::symbols::{for_0, scalar_op};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(C)]
@@ -20,7 +20,7 @@ pub enum Symbol {
 
 // plusm | + | 0 | Absolute value / Cast to int
 pub(super) fn abs(mut a: List, _: &Opts) -> Status<List> {
-    foreach_0!(a; [v] = match v {
+    for_0!(a; [v] = match v {
         Number(n) => Number(n.abs()),
         Float(n) => Float(n.abs()),
         Boolean(n) => Number(*n as i32),
