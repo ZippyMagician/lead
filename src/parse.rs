@@ -68,7 +68,18 @@ impl<'a> Parser<'a> {
         match node {
             Token::Number(_) | Token::Float(_) => self.consume_primitive(),
             Token::String(_) => self.consume_primitive_string(),
-            Token::Symbol(s) => Ok(Node::Function(s.getfn())),
+            Token::Symbol(s) => {
+                self.tokens.next();
+                Ok(Node::Function(s.getfn()))
+            }
+            Token::Literal(l) => {
+                self.tokens.next();
+                if l.ends_with('.') {
+                    Ok(Node::LiteralInternal(l.trim_end_matches('.')))
+                } else {
+                    Ok(Node::Literal(l))
+                }
+            }
             Token::EOF => err!(Complete),
             _ => err!(Syntax, "Unrecognized token."),
         }

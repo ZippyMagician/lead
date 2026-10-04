@@ -57,7 +57,7 @@ impl List {
         Self {
             dt: [data].into(),
             ct: 1,
-            ds: 0,
+            ds: 1,
             rk: smallvec![1],
         }
     }

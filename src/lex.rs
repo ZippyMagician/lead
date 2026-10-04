@@ -142,12 +142,17 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    #[inline(always)]
+    fn nth(&mut self, i: usize) -> Option<char> {
+        self.input.chars().nth(i)
+    }
+
     fn consume_number(&mut self, start: usize) -> Status<Token<'a>> {
         let mut end = start + 1;
-        let mut found_e = self.input.chars().nth(start) == Some('e');
+        let mut found_e = self.nth(start) == Some('e');
         let mut found_decimals = 0;
         let mut found_signs = 0;
-        if self.input.chars().nth(start) == Some('_') {
+        if self.nth(start) == Some('_') {
             found_signs += 1;
         }
 
@@ -179,13 +184,20 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    #[inline(always)]
     fn valid_lit_chr(chr: char) -> bool {
         chr.is_alphanumeric() || chr == '_'
     }
 
+    #[inline(always)]
     fn calculate_var_bounds(&mut self, start: usize) -> (usize, usize) {
         let mut end = start + 1;
         while self.next_if(Self::valid_lit_chr).is_some() {
+            end += 1;
+        }
+
+        if self.nth(end) == Some('.') {
+            self.chars.next();
             end += 1;
         }
 

@@ -58,7 +58,7 @@ fn main() {
 
     /// --- PARSING --- \\\
     println!("\n-P-");
-    let mut lexer = lex::Lexer::new("1 _2 3 'hello' 4.7 'list' 'of' 'strings'");
+    let mut lexer = lex::Lexer::new("   1 _2 3 'hello' 4.7 'list' 'of' 'strings' x y BOXC. ");
     lexer.tokenize();
 
     let arena = Rc::new(RefCell::new(Arena::<List>::new()));
