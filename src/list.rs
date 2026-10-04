@@ -1,9 +1,15 @@
+// NOTE: Lists should reject incompatible concatenations/contents
+// i.e., all internal scalars should be the same matching types.
+// That is, numeric / character / boxed
+// Maybe booleans as well?
+
 use std::alloc::{Layout, alloc};
 use std::slice;
 
 use smallvec::{SmallVec, smallvec};
 
 use crate::scalar::Scalar;
+use crate::utils::compatible;
 use crate::utils::error::{Status, err};
 
 const INLINE_SIZE: usize = 4;
@@ -34,6 +40,9 @@ impl List {
 
     #[inline]
     pub fn from_vec(data: Vec<Scalar>) -> Self {
+        if !compatible(&data) {
+            err!(Domain; !)
+        }
         let size = data.len();
         Self {
             dt: data.into(),

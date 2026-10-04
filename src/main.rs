@@ -20,7 +20,7 @@ fn main() {
         Scalar::Number(2),
         Scalar::Float(1.3),
     ]);
-    let r = List::from_vec(vec![Scalar::Float(7.32), Scalar::Boolean(true)]);
+    let r = List::from_vec(vec![Scalar::Boolean(false), Scalar::Boolean(true)]);
 
     println!("{l:?}");
     println!("{:?}", l.clone().with_rank(&[3, 3]));
