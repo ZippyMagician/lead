@@ -3,6 +3,7 @@ use std::hint::{/*cold_path,*/ unreachable_unchecked};
 use std::ops::*;
 
 use crate::list::List;
+use crate::utils::Arena;
 use crate::utils::error::{Status, err};
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
@@ -17,9 +18,16 @@ pub enum Scalar {
 
 impl Scalar {
     #[inline]
-    pub fn boxed(l: List) -> Status<Self> {
+    pub fn boxed(a: Arena, l: List) -> Status<Self> {
+        let arena = a.borrow_mut();
+        let r = arena.alloc(l);
+        Ok(Box(r as *const List))
+    }
+
+    #[inline]
+    pub fn boxed_leak(l: List) -> Status<Self> {
         use std::boxed::Box;
-        Ok(Scalar::Box(Box::into_raw(Box::new(l))))
+        Ok(Self::Box(Box::into_raw(Box::new(l))))
     }
 
     #[inline(always)]

@@ -2,7 +2,15 @@ pub mod error;
 pub mod number;
 pub mod symbols;
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use super::list::List;
 use super::scalar::Scalar::{self as S};
+
+use typed_arena;
+
+pub(crate) type Arena = Rc<RefCell<typed_arena::Arena<List>>>;
 
 // Check to ensure lists contain matching scalar values
 #[inline]

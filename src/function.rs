@@ -1,6 +1,7 @@
 use std::rc::Rc;
 
 use crate::list::List;
+use crate::utils::Arena;
 use crate::utils::error::Status;
 
 #[derive(Clone)]
@@ -17,14 +18,19 @@ impl Function {
     pub fn new(
         m: Rc<dyn Fn(List, &Opts) -> Status<List>>,
         d: Rc<dyn Fn(List, List, &Opts) -> Status<List>>,
-        rkm: u8,
-        rkd: [u8; 2],
+        rm: u8,
+        rd: [u8; 2],
     ) -> Self {
         Self {
             m,
             d,
-            op: Opts { rm: rkm, rd: rkd },
+            op: Opts { rm, rd, a: None },
         }
+    }
+
+    #[inline]
+    pub fn assign_arena(&mut self, a: Arena) {
+        self.op.a = Some(a);
     }
 
     #[inline]
@@ -39,9 +45,10 @@ impl Function {
 }
 
 // Options for functions, e.g. rank override when applicable
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 #[repr(C)]
 pub struct Opts {
     pub rm: u8,
     pub rd: [u8; 2],
+    pub a: Option<Arena>,
 }

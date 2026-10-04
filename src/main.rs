@@ -1,10 +1,15 @@
 #![allow(unused_doc_comments)]
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use seqr::lex;
 use seqr::list::List;
 use seqr::parse;
 use seqr::scalar::Scalar;
 use seqr::scope::new_scope;
+
+use typed_arena::Arena;
 
 fn main() {
     /// --- LEXING --- \\\
@@ -55,7 +60,9 @@ fn main() {
     println!("\n-P-");
     let mut lexer = lex::Lexer::new("1 _2 3 'hello' 4.7 'list' 'of' 'strings'");
     lexer.tokenize();
-    let mut parser = parse::Parser::new(lexer.tokens());
+
+    let arena = Rc::new(RefCell::new(Arena::<List>::new()));
+    let mut parser = parse::Parser::new(arena, lexer.tokens());
     parser.parse();
 
     println!("{:?}", parser.nodes());

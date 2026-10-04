@@ -6,6 +6,7 @@ use crate::function::Function;
 use crate::lex::Token;
 use crate::list::List;
 use crate::scalar::Scalar;
+use crate::utils::Arena;
 use crate::utils::error::{Error, Status, err, print_error};
 
 #[derive(Clone)]
@@ -31,13 +32,15 @@ pub enum Node<'a> {
 pub struct Parser<'a> {
     nodes: Vec<Node<'a>>,
     tokens: Peekable<Iter<'a, Token<'a>>>,
+    arena: Arena,
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(l: &'a [Token<'a>]) -> Self {
+    pub fn new(arena: Arena, l: &'a [Token<'a>]) -> Self {
         Self {
             nodes: vec![],
             tokens: l.iter().peekable(),
+            arena,
         }
     }
 
@@ -104,7 +107,7 @@ impl<'a> Parser<'a> {
             List::from_vec(
                 strings
                     .iter()
-                    .map(|s| Scalar::boxed(List::string(s)))
+                    .map(|s| Scalar::boxed(self.arena.clone(), List::string(s)))
                     .collect::<Status<Vec<Scalar>>>()?,
             )
             .map(Node::PrimitiveBoxes)

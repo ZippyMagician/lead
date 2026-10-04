@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 smallvec = "1.16.2"
+typed-arena = "2.0.2"
