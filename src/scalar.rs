@@ -1,9 +1,9 @@
 #![allow(dead_code)]
-use std::hint::unreachable_unchecked;
+use std::hint::{/*cold_path,*/ unreachable_unchecked};
 use std::ops::*;
 
 use crate::list::List;
-use crate::utils::error::err;
+use crate::utils::error::{Status, err};
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 #[repr(C)]
@@ -16,6 +16,12 @@ pub enum Scalar {
 }
 
 impl Scalar {
+    #[inline]
+    pub fn boxed(l: List) -> Status<Self> {
+        use std::boxed::Box;
+        Ok(Scalar::Box(Box::into_raw(Box::new(l))))
+    }
+
     #[inline(always)]
     pub fn is_num(&self) -> bool {
         matches!(self, Self::Number(_))
@@ -37,24 +43,24 @@ impl Scalar {
     }
 
     #[inline]
-    pub fn to_num(&self) -> i32 {
+    pub fn to_num(&self) -> Status<i32> {
         match self {
-            Self::Number(n) => *n,
-            Self::Float(f) => *f as i32,
-            Self::Char(c) => *c as i32,
-            Self::Boolean(b) => *b as i32,
-            _ => err!(NaN; !),
+            Self::Number(n) => Ok(*n),
+            Self::Float(f) => Ok(*f as i32),
+            Self::Char(c) => Ok(*c as i32),
+            Self::Boolean(b) => Ok(*b as i32),
+            _ => err!(NaN),
         }
     }
 
     #[inline]
-    pub fn to_float(&self) -> f32 {
+    pub fn to_float(&self) -> Status<f32> {
         match self {
-            Self::Number(n) => *n as f32,
-            Self::Float(f) => *f,
-            Self::Char(c) => *c as u32 as f32,
-            Self::Boolean(b) => *b as u8 as f32,
-            _ => err!(NaN; !),
+            Self::Number(n) => Ok(*n as f32),
+            Self::Float(f) => Ok(*f),
+            Self::Char(c) => Ok(*c as u32 as f32),
+            Self::Boolean(b) => Ok(*b as u8 as f32),
+            _ => err!(NaN),
         }
     }
 
@@ -94,25 +100,25 @@ impl Scalar {
 use Scalar::*;
 
 #[inline(always)]
-fn n(i: i32) -> Scalar {
-    Scalar::Number(i)
+fn n(i: i32) -> Status<Scalar> {
+    Ok(Scalar::Number(i))
 }
 
 #[inline(always)]
-fn f(i: f32) -> Scalar {
-    Scalar::Float(i)
+fn f(i: f32) -> Status<Scalar> {
+    Ok(Scalar::Float(i))
 }
 
 #[inline(always)]
-fn b(i: bool) -> Scalar {
-    Scalar::Boolean(i)
+fn b(i: bool) -> Status<Scalar> {
+    Ok(Scalar::Boolean(i))
 }
 
 macro_rules! impl_arith_ops {
     ($($name:ident, $f:ident, [$a1:ident, $a2:ident] $operation:block);*;) => {
         $(
             impl $name for Scalar {
-                type Output = Self;
+                type Output = Status<Self>;
 
                 #[inline]
                 fn $f(self, rhs: Self) -> Self::Output {
@@ -121,31 +127,31 @@ macro_rules! impl_arith_ops {
                     // checked in to_float and to_num as well.....
                     // Note: ::std::hint::cold_path makes this slightly slower
                     if self.is_box() || rhs.is_box() {
-                        err!(NaN; !);
+                        err!(NaN)
                     } else if self.is_float() || rhs.is_float() {
-                        let $a1 = self.to_float();
-                        let $a2 = rhs.to_float();
+                        let $a1 = self.to_float()?;
+                        let $a2 = rhs.to_float()?;
                         f($operation)
                     } else {
-                        let $a1 = self.to_num();
-                        let $a2 = rhs.to_num();
+                        let $a1 = self.to_num()?;
+                        let $a2 = rhs.to_num()?;
                         n($operation)
                     }
                 }
             }
 
             impl $name<i32> for Scalar {
-                type Output = Self;
+                type Output = Status<Self>;
 
                 fn $f(self, rhs: i32) -> Self::Output {
                     if self.is_box() {
-                        err!(NaN; !)
+                        err!(NaN)
                     } else if let Float(fl) = self {
                         let $a1 = fl;
                         let $a2 = rhs as f32;
                         f($operation)
                     } else {
-                        let $a1 = self.to_num();
+                        let $a1 = self.to_num()?;
                         let $a2 = rhs;
                         n($operation)
                     }

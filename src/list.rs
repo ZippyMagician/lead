@@ -39,17 +39,17 @@ impl List {
     }
 
     #[inline]
-    pub fn from_vec(data: Vec<Scalar>) -> Self {
+    pub fn from_vec(data: Vec<Scalar>) -> Status<Self> {
         if !compatible(&data) {
-            err!(Domain; !)
+            return err!(Domain);
         }
         let size = data.len();
-        Self {
+        Ok(Self {
             dt: data.into(),
             ct: size,
             ds: 1,
             rk: smallvec![size],
-        }
+        })
     }
 
     #[inline]
@@ -59,6 +59,17 @@ impl List {
             ct: 1,
             ds: 0,
             rk: smallvec![1],
+        }
+    }
+
+    #[inline]
+    pub fn string(data: &str) -> Self {
+        let size = data.len();
+        Self {
+            dt: data.chars().map(|c| Scalar::Char(c)).collect(),
+            ct: size,
+            ds: 1,
+            rk: smallvec![size],
         }
     }
 

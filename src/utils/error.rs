@@ -4,7 +4,7 @@ use std::num::{ParseFloatError, ParseIntError};
 
 #[derive(Clone, Debug)]
 pub enum Error {
-    LexComplete,
+    Complete,
     NaN,
     MemoryFault(&'static str),
     Syntax(&'static str),
@@ -37,7 +37,7 @@ impl Display for Error {
         use Error::*;
 
         match self {
-            LexComplete => write!(f, "LexCompletion"),
+            Complete => write!(f, "Completion"),
             MemoryFault(s) => write!(f, "MEMORY [-1]: {s}"),
             NaN => write!(f, "NUMERIC [0]"),
             Syntax(s) => write!(f, "SYNTAX [1]: {s}"),

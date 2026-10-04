@@ -19,7 +19,7 @@ macro_rules! scalar_op {
         if $a.len() == $b.len() {
             let values = $a.list_mut();
             for (l, r) in values.iter_mut().zip($b.list()) {
-                *l = l.$d(*r);
+                *l = l.$d(*r)?;
             }
             Ok($a)
         } else if $a.is_empty() {
@@ -28,11 +28,11 @@ macro_rules! scalar_op {
             Ok($a)
         } else if $a.is_scalar() {
             let a = $a.list()[0];
-            for_0!($b; [r] = r.$d(a));
+            for_0!($b; [r] = r.$d(a)?);
             Ok($b)
         } else if $b.is_scalar() {
             let b = $b.list()[0];
-            for_0!($a; [l] = l.$d(b));
+            for_0!($a; [l] = l.$d(b)?);
             Ok($a)
         } else if $a.len() % $b.len() == 0 || $b.len() % $a.len() == 0 {
             let m;
@@ -46,7 +46,7 @@ macro_rules! scalar_op {
             }
 
             for (l, r) in m.iter_mut().zip(o.iter().cycle()) {
-                *l = l.$d(*r);
+                *l = l.$d(*r)?;
             }
 
             Ok(if $a.len() > $b.len() { $a } else { $b })

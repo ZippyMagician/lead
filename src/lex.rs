@@ -3,6 +3,7 @@ use std::str::CharIndices;
 
 use crate::builtins::symbols::Symbol;
 use crate::utils::error::{Error, Status, err, print_error};
+use crate::utils::number::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Token<'a> {
@@ -63,7 +64,7 @@ impl<'a> Lexer<'a> {
             let status = self.consume_token();
             match status {
                 Ok(tok) => self.tokens.push(tok),
-                Err(Error::LexComplete) => break,
+                Err(Error::Complete) => break,
                 Err(e) => print_error(e),
             }
         }
@@ -78,7 +79,7 @@ impl<'a> Lexer<'a> {
 
     #[inline]
     fn consume_token(&mut self) -> Status<Token<'a>> {
-        let (start, chr) = self.chars.next().ok_or(Error::LexComplete)?;
+        let (start, chr) = self.chars.next().ok_or(Error::Complete)?;
         match chr {
             '_' | 'e' | '0'..='9' => self.maybe_number(start),
             'a'..='z' | 'A'..='Z' => self.consume_lit(start),
@@ -90,7 +91,7 @@ impl<'a> Lexer<'a> {
 
     fn maybe_sym(&mut self, chr: char, start: usize) -> Status<Token<'a>> {
         if chr == '-' && self.next_if(|c| c == '-').is_some() {
-            return self.skip_comment().ok_or(Error::LexComplete);
+            return self.skip_comment().ok_or(Error::Complete);
         }
         match chr {
             '\'' => self.consume_string(start),
@@ -145,7 +146,10 @@ impl<'a> Lexer<'a> {
         let mut end = start + 1;
         let mut found_e = self.input.chars().nth(start) == Some('e');
         let mut found_decimals = 0;
-        let mut found_signs = 1;
+        let mut found_signs = 0;
+        if self.input.chars().nth(start) == Some('_') {
+            found_signs += 1;
+        }
 
         if found_e {
             found_decimals += 1;
@@ -164,13 +168,14 @@ impl<'a> Lexer<'a> {
                 '0'..'9' => {}
                 _ => break,
             }
+            self.chars.next();
             end += 1;
         }
 
         if found_e && found_decimals == 2 || !found_e && found_decimals == 1 {
-            Ok(Token::Float(self.input[start..end].parse::<f32>()?))
+            Ok(Token::Float(parse_float(&self.input[start..end])?))
         } else {
-            Ok(Token::Number(self.input[start..end].parse::<i32>()?))
+            Ok(Token::Number(parse_number(&self.input[start..end])?))
         }
     }
 
