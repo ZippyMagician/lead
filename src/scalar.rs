@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use std::hint::unreachable_unchecked;
 use std::ops::*;
 
 use crate::list::List;
@@ -61,7 +62,7 @@ impl Scalar {
     unsafe fn unbox_unchecked(self) -> List {
         match self {
             Self::Box(p) => unsafe { (*p).clone() },
-            _ => unreachable!(),
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 
@@ -69,7 +70,7 @@ impl Scalar {
     unsafe fn to_num_unchecked(&self) -> i32 {
         match self {
             Self::Number(n) => *n,
-            _ => unreachable!(),
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 
@@ -77,7 +78,7 @@ impl Scalar {
     unsafe fn to_float_unchecked(&self) -> f32 {
         match self {
             Self::Float(f) => *f,
-            _ => unreachable!(),
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 
@@ -85,7 +86,7 @@ impl Scalar {
     unsafe fn to_bool_unchecked(&self) -> bool {
         match self {
             Self::Boolean(b) => *b,
-            _ => unreachable!(),
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 }
@@ -118,6 +119,7 @@ macro_rules! impl_arith_ops {
                     // If this first branch is removed, this for some fucking reason
                     // becomes literally 10x more expensive... ???? despite it being
                     // checked in to_float and to_num as well.....
+                    // Note: ::std::hint::cold_path makes this slightly slower
                     if self.is_box() || rhs.is_box() {
                         err!(NaN; !);
                     } else if self.is_float() || rhs.is_float() {

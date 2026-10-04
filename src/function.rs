@@ -4,7 +4,6 @@ use crate::list::List;
 use crate::utils::error::Status;
 
 #[derive(Clone)]
-#[allow(dead_code)]
 pub struct Function {
     // Monad
     m: Rc<dyn Fn(List, &Opts) -> Status<List>>,
