@@ -143,4 +143,23 @@ impl List {
             }
         }
     }
+
+    #[inline]
+    pub fn ranked(self, dims: usize) -> Vec<Self> {
+        if dims == 0 {
+            self.list().iter().cloned().map(List::scalar).collect()
+        } else if dims >= self.dims() {
+            vec![self]
+        } else {
+            todo!("Non-trivial List::ranked(self, dims)");
+        }
+    }
+
+    #[inline]
+    pub fn unranked<T>(_original: usize, _trailing_rank: &[usize], _list: T) -> Status<Self>
+    where
+        T: Iterator<Item = Status<Self>>,
+    {
+        todo!("List::unranked");
+    }
 }

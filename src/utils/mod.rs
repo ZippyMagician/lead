@@ -1,4 +1,5 @@
 pub mod error;
+pub mod function;
 pub mod number;
 pub mod symbols;
 
@@ -35,4 +36,3 @@ pub fn compatible(list: &[S]) -> bool {
 
     true
 }
-
