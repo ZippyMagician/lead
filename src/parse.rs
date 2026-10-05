@@ -99,6 +99,8 @@ impl<'a> Parser<'a> {
             }),
             Newline | CloseParen => Ok(Node::Line),
             OpenBracket => self.maybe_tag(),
+            OpenParen => self.consume_group(),
+            OpenCurly => self.consume_block(),
             EOF => err!(Complete),
             _ => err!(Syntax, "Unrecognized token."),
         }
@@ -106,13 +108,14 @@ impl<'a> Parser<'a> {
 
     fn consume_primitive(&mut self, s: Scalar) -> Status<Node<'a>> {
         let mut tokens = vec![s];
-        while let Some(tok) = self.tokens.next() {
-            if let (TokenTag::Number, n) = tok {
-                tokens.push(Scalar::Number(parse_number(*n)?));
-            } else if let (TokenTag::Float, f) = tok {
-                tokens.push(Scalar::Float(parse_float(*f)?));
+        while let Some((tag, s)) = self
+            .tokens
+            .next_if(|(t, _)| *t == TokenTag::Number || *t == TokenTag::Float)
+        {
+            if *tag == TokenTag::Number {
+                tokens.push(Scalar::Number(parse_number(s)?));
             } else {
-                break;
+                tokens.push(Scalar::Float(parse_float(s)?));
             }
         }
 
@@ -125,8 +128,7 @@ impl<'a> Parser<'a> {
 
     fn consume_primitive_string(&mut self, t: &'a str) -> Status<Node<'a>> {
         let mut strings = vec![t];
-        while let Some((TokenTag::String, s)) = self.tokens.peek() {
-            self.tokens.next();
+        while let Some((_, s)) = self.next_if(TokenTag::String) {
             strings.push(s);
         }
 
@@ -154,7 +156,9 @@ impl<'a> Parser<'a> {
                 (TokenTag::Newline, _) => {
                     Ok(Node::Two(Node::Function(sym?).into(), Node::Line.into()))
                 }
-                (_, tag @ _) if self.next_is(TokenTag::CloseBracket) => Ok(Node::Tag(tag)),
+                (_, tag @ _) if self.next_if(TokenTag::CloseBracket).is_some() => {
+                    self.consume_tag(tag)
+                }
                 next @ _ => Ok(Node::Two(
                     Node::Function(sym?).into(),
                     self.consume_node(next)?.into(),
@@ -165,13 +169,37 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn consume_tag(&mut self, tag: &'a str) -> Status<Node<'a>> {
+        // TODO: Support some syntactic tags
+        Ok(Node::Tag(tag))
+    }
+
     fn consume_accessor(&mut self) -> Status<Node<'a>> {
         todo!("Consume accessor")
     }
 
+    fn consume_group(&mut self) -> Status<Node<'a>> {
+        let nodes = self.consume_upto_tag(TokenTag::CloseParen)?;
+        self.tokens.next(); // consume_upto does not consume the closing token
+        Ok(Node::Group(nodes))
+    }
+
+    fn consume_block(&mut self) -> Status<Node<'a>> {
+        todo!("Consume block")
+    }
+
     #[inline]
-    fn next_is(&mut self, n: TokenTag) -> bool {
-        self.tokens.next_if(|(t, _)| *t == n).is_some()
+    fn next_if(&mut self, n: TokenTag) -> Option<&'a Token<'a>> {
+        self.tokens.next_if(|(t, _)| *t == n)
+    }
+
+    #[inline]
+    fn consume_upto_tag(&mut self, tag: TokenTag) -> Status<Vec<Node<'a>>> {
+        let mut nodes = Vec::new();
+        while let Some(tok) = self.tokens.next_if(|(t, _)| *t != tag) {
+            Self::unpack_node(&mut nodes, self.consume_node(tok))?;
+        }
+        Ok(nodes)
     }
 }
 
@@ -185,6 +213,8 @@ impl<'a> Debug for Node<'a> {
             Node::LiteralInternal(l) => write!(f, "Internal({l}.)"),
             Node::Function(_) => write!(f, "Function"),
             Node::Line => write!(f, "NL"),
+            Node::Tag(t) => write!(f, "[{t}]"),
+            Node::Group(g) => write!(f, "({g:?})"),
             _ => todo!(),
         }
     }

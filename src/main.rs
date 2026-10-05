@@ -18,7 +18,7 @@ fn main() -> Result<(), seqr::utils::error::Error> {
     lexer.tokenize()?;
     let tokens = lexer.tokens();
 
-    println!("-TOKENS-\n{:?}", tokens);
+    //println!("-TOKENS-\n{:?}", tokens);
 
     /// --- LIST --- \\\
     let l = List::from_vec(vec![
@@ -58,8 +58,9 @@ fn main() -> Result<(), seqr::utils::error::Error> {
     }
 
     /// --- PARSING --- \\\
-    println!("\n-P-");
-    let mut lexer = lex::Lexer::new("   1 _2 3 'hello' 4.7 'list' 'of' 'strings' x y BOXC. ");
+    const P: &'static str = "  1 _2 3.4 (x y) ) [~] 'hello'   ";
+    println!("\n-P-\n\"\"\" {P} \"\"\"");
+    let mut lexer = lex::Lexer::new(P);
     lexer.tokenize()?;
 
     let arena = Rc::new(RefCell::new(Arena::<List>::new()));
