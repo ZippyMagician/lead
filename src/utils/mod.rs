@@ -35,3 +35,4 @@ pub fn compatible(list: &[S]) -> bool {
 
     true
 }
+

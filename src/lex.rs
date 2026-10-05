@@ -2,20 +2,19 @@ use std::iter::Peekable;
 use std::str::CharIndices;
 
 use crate::builtins::symbols::Symbol;
-use crate::utils::error::{Error, Status, err, print_error};
-use crate::utils::number::*;
+use crate::utils::error::{Error, Status, err};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Token<'a> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TokenTag {
     /// `15`, `-3`
-    Number(i32),
-    Float(f32),
+    Number,
+    Float,
     /// `"hello world"`, `:goodbye`, `"hi"`, `'a`
-    String(&'a str),
+    String,
     /// `for`, `print`, `add`, etc.
-    Literal(&'a str),
+    Literal,
     /// `+`, `!=`, `.`, etc
-    Symbol(Symbol),
+    Symbol,
     /// Has semantic meaning, unlike other whitespace
     /// e.g. in `-> x : . + \n 1 2 3 x`, x's definition should end with the newline
     Newline,
@@ -35,11 +34,19 @@ pub enum Token<'a> {
     CloseBracket,
 }
 
+pub type Token<'a> = (TokenTag, &'a str);
+
 pub struct Lexer<'a> {
     input: &'a str,
     chars: Peekable<CharIndices<'a>>,
     line: usize,
     tokens: Vec<Token<'a>>,
+}
+
+macro_rules! tok {
+    ($tag:ident, $slice:expr) => {
+        Ok((TokenTag::$tag, $slice))
+    };
 }
 
 impl<'a> Lexer<'a> {
@@ -59,17 +66,17 @@ impl<'a> Lexer<'a> {
 
     /// Entry function for tokenization
     #[inline]
-    pub fn tokenize(&mut self) {
+    pub fn tokenize(&mut self) -> Status {
         loop {
             let status = self.consume_token();
             match status {
                 Ok(tok) => self.tokens.push(tok),
                 Err(Error::Complete) => break,
-                Err(e) => print_error(e),
+                Err(e) => return Err(e),
             }
         }
-
-        self.tokens.push(Token::EOF);
+        self.tokens.push((TokenTag::EOF, ""));
+        Ok(())
     }
 
     #[inline(always)]
@@ -97,22 +104,22 @@ impl<'a> Lexer<'a> {
             '\'' => self.consume_string(start),
             '{' => {
                 if self.next_if(|c| c == '{').is_some() {
-                    Ok(Token::OpenCurly)
+                    tok!(OpenCurly, "{{")
                 } else {
                     self.consume_symbol(start)
                 }
             }
             '}' => {
                 if self.next_if(|c| c == '}').is_some() {
-                    Ok(Token::CloseCurly)
+                    tok!(CloseCurly, "}}")
                 } else {
                     self.consume_symbol(start)
                 }
             }
-            '(' => Ok(Token::OpenParen),
-            ')' => Ok(Token::CloseParen),
-            '[' => Ok(Token::OpenBracket),
-            ']' => Ok(Token::CloseBracket),
+            '(' => tok!(OpenParen, "("),
+            ')' => tok!(CloseParen, ")"),
+            '[' => tok!(OpenBracket, "["),
+            ']' => tok!(CloseBracket, "]"),
             _ => self.consume_symbol(start),
         }
     }
@@ -120,9 +127,8 @@ impl<'a> Lexer<'a> {
     #[inline]
     fn consume_whitespace(&mut self, chr: char, _start: usize) -> Status<Token<'a>> {
         if chr == '\n' {
-            let tok = Token::Newline;
             self.line += 1;
-            return Ok(tok);
+            return tok!(Newline, "\n");
         }
 
         self.consume_token()
@@ -178,9 +184,9 @@ impl<'a> Lexer<'a> {
         }
 
         if found_e && found_decimals == 2 || !found_e && found_decimals == 1 {
-            Ok(Token::Float(parse_float(&self.input[start..end])?))
+            tok!(Float, &self.input[start..end])
         } else {
-            Ok(Token::Number(parse_number(&self.input[start..end])?))
+            tok!(Number, &self.input[start..end])
         }
     }
 
@@ -207,7 +213,7 @@ impl<'a> Lexer<'a> {
     // The pass to convert matching symbols to built ins and operators occurs prior to execution
     fn consume_lit(&mut self, start: usize) -> Status<Token<'a>> {
         let (start, end) = self.calculate_var_bounds(start);
-        Ok(Token::Literal(&self.input[start..end]))
+        tok!(Literal, &self.input[start..end])
     }
 
     fn consume_string(&mut self, start: usize) -> Status<Token<'a>> {
@@ -223,9 +229,8 @@ impl<'a> Lexer<'a> {
             end += 1;
         }
 
-        let tok = Ok(Token::String(&self.input[start + 1..end - 1]));
         self.line += lines;
-        tok
+        tok!(String, &self.input[start + 1..end - 1])
     }
 
     fn consume_symbol(&mut self, start: usize) -> Status<Token<'a>> {
@@ -237,18 +242,14 @@ impl<'a> Lexer<'a> {
             end += 1;
         }
 
-        Ok(Token::Symbol(
-            Symbol::get_symbol(&self.input[start..end])
-                .ok_or(Error::Syntax("Unrecognized symbol."))?,
-        ))
+        tok!(Symbol, &self.input[start..end])
     }
 
     fn skip_comment(&mut self) -> Option<Token<'a>> {
         while let Some((_, tok)) = self.chars.next() {
             if tok == '\n' {
-                let t = Some(Token::Newline);
                 self.line += 1;
-                return t;
+                return Some((TokenTag::Newline, "\n"));
             }
         }
 

@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use seqr::builtins::symbols::Symbol;
 use seqr::lex;
 use seqr::list::List;
 use seqr::parse;
@@ -11,10 +12,10 @@ use seqr::scope::new_scope;
 
 use typed_arena::Arena;
 
-fn main() {
+fn main() -> Result<(), seqr::utils::error::Error> {
     /// --- LEXING --- \\\
     let mut lexer = lex::Lexer::new("1 2 3 +* x 4 5 6\n'hello world'4");
-    lexer.tokenize();
+    lexer.tokenize()?;
     let tokens = lexer.tokens();
 
     println!("-TOKENS-\n{:?}", tokens);
@@ -37,8 +38,8 @@ fn main() {
     println!("{}", scope.borrow().has("literal"));
 
     /// --- SYMBOLS --- \\\
-    if let lex::Token::Symbol(sym) = tokens[3] {
-        let plus_symbol = sym.getfn();
+    if let (lex::TokenTag::Symbol, sym) = tokens[3] {
+        let plus_symbol = Symbol::get_symbol(sym).unwrap().getfn();
         println!("\n-M-\n{:?}", plus_symbol.monadic_call(l.clone()));
         println!("\n-D-\n{:?}", plus_symbol.dyadic_call(l, r));
 
@@ -59,11 +60,13 @@ fn main() {
     /// --- PARSING --- \\\
     println!("\n-P-");
     let mut lexer = lex::Lexer::new("   1 _2 3 'hello' 4.7 'list' 'of' 'strings' x y BOXC. ");
-    lexer.tokenize();
+    lexer.tokenize()?;
 
     let arena = Rc::new(RefCell::new(Arena::<List>::new()));
-    let mut parser = parse::Parser::new(arena, lexer.tokens());
-    parser.parse();
+    let mut parser = parse::Parser::new(arena, scope.clone(), lexer.tokens());
+    parser.parse()?;
 
     println!("{:?}", parser.nodes());
+
+    Ok(())
 }
