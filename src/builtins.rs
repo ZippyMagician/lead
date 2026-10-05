@@ -32,7 +32,6 @@ macro_rules! define_syms {
     }
 }
 
-
 define_syms! {
     Plus => (b"+", function!(0, symbols::abs; [0, 0], symbols::add));
     Dash => (b"-", function!(0, symbols::negate; [0, 0], symbols::sub));
@@ -40,4 +39,3 @@ define_syms! {
     Percent => (b"%", function!(0, symbols::reciprocal; [0, 0], symbols::div));
     Pipe => (b"|", function!(0, symbols::not; [0, 0], symbols::residue));
 }
-

@@ -90,7 +90,7 @@ impl Exec {
                 }
                 node @ _ => todo!("Execute node {node:?}"),
             }
-            
+
             if i == 0 {
                 break;
             } else {

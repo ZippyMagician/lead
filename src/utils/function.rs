@@ -40,4 +40,3 @@ where
     let lists = l.ranked(r as usize);
     List::unranked(dims, &rank[r as usize..], lists.into_iter().map(f))
 }
-
