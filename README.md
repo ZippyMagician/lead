@@ -19,3 +19,15 @@ Ideas:
     - Harder to support if lists can hold multiple types..
   - Keep `Scalar` types copyable for speed. Should I overload most arithmetic ops?
   - Dicts?
+
+### Syntax (tentative)
+```
+[~] 2 * ~e9    -- Don't print
+mean: +/%#     -- Define literal
+mean ~25       -- Mean 1..=25
+'hello world'  -- String
+map: [:]{ a: 'first'; b: 'second' }
+[]map.a        -- 'first'
+[]map.('b')    -- 'second'
+I.             -- STDIN
+```
