@@ -58,7 +58,7 @@ fn main() -> Result<(), seqr::utils::error::Error> {
     }
 
     /// --- PARSING --- \\\
-    const P: &'static str = "  1 _2 3.4 (x y) ) [~] 'hello'   ";
+    const P: &'static str = "x: 1 2 3 + 4 5 6\n(x):'yes')'no')[~]'silent'";
     println!("\n-P-\n\"\"\" {P} \"\"\"");
     let mut lexer = lex::Lexer::new(P);
     lexer.tokenize()?;

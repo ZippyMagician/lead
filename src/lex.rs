@@ -1,7 +1,6 @@
 use std::iter::Peekable;
 use std::str::CharIndices;
 
-use crate::builtins::symbols::Symbol;
 use crate::utils::error::{Error, Status, err};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -32,6 +31,8 @@ pub enum TokenTag {
     OpenBracket,
     /// `]`
     CloseBracket,
+    /// `:`
+    Colon,
 }
 
 pub type Token<'a> = (TokenTag, &'a str);
@@ -91,36 +92,39 @@ impl<'a> Lexer<'a> {
             '_' | 'e' | '0'..='9' => self.maybe_number(start),
             'a'..='z' | 'A'..='Z' => self.consume_lit(start),
             c if c.is_whitespace() => self.consume_whitespace(c, start),
-            c if c.is_ascii_punctuation() => self.maybe_sym(c, start),
+            c if c.is_ascii_punctuation() => self.maybe_builtin(c, start),
             _ => err!(Syntax, "Unrecognized token."),
         }
     }
 
-    fn maybe_sym(&mut self, chr: char, start: usize) -> Status<Token<'a>> {
+    fn maybe_builtin(&mut self, chr: char, start: usize) -> Status<Token<'a>> {
         if chr == '-' && self.next_if(|c| c == '-').is_some() {
             return self.skip_comment().ok_or(Error::Complete);
+        } else if chr == ':' {
+            return Ok((TokenTag::Colon, ":"));
         }
+
         match chr {
             '\'' => self.consume_string(start),
             '{' => {
                 if self.next_if(|c| c == '{').is_some() {
                     tok!(OpenCurly, "{{")
                 } else {
-                    self.consume_symbol(start)
+                    self.consume_builtin(start)
                 }
             }
             '}' => {
                 if self.next_if(|c| c == '}').is_some() {
                     tok!(CloseCurly, "}}")
                 } else {
-                    self.consume_symbol(start)
+                    self.consume_builtin(start)
                 }
             }
             '(' => tok!(OpenParen, "("),
             ')' => tok!(CloseParen, ")"),
             '[' => tok!(OpenBracket, "["),
             ']' => tok!(CloseBracket, "]"),
-            _ => self.consume_symbol(start),
+            _ => self.consume_builtin(start),
         }
     }
 
@@ -233,12 +237,10 @@ impl<'a> Lexer<'a> {
         tok!(String, &self.input[start + 1..end - 1])
     }
 
-    fn consume_symbol(&mut self, start: usize) -> Status<Token<'a>> {
+    // Symbols are one character, possibly with a colon or period following it.
+    fn consume_builtin(&mut self, start: usize) -> Status<Token<'a>> {
         let mut end = start + 1;
-        while self
-            .next_if(|_| Symbol::get_symbol(&self.input[start..end + 1]).is_some())
-            .is_some()
-        {
+        if self.next_if(|c| c == ':' || c == '.').is_some() {
             end += 1;
         }
 

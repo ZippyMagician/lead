@@ -14,20 +14,39 @@ use crate::utils::number::*;
 
 #[derive(Clone)]
 pub enum Node<'a> {
+    /// Primitive list of numerics
     Primitive(List),
+    /// Primitive string (list of chars)
     PrimitiveString(List),
+    /// Primitive list of boxed strings
     PrimitiveBoxes(List),
+    /// Literal identifier (variable)
     Literal(&'a str),
+    /// Internal identifier
     LiteralInternal(&'a str),
+    /// Tag (bracketed word/symbol)
     Tag(&'a str),
+    /// Any function
     Function(Function),
+    /// Parenthesized group of nodes
     Group(Vec<Node<'a>>),
+    /// Raw colon identifier
+    Colon,
+    /// Assignment
+    Assign {
+        head: &'a str,
+        is_internal: bool,
+        body: Vec<Node<'a>>,
+    },
+    /// If conditional
     If {
         cond: Box<Node<'a>>,
         body: Vec<Node<'a>>,
         otherwise: Vec<Node<'a>>,
     },
+    /// Lazily evaluated node -- for returning from definitions
     Lazy(Box<Node<'a>>),
+    /// New line
     Line,
     // Yield two nodes at once
     Two(Box<Node<'a>>, Box<Node<'a>>),
@@ -101,8 +120,49 @@ impl<'a> Parser<'a> {
             OpenBracket => self.maybe_tag(),
             OpenParen => self.consume_group(),
             OpenCurly => self.consume_block(),
+            Colon => self.maybe_assign(),
             EOF => err!(Complete),
             _ => err!(Syntax, "Unrecognized token."),
+        }
+    }
+
+    fn maybe_tag(&mut self) -> Status<Node<'a>> {
+        let sym = symbols::Symbol::get_symbol("[")
+            .ok_or(Error::Syntax("TODO: Left identity function."))
+            .map(|n| n.getfn());
+
+        if let Some(next) = self.tokens.next() {
+            match next {
+                (TokenTag::CloseBracket, _) => self.consume_accessor(),
+                (TokenTag::Newline, _) => {
+                    Ok(Node::Two(Node::Function(sym?).into(), Node::Line.into()))
+                }
+                (_, tag @ _) if self.next_if(TokenTag::CloseBracket).is_some() => {
+                    self.consume_tag(tag)
+                }
+                next @ _ => Ok(Node::Two(
+                    Node::Function(sym?).into(),
+                    self.consume_node(next)?.into(),
+                )),
+            }
+        } else {
+            Ok(Node::Function(sym?))
+        }
+    }
+
+    fn maybe_assign(&mut self) -> Status<Node<'a>> {
+        if self.nodes.len() == 0 {
+            return Ok(Node::Colon);
+        }
+
+        let top = unsafe { self.nodes.pop().unwrap_unchecked() };
+        match top {
+            Node::Literal(s) => self.consume_assign(s, false),
+            Node::LiteralInternal(s) => self.consume_assign(s, true),
+            Node::Tag(_) | Node::Function(_) | Node::If { .. } | Node::Line | Node::Colon => {
+                err!(Syntax, "Invalid use of colon")
+            }
+            _ => self.consume_if(top),
         }
     }
 
@@ -145,28 +205,28 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn maybe_tag(&mut self) -> Status<Node<'a>> {
-        let sym = symbols::Symbol::get_symbol("[")
-            .ok_or(Error::Syntax("TODO: Left identity function."))
-            .map(|n| n.getfn());
+    fn consume_assign(&mut self, head: &'a str, is_internal: bool) -> Status<Node<'a>> {
+        let body = self.consume_upto_tag(TokenTag::Newline)?;
+        self.tokens.next();
+        Ok(Node::Assign {
+            head,
+            is_internal,
+            body,
+        })
+    }
 
-        if let Some(next) = self.tokens.next() {
-            match next {
-                (TokenTag::CloseBracket, _) => self.consume_accessor(),
-                (TokenTag::Newline, _) => {
-                    Ok(Node::Two(Node::Function(sym?).into(), Node::Line.into()))
-                }
-                (_, tag @ _) if self.next_if(TokenTag::CloseBracket).is_some() => {
-                    self.consume_tag(tag)
-                }
-                next @ _ => Ok(Node::Two(
-                    Node::Function(sym?).into(),
-                    self.consume_node(next)?.into(),
-                )),
+    fn consume_if(&mut self, cond: Node<'a>) -> Status<Node<'a>> {
+        let body = self.consume_upto(|n| matches!(n, Node::Line))?;
+        let otherwise = self.consume_upto(|n| matches!(n, Node::Line))?;
+        Ok(Node::Two(
+            Node::If {
+                cond: cond.into(),
+                body,
+                otherwise,
             }
-        } else {
-            Ok(Node::Function(sym?))
-        }
+            .into(),
+            Node::Line.into(),
+        ))
     }
 
     fn consume_tag(&mut self, tag: &'a str) -> Status<Node<'a>> {
@@ -193,12 +253,34 @@ impl<'a> Parser<'a> {
         self.tokens.next_if(|(t, _)| *t == n)
     }
 
+    // Swaps nodes temporarily to support certain parsing
     #[inline]
     fn consume_upto_tag(&mut self, tag: TokenTag) -> Status<Vec<Node<'a>>> {
         let mut nodes = Vec::new();
+        std::mem::swap(&mut nodes, &mut self.nodes);
         while let Some(tok) = self.tokens.next_if(|(t, _)| *t != tag) {
-            Self::unpack_node(&mut nodes, self.consume_node(tok))?;
+            let node = self.consume_node(tok);
+            Self::unpack_node(&mut self.nodes, node)?;
         }
+
+        std::mem::swap(&mut nodes, &mut self.nodes);
+        Ok(nodes)
+    }
+
+    #[inline]
+    fn consume_upto(&mut self, check: impl Fn(&Node<'a>) -> bool) -> Status<Vec<Node<'a>>> {
+        let mut nodes = Vec::new();
+        std::mem::swap(&mut nodes, &mut self.nodes);
+        while let Some(tok) = self.tokens.next() {
+            let node = self.consume_node(tok);
+            Self::unpack_node(&mut self.nodes, node)?;
+            if check(unsafe { self.nodes.get_unchecked(self.nodes.len() - 1) }) {
+                self.nodes.pop();
+                break;
+            }
+        }
+
+        std::mem::swap(&mut nodes, &mut self.nodes);
         Ok(nodes)
     }
 }
@@ -215,6 +297,24 @@ impl<'a> Debug for Node<'a> {
             Node::Line => write!(f, "NL"),
             Node::Tag(t) => write!(f, "[{t}]"),
             Node::Group(g) => write!(f, "({g:?})"),
+            Node::If {
+                cond,
+                body,
+                otherwise,
+            } => {
+                write!(f, "IF({cond:?}){{{{{body:?}}}}}ELSE{{{{{otherwise:?}}}}}")
+            }
+            Node::Assign {
+                head,
+                is_internal,
+                body,
+            } => {
+                write!(
+                    f,
+                    "{head}{} : {body:?}",
+                    if *is_internal { "." } else { "" }
+                )
+            }
             _ => todo!(),
         }
     }
