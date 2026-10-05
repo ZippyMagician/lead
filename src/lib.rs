@@ -1,4 +1,5 @@
 pub mod builtins;
+pub mod exec;
 pub mod function;
 pub mod lex;
 pub mod list;

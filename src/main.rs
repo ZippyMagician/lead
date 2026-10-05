@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use seqr::builtins::symbols::Symbol;
+use seqr::exec;
 use seqr::lex;
 use seqr::list::List;
 use seqr::parse;
@@ -58,16 +59,21 @@ fn main() -> Result<(), seqr::utils::error::Error> {
     }
 
     /// --- PARSING --- \\\
-    const P: &'static str = "x: 1 2 3 + 4 5 6\n(x):'yes')'no')[~]'silent'";
+    const P: &'static str = "x: 1 2 3 + 4 5 6\n2 * x";
     println!("\n-P-\n\"\"\" {P} \"\"\"");
     let mut lexer = lex::Lexer::new(P);
     lexer.tokenize()?;
 
     let arena = Rc::new(RefCell::new(Arena::<List>::new()));
-    let mut parser = parse::Parser::new(arena, scope.clone(), lexer.tokens());
+    let mut parser = parse::Parser::new(arena.clone(), scope.clone(), lexer.tokens());
     parser.parse()?;
 
-    println!("{:?}", parser.nodes());
+    // println!("{:?}", parser.nodes());
+    let mut evaluator = exec::Exec::new(arena, scope);
+    let t1 = std::time::Instant::now();
+    evaluator.exec(parser.nodes())?;
+    let t2 = std::time::Instant::now();
+    println!("{:?}", t2 - t1);
 
     Ok(())
 }

@@ -9,6 +9,7 @@ pub enum Error {
     MemoryFault(&'static str),
     Syntax(&'static str),
     Domain,
+    Argument,
     Box,
     Value,
     // TODO: whatever else I need
@@ -44,6 +45,7 @@ impl Display for Error {
             Domain => write!(f, "DOMAIN [2]"),
             Box => write!(f, "BOX [3]"),
             Value => write!(f, "VALUE [4]"),
+            Argument => write!(f, "ARG [5]"),
         }
     }
 }

@@ -95,8 +95,8 @@ impl<'a> Parser<'a> {
     }
 
     #[inline(always)]
-    pub fn nodes(&'a self) -> &'a [Node<'a>] {
-        &self.nodes
+    pub fn nodes(self) -> Vec<Node<'a>> {
+        self.nodes
     }
 
     pub fn consume_node(&mut self, t: &'a Token<'a>) -> Status<Node<'a>> {
@@ -208,11 +208,15 @@ impl<'a> Parser<'a> {
     fn consume_assign(&mut self, head: &'a str, is_internal: bool) -> Status<Node<'a>> {
         let body = self.consume_upto_tag(TokenTag::Newline)?;
         self.tokens.next();
-        Ok(Node::Assign {
-            head,
-            is_internal,
-            body,
-        })
+        Ok(Node::Two(
+            Node::Assign {
+                head,
+                is_internal,
+                body,
+            }
+            .into(),
+            Node::Line.into(),
+        ))
     }
 
     fn consume_if(&mut self, cond: Node<'a>) -> Status<Node<'a>> {
@@ -235,7 +239,7 @@ impl<'a> Parser<'a> {
     }
 
     fn consume_accessor(&mut self) -> Status<Node<'a>> {
-        todo!("Consume accessor")
+        todo!("Consume accessor @ <parse.rs> consume_accessor")
     }
 
     fn consume_group(&mut self) -> Status<Node<'a>> {
@@ -245,7 +249,7 @@ impl<'a> Parser<'a> {
     }
 
     fn consume_block(&mut self) -> Status<Node<'a>> {
-        todo!("Consume block")
+        todo!("Consume block @ <parse.rs> consume_block")
     }
 
     #[inline]
