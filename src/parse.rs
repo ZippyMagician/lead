@@ -12,7 +12,7 @@ use crate::utils::Arena;
 use crate::utils::error::{Error, Status, err};
 use crate::utils::number::*;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub enum Node<'a> {
     /// Primitive list of numerics
     Primitive(List),
@@ -47,6 +47,7 @@ pub enum Node<'a> {
     /// Lazily evaluated node -- for returning from definitions
     Lazy(Box<Node<'a>>),
     /// New line
+    #[default]
     Line,
     // Yield two nodes at once
     Two(Box<Node<'a>>, Box<Node<'a>>),
@@ -137,10 +138,8 @@ impl<'a> Parser<'a> {
                 (TokenTag::Newline, _) => {
                     Ok(Node::Two(Node::Function(sym?).into(), Node::Line.into()))
                 }
-                (_, tag @ _) if self.next_if(TokenTag::CloseBracket).is_some() => {
-                    self.consume_tag(tag)
-                }
-                next @ _ => Ok(Node::Two(
+                (_, tag) if self.next_if(TokenTag::CloseBracket).is_some() => self.consume_tag(tag),
+                next => Ok(Node::Two(
                     Node::Function(sym?).into(),
                     self.consume_node(next)?.into(),
                 )),
@@ -151,7 +150,7 @@ impl<'a> Parser<'a> {
     }
 
     fn maybe_assign(&mut self) -> Status<Node<'a>> {
-        if self.nodes.len() == 0 {
+        if self.nodes.is_empty() {
             return Ok(Node::Colon);
         }
 

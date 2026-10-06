@@ -38,4 +38,5 @@ define_syms! {
     Star => (b"*", function!(0, symbols::signum; [0, 0], symbols::mul));
     Percent => (b"%", function!(0, symbols::reciprocal; [0, 0], symbols::div));
     Pipe => (b"|", function!(0, symbols::not; [0, 0], symbols::residue));
+    Tilde => (b"~", function!(0, symbols::range; [99, 0], symbols::index));
 }

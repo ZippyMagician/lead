@@ -83,7 +83,7 @@ impl ScopeInternal {
             || self
                 .parent
                 .as_ref()
-                .map_or(false, |s| s.borrow().env.contains_key(name))
+                .is_some_and(|s| s.borrow().env.contains_key(name))
     }
 
     pub fn get(&self, name: &str) -> Option<MaybeInstant> {

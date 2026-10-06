@@ -1,4 +1,4 @@
-use std::num::{ParseFloatError, ParseIntError};
+use super::error::{Status, err};
 
 pub fn is_number(string: &str) -> bool {
     let count_ = string.matches('_').count();
@@ -44,17 +44,23 @@ fn replace_chars(string: &str) -> String {
     } else {
         num.push_str(string);
     }
-    num = num.replace('_', "-");
-
-    return num;
+    num.replace('_', "-")
 }
 
 #[inline]
-pub fn parse_number(string: &str) -> Result<i32, ParseIntError> {
-    replace_chars(string).parse::<i32>()
+pub fn parse_number(string: &str) -> Status<i32> {
+    let string = replace_chars(string);
+    if string.contains('e') {
+        match string.parse::<f32>() {
+            Ok(n) => Ok(unsafe { n.to_int_unchecked::<i32>() }),
+            _ => err!(NaN),
+        }
+    } else {
+        Ok(string.parse::<i32>()?)
+    }
 }
 
 #[inline]
-pub fn parse_float(string: &str) -> Result<f32, ParseFloatError> {
-    replace_chars(string).parse::<f32>()
+pub fn parse_float(string: &str) -> Status<f32> {
+    Ok(replace_chars(string).parse::<f32>()?)
 }

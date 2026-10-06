@@ -4,7 +4,7 @@
 // Maybe booleans as well?
 
 use std::alloc::{Layout, alloc};
-use std::slice;
+use std::ptr::slice_from_raw_parts_mut;
 
 use smallvec::{SmallVec, smallvec};
 
@@ -66,10 +66,44 @@ impl List {
     pub fn string(data: &str) -> Self {
         let size = data.len();
         Self {
-            dt: data.chars().map(|c| Scalar::Char(c)).collect(),
+            dt: data.chars().map(Scalar::Char).collect(),
             ct: size,
             ds: 1,
             rk: smallvec![size],
+        }
+    }
+
+    #[inline]
+    pub fn range(start: Scalar, end: Scalar) -> Status<Self> {
+        if start.is_char() && end.is_char() {
+            let _start = unsafe { start.to_char_unchecked() };
+            let _end = unsafe { end.to_char_unchecked() };
+
+            todo!("Alphabetical range @ <list.rs> rnage");
+        } else {
+            let start = start.to_num()?;
+            let end = end.to_num()?;
+            if end < start || end < 0 || start < 0 {
+                return err!(Domain);
+            }
+
+            let count: usize = (end - start + 1) as usize;
+            let layout = Layout::array::<Scalar>(count).unwrap();
+            // SAFETY: Pointer is checked for NULL. Size of allocation is known,
+            // slice is transmuted and boxed immediately
+            unsafe {
+                let ptr = alloc(layout) as *mut Scalar;
+                if ptr.is_null() {
+                    return err!(MemoryFault, "Could not allocate space.");
+                }
+
+                for (j, i) in (start..).zip(0..count) {
+                    ptr.add(i).write(Scalar::Number(j));
+                }
+
+                let raw: *mut [Scalar] = slice_from_raw_parts_mut(ptr, count);
+                Ok(Self::new(Box::from_raw(raw), count, 1, smallvec![count]))
+            }
         }
     }
 
@@ -111,7 +145,7 @@ impl List {
     // Swaps out rank. It is in place if possible
     #[inline]
     pub fn with_rank(mut self, r: &[usize]) -> Status<Self> {
-        let count: usize = r.into_iter().product();
+        let count: usize = r.iter().product();
         if count == self.ct {
             if INLINE_SIZE >= self.dims() || INLINE_SIZE < r.len() {
                 self.rk = SmallVec::from_slice(r);
@@ -138,7 +172,7 @@ impl List {
                     ptr.add(i).write(*bucket.next().unwrap());
                 }
 
-                let raw: *mut [Scalar] = slice::from_raw_parts_mut(ptr, count);
+                let raw: *mut [Scalar] = slice_from_raw_parts_mut(ptr, count);
                 Ok(Self::new(Box::from_raw(raw), count, r.len(), r.into()))
             }
         }

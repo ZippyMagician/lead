@@ -18,7 +18,7 @@ pub(crate) type Arena = Rc<RefCell<typed_arena::Arena<List>>>;
 // Check to ensure lists contain matching scalar values
 #[inline]
 pub fn compatible(list: &[S]) -> bool {
-    if list.len() == 0 {
+    if list.is_empty() {
         return true;
     }
 
@@ -46,10 +46,10 @@ pub fn is_instant(node: &Node<'_>, scope: Scope) -> bool {
         Primitive(_) => true,
         PrimitiveString(_) => true,
         PrimitiveBoxes(_) => true,
-        Assign { body, .. } if body.last().map_or(true, |n| is_instant(n, scope.clone())) => true,
-        Literal(s) => scope.borrow().get(s).map_or(false, |m| m.is_instant()),
+        Assign { body, .. } if body.last().is_none_or(|n| is_instant(n, scope.clone())) => true,
+        Literal(s) => scope.borrow().get(s).is_some_and(|m| m.is_instant()),
         LiteralInternal(_) => todo!("Literal internal"),
-        Group(body) if body.last().map_or(true, |n| is_instant(n, scope.clone())) => true,
+        Group(body) if body.last().is_none_or(|n| is_instant(n, scope.clone())) => true,
         _ => false,
     }
 }

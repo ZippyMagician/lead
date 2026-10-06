@@ -53,7 +53,7 @@ macro_rules! tok {
 impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
         Self {
-            input: input,
+            input,
             chars: input.char_indices().peekable(),
             line: 0,
             tokens: Vec::new(),
@@ -142,7 +142,7 @@ impl<'a> Lexer<'a> {
     fn maybe_number(&mut self, start: usize) -> Status<Token<'a>> {
         let c = &self.input[start..start + 1];
         if c == "e" {
-            if let Some(_) = self.next_if(|c| c.is_numeric() || c == '_') {
+            if self.next_if(|c| c.is_numeric() || c == '_').is_some() {
                 self.consume_number(start)
             } else {
                 self.consume_lit(start)
@@ -180,7 +180,7 @@ impl<'a> Lexer<'a> {
                 '_' if found_signs == 1 && found_e => {
                     found_signs += 1;
                 }
-                '0'..'9' => {}
+                '0'..='9' => {}
                 _ => break,
             }
             self.chars.next();
@@ -223,7 +223,7 @@ impl<'a> Lexer<'a> {
     fn consume_string(&mut self, start: usize) -> Status<Token<'a>> {
         let mut lines = 0;
         let mut end = start + 2;
-        while let Some((_, chr)) = self.chars.next() {
+        for (_, chr) in self.chars.by_ref() {
             if chr == '\'' {
                 break;
             }
@@ -248,7 +248,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn skip_comment(&mut self) -> Option<Token<'a>> {
-        while let Some((_, tok)) = self.chars.next() {
+        for (_, tok) in self.chars.by_ref() {
             if tok == '\n' {
                 self.line += 1;
                 return Some((TokenTag::Newline, "\n"));

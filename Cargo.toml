@@ -8,5 +8,6 @@ lto = true
 codegen-units = 1
 
 [dependencies]
+mimalloc = "0.1.52"
 smallvec = "1.16.2"
 typed-arena = "2.0.2"

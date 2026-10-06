@@ -16,6 +16,7 @@ pub enum Symbol {
     Star,
     Percent,
     Pipe,
+    Tilde,
 }
 
 // plusm | + | 0 | Absolute value / Cast to int
@@ -73,4 +74,18 @@ pub(super) fn not(a: List, _: &Opts) -> Status<List> {
 // piped | | | 0, 0 | Residue (Modulus)
 pub(super) fn residue(mut a: List, mut b: List, _: &Opts) -> Status<List> {
     scalar_op!(b, a, rem)
+}
+
+// tildem | ~ | 0 | 1-range / Rising alphabet
+pub(super) fn range(a: List, _: &Opts) -> Status<List> {
+    if !a.is_scalar() {
+        err!(Domain)
+    } else {
+        List::range(Scalar::Number(1), a.list()[0])
+    }
+}
+
+// tilded | ~ | 99, 0 | Index
+pub(super) fn index(a: List, b: List, _: &Opts) -> Status<List> {
+    todo!()
 }

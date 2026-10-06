@@ -20,7 +20,7 @@ where
 
     let r = usize::min(r as usize, l.rank().len());
     let rank: SmallVec<[usize; 4]> = l.rank()[..r].into();
-    let skip: usize = l.rank()[r..].into_iter().product();
+    let skip: usize = l.rank()[r..].iter().product();
 
     let l = l.list_mut();
     for chunk in l.chunks_exact_mut(skip) {

@@ -7,20 +7,18 @@ use crate::utils::error::Status;
 #[derive(Clone)]
 pub struct Function {
     // Monad
-    m: Rc<dyn Fn(List, &Opts) -> Status<List>>,
+    m: Monad,
     // Dyad
-    d: Rc<dyn Fn(List, List, &Opts) -> Status<List>>,
+    d: Dyad,
     // Opts
     op: Opts,
 }
 
+pub type Monad = Rc<dyn Fn(List, &Opts) -> Status<List>>;
+pub type Dyad = Rc<dyn Fn(List, List, &Opts) -> Status<List>>;
+
 impl Function {
-    pub fn new(
-        m: Rc<dyn Fn(List, &Opts) -> Status<List>>,
-        d: Rc<dyn Fn(List, List, &Opts) -> Status<List>>,
-        rm: u8,
-        rd: [u8; 2],
-    ) -> Self {
+    pub fn new(m: Monad, d: Dyad, rm: u8, rd: [u8; 2]) -> Self {
         Self {
             m,
             d,

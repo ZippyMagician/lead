@@ -46,6 +46,11 @@ impl Scalar {
     }
 
     #[inline(always)]
+    pub fn is_char(&self) -> bool {
+        matches!(self, Self::Char(_))
+    }
+
+    #[inline(always)]
     pub fn is_box(&self) -> bool {
         matches!(self, Self::Box(_))
     }
@@ -73,7 +78,7 @@ impl Scalar {
     }
 
     #[inline]
-    unsafe fn unbox_unchecked(self) -> List {
+    pub(crate) unsafe fn unbox_unchecked(self) -> List {
         match self {
             Self::Box(p) => unsafe { (*p).clone() },
             _ => unsafe { unreachable_unchecked() },
@@ -81,7 +86,7 @@ impl Scalar {
     }
 
     #[inline]
-    unsafe fn to_num_unchecked(&self) -> i32 {
+    pub(crate) unsafe fn to_num_unchecked(&self) -> i32 {
         match self {
             Self::Number(n) => *n,
             _ => unsafe { unreachable_unchecked() },
@@ -89,7 +94,7 @@ impl Scalar {
     }
 
     #[inline]
-    unsafe fn to_float_unchecked(&self) -> f32 {
+    pub(crate) unsafe fn to_float_unchecked(&self) -> f32 {
         match self {
             Self::Float(f) => *f,
             _ => unsafe { unreachable_unchecked() },
@@ -97,9 +102,17 @@ impl Scalar {
     }
 
     #[inline]
-    unsafe fn to_bool_unchecked(&self) -> bool {
+    pub(crate) unsafe fn to_bool_unchecked(&self) -> bool {
         match self {
             Self::Boolean(b) => *b,
+            _ => unsafe { unreachable_unchecked() },
+        }
+    }
+
+    #[inline]
+    pub(crate) unsafe fn to_char_unchecked(&self) -> char {
+        match self {
+            Self::Char(c) => *c,
             _ => unsafe { unreachable_unchecked() },
         }
     }

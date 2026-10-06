@@ -1,5 +1,8 @@
 #![allow(unused_doc_comments)]
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -47,7 +50,7 @@ fn main() -> Result<(), seqr::utils::error::Error> {
         /// --- SPEED --- \\\
         let mut build = Vec::with_capacity(10_000_000);
         for i in 0..10_000_000 {
-            build.push(Scalar::Number(i as i32));
+            build.push(Scalar::Number(i));
         }
         let list = List::from_vec(build).unwrap();
         let one = List::scalar(Scalar::Number(1));
@@ -59,7 +62,7 @@ fn main() -> Result<(), seqr::utils::error::Error> {
     }
 
     /// --- PARSING --- \\\
-    const P: &'static str = "x: 1 2 3 + 4 5 6\n2 * x";
+    const P: &str = "[~]1+~10000000"; //"x: 4 5 6 + ~3\n2 * x";
     println!("\n-P-\n\"\"\" {P} \"\"\"");
     let mut lexer = lex::Lexer::new(P);
     lexer.tokenize()?;
