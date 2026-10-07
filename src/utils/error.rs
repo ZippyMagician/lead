@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::error;
 use std::fmt::{self, Display};
 use std::num::{ParseFloatError, ParseIntError};
@@ -6,8 +7,8 @@ use std::num::{ParseFloatError, ParseIntError};
 pub enum Error {
     Complete,
     NaN,
-    MemoryFault(&'static str),
-    Syntax(&'static str),
+    MemoryFault(Cow<'static, str>),
+    Syntax(Cow<'static, str>),
     Domain,
     Argument,
     Scope,
@@ -18,7 +19,7 @@ pub enum Error {
 
 macro_rules! err {
     ($type:ident, $msg:expr) => {
-        Err(crate::utils::error::Error::$type($msg))
+        Err(crate::utils::error::Error::$type($msg.into()))
     };
 
     ($type:ident) => {

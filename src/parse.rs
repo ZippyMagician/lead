@@ -109,7 +109,7 @@ impl<'a> Parser<'a> {
             String => self.consume_primitive_string(t.1),
             Symbol => Ok(Node::Function(
                 symbols::Symbol::get_symbol(t.1)
-                    .ok_or(Error::Syntax("Unrecognized symbol."))?
+                    .ok_or(Error::Syntax("Unrecognized symbol.".into()))?
                     .getfn(self.scope.clone()),
             )),
             Literal => Ok(if t.1.ends_with('.') {
@@ -129,7 +129,7 @@ impl<'a> Parser<'a> {
 
     fn maybe_tag(&mut self) -> Status<Node<'a>> {
         let sym = symbols::Symbol::get_symbol("[")
-            .ok_or(Error::Syntax("TODO: Left identity function."))
+            .ok_or(Error::Syntax("TODO: Left identity function.".into()))
             .map(|n| n.getfn(self.scope.clone()));
 
         if let Some(next) = self.tokens.next() {
