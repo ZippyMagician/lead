@@ -107,11 +107,15 @@ impl<'a> Parser<'a> {
             Number => self.consume_primitive(Scalar::Number(parse_number(t.1)?)),
             Float => self.consume_primitive(Scalar::Float(parse_float(t.1)?)),
             String => self.consume_primitive_string(t.1),
-            Symbol => Ok(Node::Function(
-                symbols::Symbol::get_symbol(t.1)
+            Symbol => {
+                let mut f = symbols::Symbol::get_symbol(t.1)
                     .ok_or(Error::Syntax("Unrecognized symbol.".into()))?
-                    .getfn(self.scope.clone()),
-            )),
+                    .getfn(self.scope.clone());
+                if t.1 == "<" {
+                    f.assign_arena(self.arena.clone());
+                }
+                Ok(Node::Function(f))
+            }
             Literal => Ok(if t.1.ends_with('.') {
                 Node::LiteralInternal(t.1.trim_end_matches('.'))
             } else {
