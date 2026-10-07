@@ -120,7 +120,7 @@ impl<'a> Parser<'a> {
             Newline | CloseParen => Ok(Node::Line),
             OpenBracket => self.maybe_tag(),
             OpenParen => self.consume_group(),
-            OpenCurly => self.consume_block(),
+            OpenCurly => self.consume_block(TokenTag::CloseCurly),
             Colon => self.maybe_assign(),
             EOF => err!(Complete),
             _ => err!(Syntax, "Unrecognized token."),
@@ -233,8 +233,12 @@ impl<'a> Parser<'a> {
     }
 
     fn consume_tag(&mut self, tag: &'a str) -> Status<Node<'a>> {
-        // TODO: Support some syntactic tags
-        Ok(Node::Tag(tag))
+        if tag == "{" {
+            // block: [{] x + y
+            self.consume_block(TokenTag::Newline)
+        } else {
+            Ok(Node::Tag(tag))
+        }
     }
 
     fn consume_accessor(&mut self) -> Status<Node<'a>> {
@@ -247,8 +251,8 @@ impl<'a> Parser<'a> {
         Ok(Node::Group(nodes))
     }
 
-    fn consume_block(&mut self) -> Status<Node<'a>> {
-        let nodes = self.consume_upto_tag(TokenTag::CloseCurly)?;
+    fn consume_block(&mut self, end: TokenTag) -> Status<Node<'a>> {
+        let nodes = self.consume_upto_tag(end)?;
         self.tokens.next();
         Ok(Node::Function(generate_block(
             nodes,
