@@ -43,7 +43,7 @@ fn main() -> Result<(), seqr::utils::error::Error> {
 
     /// --- SYMBOLS --- \\\
     if let (lex::TokenTag::Symbol, sym) = tokens[3] {
-        let plus_symbol = Symbol::get_symbol(sym).unwrap().getfn();
+        let plus_symbol = Symbol::get_symbol(sym).unwrap().getfn(scope.clone());
         println!("\n-M-\n{:?}", plus_symbol.monadic_call(l.clone()));
         println!("\n-D-\n{:?}", plus_symbol.dyadic_call(l, r));
 
@@ -62,7 +62,7 @@ fn main() -> Result<(), seqr::utils::error::Error> {
     }
 
     /// --- PARSING --- \\\
-    const P: &str = "[~]1+~10000000"; //"x: 4 5 6 + ~3\n2 * x";
+    const P: &str = "{{ 1 2 3 + y * 2 }} 54"; //"x: 4 5 6 + ~3\n2 * x";
     println!("\n-P-\n\"\"\" {P} \"\"\"");
     let mut lexer = lex::Lexer::new(P);
     lexer.tokenize()?;

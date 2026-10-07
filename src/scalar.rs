@@ -4,7 +4,7 @@ use std::ops::*;
 
 use crate::list::List;
 use crate::utils::Arena;
-use crate::utils::error::{Status, err};
+use crate::utils::error::{Error, Status, err};
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 #[repr(C)]
@@ -133,6 +133,11 @@ fn f(i: f32) -> Status<Scalar> {
 #[inline(always)]
 fn b(i: bool) -> Status<Scalar> {
     Ok(Scalar::Boolean(i))
+}
+
+#[inline(always)]
+fn c(i: i32) -> Status<Scalar> {
+    Ok(Scalar::Char(char::from_u32(i as u32).ok_or(Error::Domain)?))
 }
 
 macro_rules! impl_arith_ops {

@@ -11,24 +11,40 @@ pub struct Exec {
     scope: Scope,
     _arena: Arena,
 
-    right: Option<List>,
+    pub(crate) inner: bool,
+    pub(crate) right: Option<List>,
 }
 
 impl Exec {
+    #[inline]
     pub fn new(arena: Arena, scope: Scope) -> Self {
         Self {
             scope,
             _arena: arena,
+            inner: false,
             right: None,
         }
     }
 
-    pub fn exec<'a>(&mut self, node_lines: Vec<Node<'a>>) -> Status {
+    #[inline]
+    pub fn new_imm(arena: Arena, scope: Scope) -> Self {
+        Self {
+            scope,
+            _arena: arena,
+            inner: true,
+            right: None,
+        }
+    }
+
+    pub fn exec<'a>(&mut self, mut node_lines: Vec<Node<'a>>) -> Status {
         let mut current = Vec::new();
+        node_lines.push(Node::Line);
         for node in node_lines {
             if matches!(node, Node::Line) {
                 self.exec_line(take(&mut current))?;
-                if let Some(v) = &self.right {
+                if !self.inner
+                    && let Some(v) = self.right.take()
+                {
                     println!("{v:?}");
                 }
             } else {
@@ -40,6 +56,9 @@ impl Exec {
 
     #[inline]
     fn exec_line<'a>(&mut self, mut line: Vec<Node<'a>>) -> Status {
+        if line.is_empty() {
+            return Ok(());
+        }
         use Node::*;
 
         let mut i = line.len() - 1;
@@ -112,7 +131,7 @@ impl Exec {
         if value.is_instant() {
             Ok(value.as_instant().unwrap())
         } else {
-            let f = value.as_function().unwrap();
+            let f = value.as_function(self.scope.clone()).unwrap();
             self.exec_function(f, list, i)
         }
     }

@@ -39,7 +39,7 @@ impl MaybeInstant {
     }
 
     #[inline]
-    pub fn as_function(self) -> Status<Function> {
+    pub fn as_function(self, scope: Scope) -> Status<Function> {
         match self {
             Self::Function(f) => Ok(f),
             Self::Instant(l) => {
@@ -51,6 +51,7 @@ impl MaybeInstant {
                     Rc::new(move |_, _, _| Ok(d.clone())),
                     99,
                     [99, 99],
+                    scope,
                 ))
             }
         }
@@ -71,11 +72,11 @@ impl ScopeInternal {
         }
     }
 
-    pub fn child(parent: Rc<RefCell<Self>>) -> Self {
-        Self {
+    pub fn child(parent: Rc<RefCell<Self>>) -> Rc<RefCell<Self>> {
+        Rc::new(RefCell::new(Self {
             parent: Some(parent),
             env: HashMap::new(),
-        }
+        }))
     }
 
     pub fn has(&self, name: &str) -> bool {

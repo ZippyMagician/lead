@@ -1,6 +1,7 @@
 use std::rc::Rc;
 
 use crate::list::List;
+use crate::scope::Scope;
 use crate::utils::Arena;
 use crate::utils::error::Status;
 
@@ -18,11 +19,11 @@ pub type Monad = Rc<dyn Fn(List, &Opts) -> Status<List>>;
 pub type Dyad = Rc<dyn Fn(List, List, &Opts) -> Status<List>>;
 
 impl Function {
-    pub fn new(m: Monad, d: Dyad, rm: u8, rd: [u8; 2]) -> Self {
+    pub fn new(m: Monad, d: Dyad, rm: u8, rd: [u8; 2], s: Scope) -> Self {
         Self {
             m,
             d,
-            op: Opts { rm, rd, a: None },
+            op: Opts { rm, rd, a: None, s },
         }
     }
 
@@ -49,4 +50,5 @@ pub struct Opts {
     pub rm: u8,
     pub rd: [u8; 2],
     pub a: Option<Arena>,
+    pub s: Scope,
 }

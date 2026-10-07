@@ -7,10 +7,10 @@ use crate::function::Function;
 use crate::lex::{Token, TokenTag};
 use crate::list::List;
 use crate::scalar::Scalar;
-use crate::scope::Scope;
-use crate::utils::Arena;
+use crate::scope::{Scope, ScopeInternal};
 use crate::utils::error::{Error, Status, err};
 use crate::utils::number::*;
+use crate::utils::{Arena, generate_block};
 
 #[derive(Clone, Default)]
 pub enum Node<'a> {
@@ -110,7 +110,7 @@ impl<'a> Parser<'a> {
             Symbol => Ok(Node::Function(
                 symbols::Symbol::get_symbol(t.1)
                     .ok_or(Error::Syntax("Unrecognized symbol."))?
-                    .getfn(),
+                    .getfn(self.scope.clone()),
             )),
             Literal => Ok(if t.1.ends_with('.') {
                 Node::LiteralInternal(t.1.trim_end_matches('.'))
@@ -130,7 +130,7 @@ impl<'a> Parser<'a> {
     fn maybe_tag(&mut self) -> Status<Node<'a>> {
         let sym = symbols::Symbol::get_symbol("[")
             .ok_or(Error::Syntax("TODO: Left identity function."))
-            .map(|n| n.getfn());
+            .map(|n| n.getfn(self.scope.clone()));
 
         if let Some(next) = self.tokens.next() {
             match next {
@@ -248,7 +248,13 @@ impl<'a> Parser<'a> {
     }
 
     fn consume_block(&mut self) -> Status<Node<'a>> {
-        todo!("Consume block @ <parse.rs> consume_block")
+        let nodes = self.consume_upto_tag(TokenTag::CloseCurly)?;
+        self.tokens.next();
+        Ok(Node::Function(generate_block(
+            nodes,
+            ScopeInternal::child(self.scope.clone()),
+            self.arena.clone(),
+        )))
     }
 
     #[inline]

@@ -52,6 +52,8 @@ macro_rules! tok {
 
 impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
+        // See utils::generate_block
+        let input = Box::leak(input.into());
         Self {
             input,
             chars: input.char_indices().peekable(),
@@ -101,38 +103,38 @@ impl<'a> Lexer<'a> {
         if chr == '-' && self.next_if(|c| c == '-').is_some() {
             return self.skip_comment().ok_or(Error::Complete);
         } else if chr == ':' {
-            return Ok((TokenTag::Colon, ":"));
+            return Ok((TokenTag::Colon, &self.input[start..start + 1]));
         }
 
         match chr {
             '\'' => self.consume_string(start),
             '{' => {
                 if self.next_if(|c| c == '{').is_some() {
-                    tok!(OpenCurly, "{{")
+                    tok!(OpenCurly, &self.input[start..start + 2])
                 } else {
                     self.consume_builtin(start)
                 }
             }
             '}' => {
                 if self.next_if(|c| c == '}').is_some() {
-                    tok!(CloseCurly, "}}")
+                    tok!(CloseCurly, &self.input[start..start + 2])
                 } else {
                     self.consume_builtin(start)
                 }
             }
-            '(' => tok!(OpenParen, "("),
-            ')' => tok!(CloseParen, ")"),
-            '[' => tok!(OpenBracket, "["),
-            ']' => tok!(CloseBracket, "]"),
+            '(' => tok!(OpenParen, &self.input[start..start + 1]),
+            ')' => tok!(CloseParen, &self.input[start..start + 1]),
+            '[' => tok!(OpenBracket, &self.input[start..start + 1]),
+            ']' => tok!(CloseBracket, &self.input[start..start + 1]),
             _ => self.consume_builtin(start),
         }
     }
 
     #[inline]
-    fn consume_whitespace(&mut self, chr: char, _start: usize) -> Status<Token<'a>> {
+    fn consume_whitespace(&mut self, chr: char, start: usize) -> Status<Token<'a>> {
         if chr == '\n' {
             self.line += 1;
-            return tok!(Newline, "\n");
+            return tok!(Newline, &self.input[start..start + 1]);
         }
 
         self.consume_token()
@@ -248,10 +250,10 @@ impl<'a> Lexer<'a> {
     }
 
     fn skip_comment(&mut self) -> Option<Token<'a>> {
-        for (_, tok) in self.chars.by_ref() {
+        for (start, tok) in self.chars.by_ref() {
             if tok == '\n' {
                 self.line += 1;
-                return Some((TokenTag::Newline, "\n"));
+                return Some((TokenTag::Newline, &self.input[start..start + 1]));
             }
         }
 

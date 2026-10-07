@@ -3,7 +3,7 @@ use std::hint;
 use crate::list::List;
 use crate::scalar::Scalar;
 
-use super::error::Status;
+use super::error::{Status, err};
 
 use smallvec::SmallVec;
 
@@ -30,6 +30,7 @@ where
     Ok(())
 }
 
+// Applies function generally over monadic input. Does not make any assumptions
 #[inline]
 pub fn apply_loosem<T>(l: List, r: u8, f: T) -> Status<List>
 where
@@ -39,4 +40,39 @@ where
     let rank = l.rank().to_vec();
     let lists = l.ranked(r as usize);
     List::unranked(dims, &rank[r as usize..], lists.into_iter().map(f))
+}
+
+// Applies function generally over dyadic input. Does not make assumptions
+#[inline]
+pub fn apply_loosed<T>(a: List, b: List, r: [u8; 2], f: T) -> Status<List>
+where
+    T: Fn(List, List) -> Status<List>,
+{
+    let no_swap = a.len() >= b.len();
+    let left_dims = a.dims();
+    let right_dims = b.dims();
+    let left_rank: SmallVec<[usize; 4]> = SmallVec::from(a.rank());
+    let right_rank: SmallVec<[usize; 4]> = SmallVec::from(b.rank());
+
+    let left = a.ranked(r[0] as usize);
+    let right = b.ranked(r[1] as usize);
+    let (mapper, value) = if no_swap {
+        (left, right)
+    } else {
+        (right, left)
+    };
+
+    if mapper.len() % value.len() != 0 {
+        return err!(Domain);
+    }
+
+    let values = mapper
+        .into_iter()
+        .zip(value.into_iter().cycle())
+        .map(|(l, r)| if no_swap { f(l, r) } else { f(r, l) });
+    if no_swap {
+        List::unranked(left_dims, &left_rank, values)
+    } else {
+        List::unranked(right_dims, &right_rank, values)
+    }
 }
