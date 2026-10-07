@@ -10,6 +10,7 @@ pub enum Error {
     Syntax(&'static str),
     Domain,
     Argument,
+    Scope,
     Box,
     Value,
     // TODO: whatever else I need
@@ -46,6 +47,7 @@ impl Display for Error {
             Box => write!(f, "BOX [3]"),
             Value => write!(f, "VALUE [4]"),
             Argument => write!(f, "ARG [5]"),
+            Scope => write!(f, "SCOPE [6]"),
         }
     }
 }

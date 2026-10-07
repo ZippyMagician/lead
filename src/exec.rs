@@ -1,3 +1,4 @@
+use std::hint::unreachable_unchecked;
 use std::mem::take;
 
 use crate::function::Function;
@@ -127,7 +128,7 @@ impl Exec {
         i: &mut usize,
     ) -> Status<List> {
         let s = self.scope.clone();
-        let value = s.borrow().get(name).ok_or(Error::Domain)?;
+        let value = s.borrow().get(name).ok_or(Error::Scope)?;
         if value.is_instant() {
             Ok(value.as_instant().unwrap())
         } else {
@@ -177,7 +178,18 @@ impl Exec {
             let list = self.exec_instant(group)?;
             s.borrow_mut().set_instant(head, list);
         } else {
-            todo!("Non-instant assignment @ <exec.rs> exec_line");
+            // SAFETY: This is set as a `Node::Group` a few lines ago
+            let Node::Group(mut body) = group else {
+                unsafe { unreachable_unchecked() }
+            };
+            if body.len() == 1
+                && let Node::Function(f) = std::mem::take(&mut body[0])
+            {
+                let s = self.scope.clone();
+                s.borrow_mut().set_function(head, f);
+            } else {
+                todo!("Trains @ <exec.rs> exec_line");
+            }
         }
 
         Ok(())

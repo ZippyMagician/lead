@@ -206,16 +206,11 @@ impl<'a> Parser<'a> {
 
     fn consume_assign(&mut self, head: &'a str, is_internal: bool) -> Status<Node<'a>> {
         let body = self.consume_upto_tag(TokenTag::Newline)?;
-        self.tokens.next();
-        Ok(Node::Two(
-            Node::Assign {
-                head,
-                is_internal,
-                body,
-            }
-            .into(),
-            Node::Line.into(),
-        ))
+        Ok(Node::Assign {
+            head,
+            is_internal,
+            body,
+        })
     }
 
     fn consume_if(&mut self, cond: Node<'a>) -> Status<Node<'a>> {
@@ -253,7 +248,9 @@ impl<'a> Parser<'a> {
 
     fn consume_block(&mut self, end: TokenTag) -> Status<Node<'a>> {
         let nodes = self.consume_upto_tag(end)?;
-        self.tokens.next();
+        if end != TokenTag::Newline {
+            self.tokens.next();
+        }
         Ok(Node::Function(generate_block(
             nodes,
             ScopeInternal::child(self.scope.clone()),

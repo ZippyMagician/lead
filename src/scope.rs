@@ -97,4 +97,8 @@ impl ScopeInternal {
     pub fn set_instant(&mut self, name: &str, l: List) {
         self.env.insert(name.to_string(), MaybeInstant::Instant(l));
     }
+
+    pub fn set_function(&mut self, name: &str, f: Function) {
+        self.env.insert(name.to_string(), MaybeInstant::Function(f));
+    }
 }
