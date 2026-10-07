@@ -34,8 +34,11 @@ fn main() -> Result<(), seqr::utils::error::Error> {
     .unwrap();
     let r = List::from_vec(vec![Scalar::Boolean(false), Scalar::Boolean(true)]).unwrap();
 
-    println!("{l:?}");
-    println!("{:?}", l.clone().with_rank(&[3, 3]));
+    println!("{l}");
+    println!("{}", l.clone().with_rank(&[3, 3])?);
+
+    let string_mat = List::string("helloworld");
+    let string_mat = string_mat.with_rank(&[5, 2])?;
 
     /// --- SCOPE --- \\\
     let scope = new_scope();
@@ -44,8 +47,8 @@ fn main() -> Result<(), seqr::utils::error::Error> {
     /// --- SYMBOLS --- \\\
     if let (lex::TokenTag::Symbol, sym) = tokens[3] {
         let plus_symbol = Symbol::get_symbol(sym).unwrap().getfn(scope.clone());
-        println!("\n-M-\n{:?}", plus_symbol.monadic_call(l.clone()));
-        println!("\n-D-\n{:?}", plus_symbol.dyadic_call(l, r));
+        println!("\n-M-\n{}", plus_symbol.monadic_call(l.clone())?);
+        println!("\n-D-\n{}", plus_symbol.dyadic_call(l, r)?);
 
         /// --- SPEED --- \\\
         let mut build = Vec::with_capacity(10_000_000);
@@ -63,7 +66,7 @@ fn main() -> Result<(), seqr::utils::error::Error> {
 
     /// --- PARSING --- \\\
     const P: &str = "f: [{] 1 2 3 + y * 2\n f 54"; //"x: 4 5 6 + ~3\n2 * x";
-    println!("\n-P-\n\"\"\" {P} \"\"\"");
+    // println!("\n-P-\n\"\"\" {P} \"\"\"");
     let mut lexer = lex::Lexer::new(P);
     lexer.tokenize()?;
 
@@ -72,11 +75,15 @@ fn main() -> Result<(), seqr::utils::error::Error> {
     parser.parse()?;
 
     // println!("{:?}", parser.nodes());
-    let mut evaluator = exec::Exec::new(arena, scope);
+    let mut evaluator = exec::Exec::new(arena.clone(), scope);
     let t1 = std::time::Instant::now();
     evaluator.exec(parser.nodes())?;
     let t2 = std::time::Instant::now();
     println!("{:?}", t2 - t1);
+
+    /// --- PRINTING --- \\\
+    let boxed = List::scalar(Scalar::boxed(arena.clone(), string_mat)?);
+    println!("{}", boxed.with_rank(&[2, 2])?);
 
     Ok(())
 }

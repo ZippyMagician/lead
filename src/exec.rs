@@ -46,7 +46,7 @@ impl Exec {
                 if !self.inner
                     && let Some(v) = self.right.take()
                 {
-                    println!("{v:?}");
+                    println!("{v}");
                 }
             } else {
                 current.push(node);

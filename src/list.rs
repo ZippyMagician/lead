@@ -4,13 +4,14 @@
 // Maybe booleans as well?
 
 use std::alloc::{Layout, alloc};
+use std::fmt::{self, Display};
 use std::ptr::slice_from_raw_parts_mut;
 
 use smallvec::{SmallVec, smallvec};
 
 use crate::scalar::Scalar;
-use crate::utils::compatible;
 use crate::utils::error::{Status, err};
+use crate::utils::{compatible, display_boxed, display_boxed_lines};
 
 const INLINE_SIZE: usize = 4;
 
@@ -195,5 +196,116 @@ impl List {
         T: Iterator<Item = Status<Self>>,
     {
         todo!("List::unranked");
+    }
+}
+
+impl Display for Scalar {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Number(n) => write!(f, "{n}"),
+            Self::Float(n) => write!(f, "{n}"),
+            Self::Boolean(b) => write!(f, "{}", *b as u8),
+            Self::Char(c) => write!(f, "{c}"),
+            Self::Box(l) => {
+                if l.is_null() {
+                    err!(MemoryFault, "Lost Box"; !);
+                }
+                // SAFETY: Pointer checked. Taking reference, so other pointers are still valid
+                let list: &List = unsafe { &**l };
+                write!(f, "{}", display_boxed(format!("{list}"), None, None)?)
+            }
+        }
+    }
+}
+
+// SAFETY: Determined by called
+fn push_and_get<'a>(v: &mut Vec<String>, s: String) -> &'a str {
+    v.push(s);
+    let r: &str = v.last().unwrap();
+    unsafe { &*(r as *const str) }
+}
+
+// TODO: impl Display for List
+impl Display for List {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_scalar() {
+            write!(f, "{}", self.list()[0])
+        } else if self.is_empty() {
+            Ok(())
+        } else if self.dims() < 3 {
+            let boxed = self.list()[0].is_box();
+            let mut formatted = Vec::with_capacity(self.len());
+            let mut strings: Vec<Vec<&str>> = Vec::with_capacity(self.len());
+
+            let mut x = 0;
+            let mut y = 1;
+            let is_str = self.list()[0].is_char();
+            for num in self.list().iter() {
+                // SAFETY: formatted is not dropped until strings
+                let fm;
+                if boxed {
+                    fm = push_and_get(
+                        &mut formatted,
+                        format!("{}", unsafe { num.as_unboxed_unchecked() }),
+                    );
+                    x = usize::max(x, fm.find('\n').unwrap());
+                } else {
+                    fm = push_and_get(&mut formatted, format!("{num}"));
+                    x = usize::max(x, fm.len());
+                }
+                strings.push(fm.trim_end().split('\n').collect());
+            }
+            for ys in strings.iter() {
+                y = usize::max(y, ys.len());
+            }
+
+            let cols = self.rank()[0];
+            unsafe {
+                std::hint::assert_unchecked(self.len() % cols == 0);
+            }
+
+            if boxed {
+                // Collect to list of words, each list of lines
+                // Converto to list of constructed lines
+                // Write to formatter
+                let strings = strings
+                    .into_iter()
+                    .map(|elements| display_boxed_lines(elements, Some(x), Some(y)))
+                    .collect::<Result<Vec<Vec<String>>, fmt::Error>>()?;
+                for row in 0..(self.len() / cols) {
+                    let mut line = String::with_capacity(((x + 4) * cols + 1) * (y + 2));
+                    for j in 0..y + 2 {
+                        for i in 0..cols {
+                            line.push_str(&strings[row * cols + i][j]);
+                        }
+                        line.push('\n');
+                    }
+                    write!(f, "{line}")?;
+                }
+            } else {
+                // Currently we have a list of scalar values
+                // x and y are the max size of those scalars.
+                for row in 0..(self.len() / cols) {
+                    for col in 0..cols {
+                        let word = &strings[row * cols + col];
+                        assert!(word.len() == 1, "Internal error");
+                        let word = word[0];
+                        if is_str || self.dims() == 1 {
+                            write!(f, "{}", word)?;
+                        } else {
+                            write!(f, "{}{}", " ".repeat(x - word.len()), word)?;
+                        }
+                        if !is_str && col < cols - 1 {
+                            write!(f, " ")?;
+                        }
+                    }
+                    write!(f, "\n")?;
+                }
+            }
+            Ok(())
+        } else {
+            Ok(())
+        }
     }
 }

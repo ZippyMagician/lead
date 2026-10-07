@@ -22,6 +22,10 @@ macro_rules! err {
         Err(crate::utils::error::Error::$type($msg.into()))
     };
 
+    ($type:ident, $msg:expr; !) => {
+        crate::utils::error::print_error(crate::utils::error::Error::$type($msg.into()))
+    };
+
     ($type:ident) => {
         Err(crate::utils::error::Error::$type)
     };

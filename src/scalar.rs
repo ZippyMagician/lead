@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use std::fmt::Debug;
 use std::hint::{/*cold_path,*/ unreachable_unchecked};
 use std::ops::*;
 
@@ -7,13 +8,24 @@ use crate::utils::Arena;
 use crate::utils::error::{Error, Status, err};
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
-#[repr(C)]
+#[repr(u8)]
 pub enum Scalar {
     Number(i32),
     Float(f32),
     Boolean(bool),
     Char(char),
     Box(*const List),
+}
+
+// Representation of scalar, for casting
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+pub(crate) struct Repr<T>
+where
+    T: Clone + Copy + Debug + PartialEq + PartialOrd,
+{
+    tag: u8,
+    value: T,
 }
 
 impl Scalar {
@@ -74,6 +86,32 @@ impl Scalar {
             Self::Char(c) => Ok(*c as u32 as f32),
             Self::Boolean(b) => Ok(*b as u8 as f32),
             _ => err!(NaN),
+        }
+    }
+
+    #[inline]
+    pub fn to_char(&self) -> Status<char> {
+        match self {
+            Self::Char(c) => Ok(*c),
+            _ => err!(Domain),
+        }
+    }
+
+    #[inline]
+    pub fn repr(&self) -> u8 {
+        match self {
+            Self::Number(_) | Self::Float(_) => 0,
+            Self::Char(_) => 1,
+            Self::Boolean(_) => 2,
+            Self::Box(_) => 3,
+        }
+    }
+
+    #[inline]
+    pub(crate) unsafe fn as_unboxed_unchecked(&self) -> &List {
+        match self {
+            Self::Box(p) => unsafe { &**p },
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 

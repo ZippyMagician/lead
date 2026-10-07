@@ -4,6 +4,7 @@ pub mod number;
 pub mod symbols;
 
 use std::cell::RefCell;
+use std::fmt::Write;
 use std::rc::Rc;
 
 use super::exec::Exec;
@@ -106,4 +107,62 @@ pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Funct
     );
     f.assign_arena(arena);
     f
+}
+
+pub(crate) fn display_boxed_lines(
+    lines: Vec<&str>,
+    mx: Option<usize>,
+    my: Option<usize>,
+) -> Result<Vec<String>, std::fmt::Error> {
+    //     ╓─╖╙─╜║┌┬┐├┼┤└┴┘│─
+    let y = lines.len();
+    let x = if y == 0 { 0 } else { lines[0].len() };
+
+    let my = my.unwrap_or(y);
+    let mx = mx.unwrap_or(x);
+    let mut collected = Vec::with_capacity(my + 4);
+    for _ in 0..my + 2 {
+        collected.push(String::with_capacity(mx + 4));
+    }
+
+    collected[0].push('┌');
+    collected[my + 1].push('└');
+    for _ in 0..mx + 2 {
+        collected[0].push('─');
+        collected[my + 1].push('─');
+    }
+    collected[0].push('┐');
+    collected[my + 1].push('┘');
+
+    let yoff = (my - lines.len()) / 2;
+    for i in 0..my {
+        let f = &mut collected[1 + i];
+        let line = if yoff > i || lines.len() + yoff <= i {
+            ""
+        } else {
+            &lines[i - yoff]
+        };
+        let xoff = (mx - line.len() + 2) / 2;
+        if (mx - line.len()) % 2 != 0 {
+            write!(f, "│{}{}{}│", " ".repeat(xoff), line, " ".repeat(xoff + 1))?;
+        } else {
+            write!(f, "│{0}{1}{0}│", " ".repeat(xoff), line)?;
+        }
+    }
+
+    Ok(collected)
+}
+
+// Display boxed value
+#[inline]
+pub(crate) fn display_boxed<T: AsRef<str>>(
+    inner: T,
+    mx: Option<usize>,
+    my: Option<usize>,
+) -> Result<String, std::fmt::Error> {
+    //     private boxes: string = "╓─╖╙─╜║┌┬┐├┼┤└┴┘│─";
+    let inner = inner.as_ref().trim_end();
+    let lines = inner.split('\n');
+
+    display_boxed_lines(lines.collect(), mx, my).map(|n| n.join("\n"))
 }
