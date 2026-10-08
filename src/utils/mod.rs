@@ -65,7 +65,7 @@ macro_rules! run_block {
         let mut s = $o.s.borrow_mut();
         s.set_instant("y", $a);
         drop(s);
-        let mut e = Exec::new_imm($o.a.as_ref().unwrap().clone(), $o.s.clone());
+        let mut e = Exec::new_imm($o.a.clone(), $o.s.clone());
         e.exec($n.clone())?;
         Ok(e.right.unwrap_or(List::empty()))
     }};
@@ -75,7 +75,7 @@ macro_rules! run_block {
         s.set_instant("x", $a);
         s.set_instant("y", $b);
         drop(s);
-        let mut e = Exec::new_imm($o.a.as_ref().unwrap().clone(), $o.s.clone());
+        let mut e = Exec::new_imm($o.a.clone(), $o.s.clone());
         e.exec($n.clone())?;
         Ok(e.right.unwrap_or(List::empty()))
     }};
@@ -87,7 +87,7 @@ pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Funct
     let n1: Vec<Node<'static>> = unsafe { std::mem::transmute(nodes) };
     let n2 = n1.clone();
 
-    let mut f = Function::new(
+    Function::new(
         Rc::new(move |a, o| {
             if o.rm as usize >= a.dims() {
                 run_block!(a, o, n1)
@@ -104,10 +104,9 @@ pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Funct
         }),
         99,
         [99, 99],
+        arena,
         scope,
-    );
-    f.assign_arena(arena);
-    f
+    )
 }
 
 // const BOXES: &str = "┌┬┐├┼┤└┴┘│─";

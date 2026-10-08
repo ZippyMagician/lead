@@ -91,7 +91,7 @@ impl<'a> Lexer<'a> {
     fn consume_token(&mut self) -> Status<Token<'a>> {
         let (start, chr) = self.chars.next().ok_or(Error::Complete)?;
         match chr {
-            '_' | 'e' | '0'..='9' => self.maybe_number(start),
+            '_' | 'e' | '.' | '0'..='9' => self.maybe_number(chr, start),
             'a'..='z' | 'A'..='Z' => self.consume_lit(start),
             c if c.is_whitespace() => self.consume_whitespace(c, start),
             c if c.is_ascii_punctuation() => self.maybe_builtin(c, start),
@@ -151,10 +151,11 @@ impl<'a> Lexer<'a> {
     }
 
     #[inline]
-    fn maybe_number(&mut self, start: usize) -> Status<Token<'a>> {
-        let c = &self.input[start..start + 1];
-        if c == "e" {
-            if self.next_if(|c| c.is_numeric() || c == '_').is_some() {
+    fn maybe_number(&mut self, chr: char, start: usize) -> Status<Token<'a>> {
+        if chr == 'e' || chr == '.' {
+            if let Some((_, c)) = self.chars.peek()
+                && (c.is_numeric() || chr == 'e' && *c == '_')
+            {
                 self.consume_number(start)
             } else {
                 self.consume_lit(start)
@@ -171,16 +172,19 @@ impl<'a> Lexer<'a> {
 
     fn consume_number(&mut self, start: usize) -> Status<Token<'a>> {
         let mut end = start + 1;
-        let mut found_e = self.nth(start) == Some('e');
+        let mut found_e = false;
         let mut found_decimals = 0;
         let mut found_signs = 0;
-        if self.nth(start) == Some('_') {
-            found_signs += 1;
+        match self.nth(start) {
+            Some('_') => found_signs = 1,
+            Some('e') => {
+                found_e = true;
+                found_decimals = 1;
+            }
+            Some('.') => found_decimals = 1,
+            _ => {}
         }
 
-        if found_e {
-            found_decimals += 1;
-        }
         while let Some((_, c)) = self.chars.peek() {
             match c {
                 '.' if found_decimals == 0 || found_decimals == 1 && found_e => {
@@ -199,7 +203,7 @@ impl<'a> Lexer<'a> {
             end += 1;
         }
 
-        if found_e && found_decimals == 2 || !found_e && found_decimals == 1 {
+        if found_e || found_decimals > 0 {
             tok!(Float, &self.input[start..end])
         } else {
             tok!(Number, &self.input[start..end])

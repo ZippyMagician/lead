@@ -77,11 +77,14 @@ pub(super) fn residue(mut a: List, mut b: List, _: &Opts) -> Status<List> {
 }
 
 // tildem | ~ | 0 | 1-range / Rising alphabet
-pub(super) fn range(a: List, _: &Opts) -> Status<List> {
-    if !a.is_scalar() {
-        err!(Domain)
-    } else {
+pub(super) fn range(mut a: List, o: &Opts) -> Status<List> {
+    if a.is_scalar() {
         List::range(Scalar::Number(1), a.list()[0])
+    } else {
+        for_0!(a; [v] = Scalar::boxed(
+            o.a.clone(), List::range(Scalar::Number(1), *v)?)?
+        );
+        Ok(a)
     }
 }
 

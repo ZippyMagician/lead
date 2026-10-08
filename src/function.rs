@@ -19,17 +19,12 @@ pub type Monad = Rc<dyn Fn(List, &Opts) -> Status<List>>;
 pub type Dyad = Rc<dyn Fn(List, List, &Opts) -> Status<List>>;
 
 impl Function {
-    pub fn new(m: Monad, d: Dyad, rm: u8, rd: [u8; 2], s: Scope) -> Self {
+    pub fn new(m: Monad, d: Dyad, rm: u8, rd: [u8; 2], a: Arena, s: Scope) -> Self {
         Self {
             m,
             d,
-            op: Opts { rm, rd, a: None, s },
+            op: Opts { rm, rd, a, s },
         }
-    }
-
-    #[inline]
-    pub fn assign_arena(&mut self, a: Arena) {
-        self.op.a = Some(a);
     }
 
     #[inline]
@@ -49,6 +44,6 @@ impl Function {
 pub struct Opts {
     pub rm: u8,
     pub rd: [u8; 2],
-    pub a: Option<Arena>,
+    pub a: Arena,
     pub s: Scope,
 }

@@ -35,10 +35,10 @@ pub fn is_number(string: &str) -> bool {
 
 fn replace_chars(string: &str) -> String {
     let mut num = String::with_capacity(string.len() + 1);
-    if string.starts_with('e') {
+    if string.starts_with(|c| c == 'e' || c == '.') {
         num.push('1');
         num.push_str(string);
-    } else if string.starts_with("_e") {
+    } else if string.starts_with("_e") || string.starts_with("_.") {
         num.push_str("-1");
         num.push_str(&string[1..]);
     } else {

@@ -3,12 +3,13 @@ pub mod symbols;
 use self::symbols::Symbol;
 
 macro_rules! function {
-    ($rm:literal, $monad:expr; $rd:expr, $dyad:expr, $s:ident) => {{
+    ($rm:literal, $monad:expr; $rd:expr, $dyad:expr, $a:ident, $s:ident) => {{
         crate::function::Function::new(
             ::std::rc::Rc::new($monad),
             ::std::rc::Rc::new($dyad),
             $rm,
             $rd,
+            $a,
             $s,
         )
     }};
@@ -24,9 +25,9 @@ macro_rules! define_syms {
                 }
             }
 
-            pub fn getfn(&self, s: crate::scope::Scope) -> crate::function::Function {
+            pub fn getfn(&self, a: crate::utils::Arena, s: crate::scope::Scope) -> crate::function::Function {
                 match self {
-                    $(Self::$rep => { function!($rm, $monad; $rd, $dyad, s) }),*
+                    $(Self::$rep => { function!($rm, $monad; $rd, $dyad, a, s) }),*
                 }
             }
         }

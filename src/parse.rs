@@ -114,12 +114,9 @@ impl<'a> Parser<'a> {
             Float => self.consume_primitive(Scalar::Float(parse_float(t.1)?)),
             String => self.consume_primitive_string(t.1),
             Symbol => {
-                let mut f = symbols::Symbol::get_symbol(t.1)
+                let f = symbols::Symbol::get_symbol(t.1)
                     .ok_or(Error::Syntax("Unrecognized symbol.".into()))?
-                    .getfn(self.scope.clone());
-                if t.1 == "<" {
-                    f.assign_arena(self.arena.clone());
-                }
+                    .getfn(self.arena.clone(), self.scope.clone());
                 Ok(Node::Function(f))
             }
             Literal => Ok(if t.1.ends_with('.') {
@@ -140,7 +137,7 @@ impl<'a> Parser<'a> {
     fn maybe_tag(&mut self) -> Status<Node<'a>> {
         let sym = symbols::Symbol::get_symbol("[")
             .ok_or(Error::Syntax("TODO: Left identity function.".into()))
-            .map(|n| n.getfn(self.scope.clone()));
+            .map(|n| n.getfn(self.arena.clone(), self.scope.clone()));
 
         if let Some(next) = self.tokens.next() {
             match next {
@@ -227,7 +224,9 @@ impl<'a> Parser<'a> {
         let body = self.consume_upto(|n| matches!(n, Node::Line))?;
         let otherwise = self.consume_upto(|n| matches!(n, Node::Line))?;
         // Unwrap singleton conditions
-        if let Node::Group(g) = &mut cond && g.len() == 1 {
+        if let Node::Group(g) = &mut cond
+            && g.len() == 1
+        {
             cond = std::mem::take(&mut g[0]);
         }
         Ok(Node::Two(

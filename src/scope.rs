@@ -5,6 +5,7 @@ use std::rc::Rc;
 
 use crate::function::Function;
 use crate::list::List;
+use crate::utils::Arena;
 use crate::utils::error::{Status, err};
 
 pub type Scope = Rc<RefCell<ScopeInternal>>;
@@ -39,7 +40,7 @@ impl MaybeInstant {
     }
 
     #[inline]
-    pub fn as_function(self, scope: Scope) -> Status<Function> {
+    pub fn as_function(self, arena: Arena, scope: Scope) -> Status<Function> {
         match self {
             Self::Function(f) => Ok(f),
             Self::Instant(l) => {
@@ -51,6 +52,7 @@ impl MaybeInstant {
                     Rc::new(move |_, _, _| Ok(d.clone())),
                     99,
                     [99, 99],
+                    arena,
                     scope,
                 ))
             }

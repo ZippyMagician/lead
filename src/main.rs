@@ -7,10 +7,14 @@ use std::cell::RefCell;
 use std::io::{self, Write};
 use std::rc::Rc;
 
-use seqr::exec;
-use seqr::lex;
-use seqr::parse;
+use seqr::exec::Exec;
+use seqr::lex::Lexer;
+use seqr::parse::Parser;
 use seqr::scope::new_scope;
+
+use seqr::list::List;
+use seqr::scalar::Scalar;
+use seqr::builtins::symbols::Symbol;
 
 use typed_arena::Arena;
 
@@ -22,8 +26,9 @@ fn main() -> io::Result<()> {
     let arena = Rc::new(RefCell::new(Arena::new()));
     let scope = new_scope();
 
-    let mut exec = exec::Exec::new(arena.clone(), scope.clone());
+    let mut exec = Exec::new(arena.clone(), scope.clone());
 
+    println!("seqr (ayr-deriv) v0.0.1:");
     loop {
         print!("    ");
         stdout.flush()?;
@@ -34,13 +39,18 @@ fn main() -> io::Result<()> {
         }
 
         let line = buf.trim_end_matches('\r');
-        let mut lexer = lex::Lexer::new(&line);
+        if line == "test\n" {
+            speedtest(arena.clone(), scope.clone());
+            continue;
+        }
+
+        let mut lexer = Lexer::new(&line);
         if let Err(e) = lexer.tokenize() {
             println!("{e}");
             continue;
         }
 
-        let mut parser = parse::Parser::new(arena.clone(), scope.clone(), lexer.tokens());
+        let mut parser = Parser::new(arena.clone(), scope.clone(), lexer.tokens());
         if let Err(e) = parser.parse() {
             println!("{e}");
             continue;
@@ -126,3 +136,20 @@ fn main() -> Result<(), seqr::utils::error::Error> {
 
     Ok(())
 }*/
+
+fn speedtest(arena: Rc<RefCell<Arena<List>>>, scope: seqr::scope::Scope) {
+    // --- SPEED TEST --- \\
+    let mut build = Vec::with_capacity(10_000_000);
+    for i in 0..10_000_000 {
+        build.push(Scalar::Number(i));
+    }
+    let list = List::from_vec(build).unwrap();
+    let one = List::scalar(Scalar::Number(1));
+    let plus_symbol = Symbol::get_symbol("+").unwrap().getfn(arena, scope);
+
+    let t1 = std::time::Instant::now();
+    let result = plus_symbol.dyadic_call(list, one);
+    let t2 = std::time::Instant::now();
+    println!("{}: {:?}", result.is_ok(), t2 - t1);
+    // --- END --- \\\
+}

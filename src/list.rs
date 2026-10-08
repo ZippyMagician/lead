@@ -259,7 +259,7 @@ impl Display for List {
                         &mut formatted,
                         format!("{}", unsafe { num.as_unboxed_unchecked() }),
                     );
-                    x = usize::max(x, fm.find('\n').unwrap());
+                    x = usize::max(x, fm.find('\n').unwrap_or(fm.len()));
                 } else {
                     fm = push_and_get(&mut formatted, format!("{num}"));
                     x = usize::max(x, fm.len());
@@ -299,7 +299,7 @@ impl Display for List {
                             let string = &strings[row * cols + i];
                             line.push_str(&string.1[j][usize::from(i != 0) * 3..]);
                         }
-                        if row + 1 != rows && j != y + 1 {
+                        if row + 1 != rows || j != y + 1 {
                             line.push('\n');
                         }
                     }
