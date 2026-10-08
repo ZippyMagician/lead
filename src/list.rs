@@ -275,13 +275,13 @@ impl Display for List {
                 std::hint::assert_unchecked(self.len() % cols == 0);
             }
 
+            let rows = self.len() / cols;
             if boxed {
                 // Collect to list of words, each list of lines
                 // Converto to list of constructed lines
                 // Write to formatter
                 let mut v = 0;
                 let mut m = 0;
-                let rows = self.len() / cols;
                 let strings = (0..)
                     .zip(strings.into_iter())
                     .map(|(i, elements)| {
@@ -292,21 +292,23 @@ impl Display for List {
                         Ok((m, display_boxed_lines(elements, Some(x), Some(y), m)?))
                     })
                     .collect::<Result<Vec<(u8, Vec<String>)>, fmt::Error>>()?;
-                for row in 0..(self.len() / cols) {
+                for row in 0..rows {
                     let mut line = String::with_capacity(((x + 4) * cols + 1) * (y + 2));
                     for j in usize::from(row != 0)..y + 2 {
                         for i in 0..cols {
                             let string = &strings[row * cols + i];
                             line.push_str(&string.1[j][usize::from(i != 0) * 3..]);
                         }
-                        line.push('\n');
+                        if row + 1 != rows && j != y + 1 {
+                            line.push('\n');
+                        }
                     }
                     write!(f, "{line}")?;
                 }
             } else {
                 // Currently we have a list of scalar values
                 // x and y are the max size of those scalars.
-                for row in 0..(self.len() / cols) {
+                for row in 0..rows {
                     for col in 0..cols {
                         let word = &strings[row * cols + col];
                         assert!(word.len() == 1, "Internal error");
@@ -320,7 +322,9 @@ impl Display for List {
                             write!(f, " ")?;
                         }
                     }
-                    write!(f, "\n")?;
+                    if row + 1 != rows {
+                        write!(f, "\n")?;
+                    }
                 }
             }
             Ok(())
