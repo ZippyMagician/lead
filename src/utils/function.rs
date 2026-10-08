@@ -39,7 +39,7 @@ where
 {
     let dims = l.dims();
     let rank = l.rank().to_vec();
-    let lists = l.ranked(r as usize);
+    let lists = l.ranked(r as usize)?;
     List::unranked(
         arena,
         dims,
@@ -59,8 +59,8 @@ where
     let left_rank: SmallVec<[usize; 4]> = SmallVec::from(a.rank());
     let right_rank: SmallVec<[usize; 4]> = SmallVec::from(b.rank());
 
-    let left = a.ranked(r[0] as usize);
-    let right = b.ranked(r[1] as usize);
+    let left = a.ranked(r[0] as usize)?;
+    let right = b.ranked(r[1] as usize)?;
     let no_swap = left.len() >= right.len();
     let (mapper, value) = if no_swap {
         (left, right)

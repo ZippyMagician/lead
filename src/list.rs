@@ -195,13 +195,25 @@ impl List {
     }
 
     #[inline]
-    pub fn ranked(self, dims: usize) -> Vec<Self> {
+    pub fn ranked(self, dims: usize) -> Status<Vec<Self>> {
         if dims == 0 {
-            self.list().iter().copied().map(List::scalar).collect()
+            Ok(self.list().iter().copied().map(List::scalar).collect())
         } else if dims >= self.dims() {
-            vec![self]
+            Ok(vec![self])
         } else {
-            todo!("Non-trivial List::ranked(self, dims)");
+            let rank: SmallVec<[usize; INLINE_SIZE]> =
+                self.rank().iter().copied().take(dims).collect();
+            let ct: usize = rank.iter().product();
+
+            unsafe { std::hint::assert_unchecked(self.ct % ct == 0) }
+
+            let mut b = Vec::with_capacity(self.ct / ct);
+            for i in 0..self.ct / ct {
+                let l = self.list()[i * ct..i * ct + ct].to_vec();
+                b.push(List::mat(l, dims, rank.clone())?);
+            }
+
+            Ok(b)
         }
     }
 
@@ -300,9 +312,9 @@ fn hmask(x: usize, mx: usize) -> u8 {
 impl Display for List {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.is_scalar() {
-            write!(f, "{}", self.list()[0])
+            write!(f, "{}", self.list()[0])?;
         } else if self.is_empty() {
-            Ok(())
+            return Ok(());
         } else if self.dims() < 3 {
             let boxed = self.list()[0].is_box();
             let mut formatted = Vec::with_capacity(self.len());
@@ -387,10 +399,18 @@ impl Display for List {
                     }
                 }
             }
-            Ok(())
         } else {
-            Ok(())
+            let dims = self.dims();
+            let ranked = self.clone().ranked(dims - 1).expect("Couldn't disp. list");
+            for i in 0..ranked.len() {
+                write!(f, "{}", ranked[i])?;
+                if i + 1 != ranked.len() {
+                    write!(f, "{}", "\n".repeat(dims - 1))?;
+                }
+            }
         }
+
+        Ok(())
     }
 }
 
