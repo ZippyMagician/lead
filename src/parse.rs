@@ -92,6 +92,7 @@ impl<'a> Parser<'a> {
             Self::unpack_node(&mut self.nodes, status)?;
         }
         self.nodes.push(Node::Line);
+        self.second_pass();
         Ok(())
     }
 
@@ -217,9 +218,13 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn consume_if(&mut self, cond: Node<'a>) -> Status<Node<'a>> {
+    fn consume_if(&mut self, mut cond: Node<'a>) -> Status<Node<'a>> {
         let body = self.consume_upto(|n| matches!(n, Node::Line))?;
         let otherwise = self.consume_upto(|n| matches!(n, Node::Line))?;
+        // Unwrap singleton conditions
+        if let Node::Group(g) = &mut cond && g.len() == 1 {
+            cond = std::mem::take(&mut g[0]);
+        }
         Ok(Node::Two(
             Node::If {
                 cond: cond.into(),
@@ -276,7 +281,7 @@ impl<'a> Parser<'a> {
             let node = self.consume_node(tok);
             Self::unpack_node(&mut self.nodes, node)?;
         }
-
+        self.second_pass();
         std::mem::swap(&mut nodes, &mut self.nodes);
         Ok(nodes)
     }
@@ -293,9 +298,20 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
-
+        self.second_pass();
         std::mem::swap(&mut nodes, &mut self.nodes);
         Ok(nodes)
+    }
+
+    fn second_pass(&mut self) {
+        for node in &mut self.nodes {
+            match node {
+                // Unwrap singleton conditions
+                Node::Group(g) if g.len() == 1 => *node = std::mem::take(&mut g[0]),
+                // TODO: Operators pass
+                _ => {}
+            }
+        }
     }
 }
 

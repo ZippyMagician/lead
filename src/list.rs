@@ -226,6 +226,16 @@ fn push_and_get<'a>(v: &mut Vec<String>, s: String) -> &'a str {
     unsafe { &*(r as *const str) }
 }
 
+#[inline(always)]
+fn vmask(y: usize, my: usize) -> u8 {
+    (y != 0) as u8 | ((y + 1 != my) as u8) << 2
+}
+
+#[inline(always)]
+fn hmask(x: usize, mx: usize) -> u8 {
+    ((x + 1 != mx) as u8) << 1 | ((x != 0) as u8) << 3
+}
+
 // TODO: impl Display for List
 impl Display for List {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -269,15 +279,25 @@ impl Display for List {
                 // Collect to list of words, each list of lines
                 // Converto to list of constructed lines
                 // Write to formatter
-                let strings = strings
-                    .into_iter()
-                    .map(|elements| display_boxed_lines(elements, Some(x), Some(y)))
-                    .collect::<Result<Vec<Vec<String>>, fmt::Error>>()?;
+                let mut v = 0;
+                let mut m = 0;
+                let rows = self.len() / cols;
+                let strings = (0..)
+                    .zip(strings.into_iter())
+                    .map(|(i, elements)| {
+                        if i % rows == 0 {
+                            v = vmask(i / rows, rows);
+                        }
+                        m = v | hmask(i % rows, cols);
+                        Ok((m, display_boxed_lines(elements, Some(x), Some(y), m)?))
+                    })
+                    .collect::<Result<Vec<(u8, Vec<String>)>, fmt::Error>>()?;
                 for row in 0..(self.len() / cols) {
                     let mut line = String::with_capacity(((x + 4) * cols + 1) * (y + 2));
-                    for j in 0..y + 2 {
+                    for j in usize::from(row != 0)..y + 2 {
                         for i in 0..cols {
-                            line.push_str(&strings[row * cols + i][j]);
+                            let string = &strings[row * cols + i];
+                            line.push_str(&string.1[j][usize::from(i != 0) * 3..]);
                         }
                         line.push('\n');
                     }

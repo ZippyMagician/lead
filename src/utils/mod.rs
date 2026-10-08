@@ -5,6 +5,7 @@ pub mod symbols;
 
 use std::cell::RefCell;
 use std::fmt::Write;
+use std::hint::assert_unchecked;
 use std::rc::Rc;
 
 use super::exec::Exec;
@@ -109,10 +110,25 @@ pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Funct
     f
 }
 
+// const BOXES: &str = "┌┬┐├┼┤└┴┘│─";
+const BOXES_TL: &str = "┌├┌├┌├┌├┬┼┬┼┬┼┬┼";
+const BOXES_TR: &str = "┐┤┬┼┐┤┬┼┐┤┬┼┐┤┬┼";
+const BOXES_BR: &str = "┘┘┴┴┤┤┼┼┘┘┴┴┤┤┼┼";
+const BOXES_BL: &str = "└└└└├├├├┴┴┴┴┼┼┼┼";
+
+#[inline(always)]
+fn g(b: &'static str, mask: u8) -> char {
+    unsafe {
+        assert_unchecked((mask as usize) < b.len());
+        b.chars().nth(mask as usize).unwrap_unchecked()
+    }
+}
+
 pub(crate) fn display_boxed_lines(
     lines: Vec<&str>,
     mx: Option<usize>,
     my: Option<usize>,
+    mask: u8,
 ) -> Result<Vec<String>, std::fmt::Error> {
     //     ╓─╖╙─╜║┌┬┐├┼┤└┴┘│─
     let y = lines.len();
@@ -125,14 +141,14 @@ pub(crate) fn display_boxed_lines(
         collected.push(String::with_capacity(mx + 4));
     }
 
-    collected[0].push('┌');
-    collected[my + 1].push('└');
+    collected[0].push(g(BOXES_TL, mask));
+    collected[my + 1].push(g(BOXES_BL, mask));
     for _ in 0..mx + 2 {
         collected[0].push('─');
         collected[my + 1].push('─');
     }
-    collected[0].push('┐');
-    collected[my + 1].push('┘');
+    collected[0].push(g(BOXES_TR, mask));
+    collected[my + 1].push(g(BOXES_BR, mask));
 
     let yoff = (my - lines.len()) / 2;
     for i in 0..my {
@@ -164,5 +180,5 @@ pub(crate) fn display_boxed<T: AsRef<str>>(
     let inner = inner.as_ref().trim_end();
     let lines = inner.split('\n');
 
-    display_boxed_lines(lines.collect(), mx, my).map(|n| n.join("\n"))
+    display_boxed_lines(lines.collect(), mx, my, 0b0000).map(|n| n.join("\n"))
 }

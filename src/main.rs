@@ -65,7 +65,7 @@ fn main() -> Result<(), seqr::utils::error::Error> {
     }
 
     /// --- PARSING --- \\\
-    const P: &str = "f: [{] 1 2 3 + y * 2\n f 54"; //"x: 4 5 6 + ~3\n2 * x";
+    const P: &str = "f: [{] 1 2 3 + y * 2\n f (54)"; //"x: 4 5 6 + ~3\n2 * x";
     // println!("\n-P-\n\"\"\" {P} \"\"\"");
     let mut lexer = lex::Lexer::new(P);
     lexer.tokenize()?;
