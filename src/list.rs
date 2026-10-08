@@ -210,10 +210,12 @@ impl List {
         arena: &Arena,
         original: usize,
         trailing_rank: &[usize],
-        lists: Vec<List>,
+        mut lists: Vec<List>,
     ) -> Status<Self> {
         if lists.is_empty() {
             return Ok(List::empty());
+        } else if lists.len() == 1 {
+            return Ok(std::mem::take(&mut lists[0]));
         }
 
         let mut box_it = false;
@@ -389,5 +391,12 @@ impl Display for List {
         } else {
             Ok(())
         }
+    }
+}
+
+impl Default for List {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::empty()
     }
 }

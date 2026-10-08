@@ -35,14 +35,14 @@ macro_rules! scalar_op {
         } else if $b.is_empty() {
             Ok($a)
         } else if $a.is_scalar() {
-            //let a = $a.list()[0];
-            // NOTE: See `for_0!` for why the macro isn't used here
-            for (l, r) in $b.list_mut().iter_mut().zip(
+            // And now it's fucking slower?? what the fuck
+            /*for (l, r) in $b.list_mut().iter_mut().zip(
                 $a.list().iter().cycle()
             ) {
                 *l = r.$d(*l)?;
-            }
-            //for_0!($b; [r] = r.$d(a)?);
+            }*/
+            let a = $a.list()[0];
+            for_0!($b; [r] = r.$d(a)?);
             Ok($b)
         } else if $b.is_scalar() {
             let b = $b.list()[0];

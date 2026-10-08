@@ -41,4 +41,6 @@ define_syms! {
     Percent => (b"%", 0, symbols::reciprocal; [0, 0], symbols::div);
     Pipe => (b"|", 0, symbols::not; [0, 0], symbols::residue);
     Tilde => (b"~", 0, symbols::range; [99, 0], symbols::index);
+    LeftArrow => (b"<", 99, symbols::boxed; [0, 0], symbols::lt);
+    Dollar => (b"$", 99, symbols::shape; [1, 99], symbols::reshape);
 }

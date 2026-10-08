@@ -20,6 +20,8 @@ pub enum Symbol {
     Percent,
     Pipe,
     Tilde,
+    LeftArrow,
+    Dollar,
 }
 
 // plusm | + | 0 | Absolute value / Cast to int
@@ -170,5 +172,32 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
                 List::mat(a.list()[i..i + ct].to_vec(), a.dims() - index.len(), rank)
             }
         }
+    })
+}
+
+// leftarrowm | < | 99 | Box
+pub(crate) fn boxed(a: List, o: &Opts) -> Status<List> {
+    Ok(List::scalar(Scalar::boxed(&o.a, a)?))
+}
+
+// leftarrowd | < | 0, 0 | Less than
+pub(crate) fn lt(a: List, b: List, _: &Opts) -> Status<List> {
+    todo!()
+}
+
+// dollarm | $ | 99 | Shape
+pub(crate) fn shape(a: List, _: &Opts) -> Status<List> {
+    List::from_vec(a.rank().iter().map(|n| Scalar::Number(*n as i32)).collect())
+}
+
+// dollard | $ | 1, 99 | Reshape
+pub(crate) fn reshape(a: List, b: List, o: &Opts) -> Status<List> {
+    apply_loosed(&o.a, a, b, o.rd, |a, b| {
+        let rank = a
+            .list()
+            .iter()
+            .map(|n| n.to_num().map(|n| n as usize))
+            .collect::<Status<SmallVec<[usize; 4]>>>()?;
+        b.with_rank(&rank)
     })
 }
