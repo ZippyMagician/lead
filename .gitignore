@@ -1,2 +1,6 @@
+# Build artifacts
 /target
 Cargo.lock
+
+# Offline
+/vendor
