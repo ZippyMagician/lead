@@ -77,7 +77,12 @@ impl Exec {
                     head,
                     is_internal,
                     body,
-                } => self.exec_assignment(head, body, is_internal)?,
+                } => self.exec_assignment(
+                    head,
+                    body,
+                    is_internal,
+                    i > 0 && !utils::is_instant(&line[i - 1], self.scope.clone()),
+                )?,
                 node => todo!("Execute node {node:?}"),
             }
 
@@ -169,6 +174,7 @@ impl Exec {
         head: &'a str,
         body: Vec<Node<'a>>,
         is_internal: bool,
+        preserve_instant: bool,
     ) -> Status {
         if is_internal {
             todo!("Internals @ <exec.rs> exec_line");
@@ -177,6 +183,10 @@ impl Exec {
         if utils::is_instant(&group, self.scope.clone()) {
             let s = self.scope.clone();
             let list = self.exec_instant(group)?;
+            if preserve_instant {
+                // Preserves when used
+                self.right = Some(list.clone());
+            }
             s.borrow_mut().set_instant(head, list);
         } else {
             // SAFETY: This is set as a `Node::Group` a few lines ago
