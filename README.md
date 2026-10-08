@@ -13,6 +13,9 @@ Ideas:
   - Create more specialized functions for some ranks + generic for higher rank operations
   - No generic function, fully specialize?
 
+  - Some symbol builtins will have more optimized rank support
+	  - General rank functions will be applied otherwise
+	  - Create some sort of distinction via flags? `@` will note and wrap when necessary
 
   - How to handle multiple scalar types within list? Should I support?
   - Should I overload operators more, like in some K impls?
@@ -31,3 +34,12 @@ map: [:]{ a: 'first'; b: 'second' }
 []map.('b')    -- 'second'
 I.             -- STDIN
 ```
+
+### TODO
+- [ ] Non-instant groups (mainly trains)
+- [ ] Operators
+- [ ] Proper `@` rank support
+- [ ] Recursive blocks via `v`
+- [ ] Port symbols
+- [ ] Maps
+- [ ] Tables?
