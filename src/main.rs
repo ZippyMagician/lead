@@ -12,9 +12,9 @@ use seqr::lex::Lexer;
 use seqr::parse::Parser;
 use seqr::scope::new_scope;
 
+use seqr::builtins::symbols::Symbol;
 use seqr::list::List;
 use seqr::scalar::Scalar;
-use seqr::builtins::symbols::Symbol;
 
 use typed_arena::Arena;
 

@@ -204,7 +204,7 @@ impl<'a> Parser<'a> {
             List::from_vec(
                 strings
                     .iter()
-                    .map(|s| Scalar::boxed(self.arena.clone(), List::string(s)))
+                    .map(|s| Scalar::boxed(&self.arena, List::string(s)))
                     .collect::<Status<Vec<Scalar>>>()?,
             )
             .map(Node::PrimitiveBoxes)

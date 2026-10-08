@@ -10,6 +10,7 @@ use std::ptr::slice_from_raw_parts_mut;
 use smallvec::{SmallVec, smallvec};
 
 use crate::scalar::Scalar;
+use crate::utils::Arena;
 use crate::utils::error::{Status, err};
 use crate::utils::{compatible, display_boxed, display_boxed_lines};
 
@@ -50,6 +51,20 @@ impl List {
             ct: size,
             ds: 1,
             rk: smallvec![size],
+        })
+    }
+
+    #[inline]
+    pub fn mat(data: Vec<Scalar>, ds: usize, rk: SmallVec<[usize; INLINE_SIZE]>) -> Status<Self> {
+        if !compatible(&data) {
+            return err!(Domain);
+        }
+        let size = data.len();
+        Ok(Self {
+            dt: data.into(),
+            ct: size,
+            ds,
+            rk,
         })
     }
 
@@ -182,7 +197,7 @@ impl List {
     #[inline]
     pub fn ranked(self, dims: usize) -> Vec<Self> {
         if dims == 0 {
-            self.list().iter().cloned().map(List::scalar).collect()
+            self.list().iter().copied().map(List::scalar).collect()
         } else if dims >= self.dims() {
             vec![self]
         } else {
@@ -191,12 +206,55 @@ impl List {
     }
 
     #[inline]
-    pub fn unranked<T>(_original: usize, _trailing_rank: &[usize], _list: T) -> Status<Self>
-    where
-        T: Iterator<Item = Status<Self>>,
-    {
-        todo!("List::unranked");
+    pub fn unranked(
+        arena: &Arena,
+        original: usize,
+        trailing_rank: &[usize],
+        lists: Vec<List>,
+    ) -> Status<Self> {
+        if lists.is_empty() {
+            return Ok(List::empty());
+        }
+
+        let mut box_it = false;
+        let rank = lists[0].rank();
+        for list in lists.iter() {
+            if !eq_rank(rank, list.rank()) {
+                box_it = true;
+                break;
+            }
+        }
+
+        if box_it {
+            List::mat(
+                lists
+                    .into_iter()
+                    .map(|n| Scalar::boxed(&arena, n))
+                    .collect::<Status<Vec<Scalar>>>()?,
+                trailing_rank.len(),
+                trailing_rank.into(),
+            )
+        } else {
+            let mut build: Vec<Scalar> =
+                Vec::with_capacity(rank.iter().copied().product::<usize>() * lists.len());
+            for list in lists.iter() {
+                build.extend(list.list());
+            }
+
+            let dims = usize::max(rank.len() + trailing_rank.len(), original);
+            let mut rank: SmallVec<[usize; 4]> = rank.into();
+            rank.extend(trailing_rank.iter().copied());
+            List::mat(build, dims, rank)
+        }
     }
+}
+
+#[inline]
+fn eq_rank(a: &[usize], b: &[usize]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b.iter()).all(|(l, r)| l == r)
 }
 
 impl Display for Scalar {

@@ -30,7 +30,7 @@ where
 
 impl Scalar {
     #[inline]
-    pub fn boxed(a: Arena, l: List) -> Status<Self> {
+    pub fn boxed(a: &Arena, l: List) -> Status<Self> {
         let arena = a.borrow_mut();
         let r = arena.alloc(l);
         Ok(Box(r as *const List))
@@ -229,6 +229,12 @@ impl_arith_ops! {
     Add, add, [l, r] {l + r};
     Sub, sub, [l, r] {l - r};
     Mul, mul, [l, r] {l * r};
-    Div, div, [l, r] {l / r};
+    Div, div, [l, r] {
+        // So we don't panic on division by 0. f32 lacks
+        // a `checked_div`.
+        if r == Default::default() {
+            std::hint::cold_path(); return err!(NaN);
+        } else { l / r }
+    };
     Rem, rem, [l, r] {l % r};
 }

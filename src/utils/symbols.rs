@@ -1,4 +1,12 @@
 macro_rules! for_0 {
+    // NOTE: For some reason beyond my understanding, there are cases where
+    // this is slower than writing it out manually. One such instance is when
+    // the expression, `$b`, reuses a scalar value over and over again.. but
+    // only in some such cases.. For instance, in a mathematical operation,
+    // the scalar value being used on the LHS is much slower than if you manually
+    // zip a cycled iter over said value to the main iteration component. I have
+    // no fucking clue why. It's pretty significant too, scalar operations become
+    // ~50% slower when a scalar number is on the LHS. Fucking programming, I guess.
     ($a:ident; [$v:ident] = $b:expr) => {{
         for $v in $a.list_mut() {
             *$v = $b;
@@ -27,29 +35,33 @@ macro_rules! scalar_op {
         } else if $b.is_empty() {
             Ok($a)
         } else if $a.is_scalar() {
-            let a = $a.list()[0];
-            for_0!($b; [r] = r.$d(a)?);
+            //let a = $a.list()[0];
+            // NOTE: See `for_0!` for why the macro isn't used here
+            for (l, r) in $b.list_mut().iter_mut().zip(
+                $a.list().iter().cycle()
+            ) {
+                *l = r.$d(*l)?;
+            }
+            //for_0!($b; [r] = r.$d(a)?);
             Ok($b)
         } else if $b.is_scalar() {
             let b = $b.list()[0];
             for_0!($a; [l] = l.$d(b)?);
             Ok($a)
-        } else if $a.len() % $b.len() == 0 || $b.len() % $a.len() == 0 {
-            let m;
-            let o;
-            if $a.len() > $b.len() {
-                m = $a.list_mut();
-                o = $b.list();
-            } else {
-                m = $b.list_mut();
-                o = $a.list();
-            }
-
+        } else if $a.len() % $b.len() == 0 {
+            let m = $a.list_mut();
+            let o = $b.list();
             for (l, r) in m.iter_mut().zip(o.iter().cycle()) {
                 *l = l.$d(*r)?;
             }
-
-            Ok(if $a.len() > $b.len() { $a } else { $b })
+            Ok($a)
+        } else if $b.len() % $a.len() == 0 {
+            let m = $b.list_mut();
+            let o = $a.list();
+            for (l, r) in m.iter_mut().zip(o.iter().cycle()) {
+                *l = r.$d(*l)?;
+            }
+            Ok($b)
         } else {
             err!(Domain)
         }

@@ -92,14 +92,14 @@ pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Funct
             if o.rm as usize >= a.dims() {
                 run_block!(a, o, n1)
             } else {
-                apply_loosem(a, o.rm, |v| run_block!(v, o, n1))
+                apply_loosem(&o.a, a, o.rm, |v| run_block!(v, o, n1))
             }
         }),
         Rc::new(move |a, b, o| {
             if o.rd[0] as usize >= a.dims() && o.rd[1] as usize >= b.dims() {
                 run_block!(a, b, o, n2)
             } else {
-                apply_loosed(a, b, o.rd, |l, r| run_block!(l, r, o, n2))
+                apply_loosed(&o.a, a, b, o.rd, |l, r| run_block!(l, r, o, n2))
             }
         }),
         99,
