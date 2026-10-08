@@ -56,6 +56,9 @@ pub enum Node<'a> {
 pub struct Parser<'a> {
     nodes: Vec<Node<'a>>,
     tokens: Peekable<Iter<'a, Token<'a>>>,
+
+    // State
+    upto_store: Vec<TokenTag>,
     arena: Arena,
     scope: Scope,
 }
@@ -66,6 +69,7 @@ impl<'a> Parser<'a> {
         Self {
             nodes: vec![],
             tokens: l.iter().peekable(),
+            upto_store: vec![],
             arena,
             scope,
         }
@@ -279,12 +283,17 @@ impl<'a> Parser<'a> {
     // Swaps nodes temporarily to support certain parsing
     #[inline]
     fn consume_upto_tag(&mut self, tag: TokenTag) -> Status<Vec<Node<'a>>> {
+        self.upto_store.push(tag);
         let mut nodes = Vec::new();
         std::mem::swap(&mut nodes, &mut self.nodes);
-        while let Some(tok) = self.tokens.next_if(|(t, _)| *t != tag) {
+        while let Some(tok) = self
+            .tokens
+            .next_if(|(t, _)| self.upto_store.iter().all(|g| *g != *t))
+        {
             let node = self.consume_node(tok);
             Self::unpack_node(&mut self.nodes, node)?;
         }
+        self.upto_store.pop();
         self.second_pass();
         std::mem::swap(&mut nodes, &mut self.nodes);
         Ok(nodes)
@@ -308,10 +317,18 @@ impl<'a> Parser<'a> {
     }
 
     fn second_pass(&mut self) {
-        for node in &mut self.nodes {
+        'outer: for node in &mut self.nodes {
             match node {
                 // Unwrap singleton conditions
                 Node::Group(g) if g.len() == 1 => *node = std::mem::take(&mut g[0]),
+                Node::Group(g) => {
+                    for i in 1..g.len() {
+                        if !matches!(g[i], Node::Line) {
+                            continue 'outer;
+                        }
+                    }
+                    *node = std::mem::take(&mut g[0])
+                }
                 // TODO: Operators pass
                 _ => {}
             }
