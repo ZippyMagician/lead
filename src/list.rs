@@ -285,10 +285,10 @@ impl Display for List {
                 let strings = (0..)
                     .zip(strings.into_iter())
                     .map(|(i, elements)| {
-                        if i % rows == 0 {
-                            v = vmask(i / rows, rows);
+                        if i % cols == 0 {
+                            v = vmask(i / cols, rows);
                         }
-                        m = v | hmask(i % rows, cols);
+                        m = v | hmask(i % cols, cols);
                         Ok((m, display_boxed_lines(elements, Some(x), Some(y), m)?))
                     })
                     .collect::<Result<Vec<(u8, Vec<String>)>, fmt::Error>>()?;
