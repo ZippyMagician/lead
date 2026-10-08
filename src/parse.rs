@@ -57,11 +57,11 @@ pub struct Parser<'a> {
     nodes: Vec<Node<'a>>,
     tokens: Peekable<Iter<'a, Token<'a>>>,
     arena: Arena,
-    #[allow(dead_code)]
     scope: Scope,
 }
 
 impl<'a> Parser<'a> {
+    #[inline]
     pub fn new(arena: Arena, scope: Scope, l: &'a [Token<'a>]) -> Self {
         Self {
             nodes: vec![],
@@ -69,6 +69,11 @@ impl<'a> Parser<'a> {
             arena,
             scope,
         }
+    }
+
+    #[inline]
+    pub fn insert_tokens(&mut self, l: &'a [Token<'a>]) {
+        self.tokens = l.iter().peekable();
     }
 
     #[inline(always)]

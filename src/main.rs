@@ -4,18 +4,57 @@
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 use std::cell::RefCell;
+use std::io::{self, Write};
 use std::rc::Rc;
 
-use seqr::builtins::symbols::Symbol;
 use seqr::exec;
 use seqr::lex;
-use seqr::list::List;
 use seqr::parse;
-use seqr::scalar::Scalar;
 use seqr::scope::new_scope;
 
 use typed_arena::Arena;
 
+fn main() -> io::Result<()> {
+    let stdin = io::stdin();
+    let mut stdout = io::stdout();
+    let mut buf = String::with_capacity(100);
+
+    let arena = Rc::new(RefCell::new(Arena::new()));
+    let scope = new_scope();
+
+    let mut exec = exec::Exec::new(arena.clone(), scope.clone());
+
+    loop {
+        print!("    ");
+        stdout.flush()?;
+
+        buf.clear();
+        if stdin.read_line(&mut buf)? == 0 {
+            break;
+        }
+
+        let line = buf.trim_end_matches('\r');
+        let mut lexer = lex::Lexer::new(&line);
+        if let Err(e) = lexer.tokenize() {
+            println!("{e}");
+            continue;
+        }
+
+        let mut parser = parse::Parser::new(arena.clone(), scope.clone(), lexer.tokens());
+        if let Err(e) = parser.parse() {
+            println!("{e}");
+            continue;
+        }
+
+        if let Err(e) = exec.exec(parser.nodes()) {
+            println!("{e}");
+            continue;
+        }
+    }
+    Ok(())
+}
+
+/*
 fn main() -> Result<(), seqr::utils::error::Error> {
     /// --- LEXING --- \\\
     let mut lexer = lex::Lexer::new("1 2 3 +* x 4 5 6\n'hello world'4");
@@ -86,4 +125,4 @@ fn main() -> Result<(), seqr::utils::error::Error> {
     println!("{}", boxed.with_rank(&[2, 2])?);
 
     Ok(())
-}
+}*/

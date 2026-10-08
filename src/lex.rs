@@ -108,6 +108,7 @@ impl<'a> Lexer<'a> {
 
         match chr {
             '\'' => self.consume_string(start),
+            '`' => self.maybe_char(start),
             '{' => {
                 if self.next_if(|c| c == '{').is_some() {
                     tok!(OpenCurly, &self.input[start..start + 2])
@@ -138,6 +139,15 @@ impl<'a> Lexer<'a> {
         }
 
         self.consume_token()
+    }
+
+    #[inline]
+    fn maybe_char(&mut self, start: usize) -> Status<Token<'a>> {
+        if self.next_if(|c| c.is_alphanumeric()).is_some() {
+            tok!(String, &self.input[start..start + 2])
+        } else {
+            self.consume_builtin(start)
+        }
     }
 
     #[inline]

@@ -4,6 +4,7 @@ use std::mem::take;
 use crate::function::Function;
 use crate::list::List;
 use crate::parse::Node;
+use crate::scalar::Scalar;
 use crate::scope::Scope;
 use crate::utils::error::{Error, Status, err};
 use crate::utils::{self, Arena};
@@ -200,6 +201,20 @@ impl Exec {
         match tag {
             // Silent
             "~" => self.right = None,
+            // Get type
+            "?" => {
+                let right = self.right.take().ok_or(Error::Value)?;
+                if right.is_empty() {
+                    self.right = Some(List::string("()"));
+                } else {
+                    self.right = Some(match right.list()[0] {
+                        Scalar::Number(_) | Scalar::Float(_) => List::string("N"),
+                        Scalar::Boolean(_) => List::string("B"),
+                        Scalar::Char(_) => List::string("S"),
+                        Scalar::Box(_) => List::string("B"),
+                    })
+                }
+            }
             _ => return err!(Syntax, "Unrecognized tag."),
         }
 
