@@ -6,17 +6,15 @@ use crate::scalar::Scalar;
 use super::Arena;
 use super::error::{Status, err};
 
-use smallvec::SmallVec;
+use smallvec::{SmallVec, smallvec};
 
-// Mutates in place, expects result to have same shape as input
+// Returns a vector of `ListView`s, i.e. mutable slices pointing to adjacent values of rank `n`.
+// Assumes the result is rank equivalent to the input
 #[inline]
-pub fn applym<'a, T>(l: &'a mut List, r: u8, f: T) -> Status
-where
-    T: Fn(&'a mut [Scalar], &SmallVec<[usize; 4]>) -> Status,
-{
+pub fn applym<'a, T>(l: &'a mut List, r: u8) -> (Vec<&'a mut [Scalar]>, SmallVec<[usize; 4]>) {
     if l.is_empty() {
         hint::cold_path();
-        return Ok(());
+        return (vec![], smallvec![0]);
     }
 
     let r = usize::min(r as usize, l.rank().len());
@@ -24,11 +22,11 @@ where
     let skip: usize = l.rank()[r..].iter().product();
 
     let l = l.list_mut();
+    let mut v = Vec::with_capacity(l.len() / skip);
     for chunk in l.chunks_exact_mut(skip) {
-        f(chunk, &rank)?;
+        v.push(chunk);
     }
-
-    Ok(())
+    (v, rank)
 }
 
 // Applies function generally over monadic input. Does not make any assumptions

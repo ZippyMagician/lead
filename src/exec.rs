@@ -1,13 +1,16 @@
 use std::hint::unreachable_unchecked;
 use std::mem::take;
+use std::rc::Rc;
 
-use crate::function::Function;
+use crate::function::{Function, prim_fn};
 use crate::list::List;
 use crate::parse::Node;
 use crate::scalar::Scalar;
 use crate::scope::Scope;
 use crate::utils::error::{Error, Status, err};
 use crate::utils::{self, Arena};
+
+use smallvec::{SmallVec, smallvec};
 
 pub struct Exec {
     scope: Scope,
@@ -81,8 +84,15 @@ impl Exec {
                     head,
                     body,
                     is_internal,
-                    i > 0 && !utils::is_instant(&line[i - 1], self.scope.clone()),
+                    i > 0 && !utils::is_instant(&line[i - 1], &self.scope),
                 )?,
+                n @ Group(_) if utils::is_instant(&n, &self.scope) => {
+                    self.right = Some(self.exec_instant(n)?)
+                }
+                Group(g) => {
+                    let train = self.exec_train(g)?;
+                    self.right = Some(self.exec_function(train, &mut line, &mut i)?);
+                }
                 node => todo!("Execute node {node:?}"),
             }
 
@@ -130,7 +140,7 @@ impl Exec {
     fn exec_literal<'a>(
         &mut self,
         name: &'a str,
-        list: &mut Vec<Node<'a>>,
+        list: &mut [Node<'a>],
         i: &mut usize,
     ) -> Status<List> {
         let s = self.scope.clone();
@@ -161,12 +171,141 @@ impl Exec {
             return err!(Argument);
         }
         let right = self.right.take().unwrap();
-        if *i > 0 && utils::is_instant(&line[*i - 1], self.scope.clone()) {
+        if *i > 0 && utils::is_instant(&line[*i - 1], &self.scope) {
             let left = self.exec_instant(take(&mut line[*i - 1]))?;
             *i -= 1;
             f.dyadic_call(left, right)
         } else {
             f.monadic_call(right)
+        }
+    }
+
+    #[inline]
+    fn exec_train<'a>(&mut self, mut g: Vec<Node<'a>>) -> Status<Function> {
+        if g.is_empty() {
+            return Ok(Function::scalar(
+                List::empty(),
+                self.arena.clone(),
+                self.scope.clone(),
+            ));
+        }
+        let mut has_colon = false;
+        if matches!(&g[0], Node::Colon) {
+            has_colon = true;
+            g.remove(0);
+        }
+
+        let mut build: SmallVec<[Function; 3]> = smallvec![];
+        let mut i = g.len() - 1;
+        loop {
+            let n = take(&mut g[i]);
+            let f: Function;
+            if utils::is_instant(&n, &self.scope) {
+                let top = build.pop().unwrap();
+                let topr = top.clone();
+                let left = self.exec_instant(n)?;
+                let leftr = left.clone();
+                if build.is_empty() {
+                    build.push(prim_fn(
+                        Rc::new(move |a, _| top.dyadic_call(left.clone(), a)),
+                        Rc::new(move |_, b, _| topr.dyadic_call(leftr.clone(), b)),
+                        self.arena.clone(),
+                        self.scope.clone(),
+                    ));
+                } else {
+                    let rightfn = build.pop().unwrap();
+                    let rightfnr = rightfn.clone();
+                    build.push(prim_fn(
+                        Rc::new(move |a, _| {
+                            top.dyadic_call(left.clone(), rightfn.monadic_call(a)?)
+                        }),
+                        Rc::new(move |a, b, _| {
+                            topr.dyadic_call(leftr.clone(), rightfnr.dyadic_call(a, b)?)
+                        }),
+                        self.arena.clone(),
+                        self.scope.clone(),
+                    ));
+                }
+
+                if i == 0 {
+                    break;
+                }
+                i -= 1;
+                continue;
+            } else if let Node::Function(func) = n {
+                f = func;
+            } else if let Node::Literal(n) = n {
+                f = self
+                    .scope
+                    .borrow()
+                    .get(n)
+                    .ok_or(Error::Scope)?
+                    .as_function(self.arena.clone(), self.scope.clone())?;
+            } else if let Node::Group(g) = n {
+                f = self.exec_train(g)?;
+            } else {
+                return err!(Syntax, "Unexpected node in train");
+            }
+
+            if has_colon {
+                if build.is_empty() {
+                    build.push(f);
+                } else {
+                    let fr = f.clone();
+                    let g = build.pop().unwrap();
+                    let gr = g.clone();
+                    build.push(prim_fn(
+                        Rc::new(move |a, _| f.monadic_call(g.monadic_call(a)?)),
+                        Rc::new(move |a, b, _| fr.monadic_call(gr.dyadic_call(a, b)?)),
+                        self.arena.clone(),
+                        self.scope.clone(),
+                    ));
+                }
+            } else {
+                if build.len() == 2 {
+                    let g = build.pop().unwrap();
+                    let h = build.pop().unwrap();
+
+                    let fr = f.clone();
+                    let gr = g.clone();
+                    let hr = h.clone();
+                    build.push(prim_fn(
+                        Rc::new(move |a, _| {
+                            g.dyadic_call(f.monadic_call(a.clone())?, h.monadic_call(a)?)
+                        }),
+                        Rc::new(move |a, b, _| {
+                            gr.dyadic_call(
+                                fr.dyadic_call(a.clone(), b.clone())?,
+                                hr.dyadic_call(a, b)?,
+                            )
+                        }),
+                        self.arena.clone(),
+                        self.scope.clone(),
+                    ));
+                } else {
+                    build.push(f);
+                }
+            }
+
+            if i == 0 {
+                break;
+            }
+            i -= 1;
+        }
+
+        if build.len() == 2 {
+            let f = build.pop().unwrap();
+            let g = build.pop().unwrap();
+            let fr = f.clone();
+            let gr = g.clone();
+            Ok(prim_fn(
+                Rc::new(move |a, _| f.monadic_call(g.monadic_call(a)?)),
+                Rc::new(move |a, b, _| fr.monadic_call(gr.dyadic_call(a, b)?)),
+                self.arena.clone(),
+                self.scope.clone(),
+            ))
+        } else {
+            build.pop().ok_or(Error::Syntax("Empty expression.".into()))
         }
     }
 
@@ -182,7 +321,7 @@ impl Exec {
             todo!("Internals @ <exec.rs> exec_line");
         }
         let group = Node::Group(body);
-        if utils::is_instant(&group, self.scope.clone()) {
+        if utils::is_instant(&group, &self.scope) {
             let s = self.scope.clone();
             let list = self.exec_instant(group)?;
             if preserve_instant {
@@ -201,7 +340,9 @@ impl Exec {
                 let s = self.scope.clone();
                 s.borrow_mut().set_function(head, f);
             } else {
-                todo!("Trains @ <exec.rs> exec_line");
+                let f = self.exec_train(body)?;
+                let s = self.scope.clone();
+                s.borrow_mut().set_function(head, f);
             }
         }
 

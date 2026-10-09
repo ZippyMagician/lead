@@ -7,7 +7,12 @@ macro_rules! function {
         crate::function::Function::new_applied(
             ::std::rc::Rc::new($monad),
             ::std::rc::Rc::new($dyad),
-            $rm, $rd, $am, $ad, $a, $s,
+            $rm,
+            $rd,
+            $am,
+            $ad,
+            $a,
+            $s,
         )
     }};
 }

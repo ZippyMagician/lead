@@ -22,6 +22,10 @@ pub struct Function {
 pub type Monad = Rc<dyn Fn(List, &Opts) -> Status<List>>;
 pub type Dyad = Rc<dyn Fn(List, List, &Opts) -> Status<List>>;
 
+pub fn prim_fn(m: Monad, d: Dyad, a: Arena, s: Scope) -> Function {
+    Function::new(m, d, 99, [99, 99], a, s)
+}
+
 impl Function {
     pub fn new(m: Monad, d: Dyad, rm: u8, rd: [u8; 2], a: Arena, s: Scope) -> Self {
         Self {
@@ -30,6 +34,22 @@ impl Function {
             am: false,
             ad: false,
             op: Opts { rm, rd, a, s },
+        }
+    }
+
+    pub fn scalar(sc: List, a: Arena, s: Scope) -> Self {
+        let scr = sc.clone();
+        Self {
+            m: Rc::new(move |_, _| Ok(sc.clone())),
+            d: Rc::new(move |_, _, _| Ok(scr.clone())),
+            am: false,
+            ad: false,
+            op: Opts {
+                rm: 99,
+                rd: [99, 99],
+                a,
+                s,
+            },
         }
     }
 

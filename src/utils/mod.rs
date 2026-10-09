@@ -45,16 +45,16 @@ pub fn compatible(list: &[S]) -> bool {
 }
 
 #[inline]
-pub fn is_instant(node: &Node<'_>, scope: Scope) -> bool {
+pub fn is_instant(node: &Node<'_>, scope: &Scope) -> bool {
     use Node::*;
     match node {
         Primitive(_) => true,
         PrimitiveString(_) => true,
         PrimitiveBoxes(_) => true,
-        Assign { body, .. } if body.last().is_none_or(|n| is_instant(n, scope.clone())) => true,
+        Assign { body, .. } if body.last().is_none_or(|n| is_instant(n, scope)) => true,
         Literal(s) => scope.borrow().get(s).is_some_and(|m| m.is_instant()),
         LiteralInternal(_) => todo!("Literal internal"),
-        Group(body) if body.last().is_none_or(|n| is_instant(n, scope.clone())) => true,
+        Group(body) if body.last().is_none_or(|n| is_instant(n, scope)) => true,
         _ => false,
     }
 }

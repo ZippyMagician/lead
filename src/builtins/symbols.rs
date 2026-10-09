@@ -101,8 +101,16 @@ pub(super) fn div(mut a: List, mut b: List, _: &Opts) -> Status<List> {
 }
 
 // pipem | | | 0 | Boolean not
-pub(super) fn not(a: List, _: &Opts) -> Status<List> {
-    todo!()
+pub(super) fn not(mut a: List, _: &Opts) -> Status<List> {
+    for_0!(a; [v] = match v {
+        Char(c) if *c == '\0' => Boolean(true),
+        Number(n) if *n == 0 => Boolean(true),
+        Float(f) if *f == 0. => Boolean(true),
+        Boolean(b) => Boolean(!*b),
+        Scalar::Box(_) => return err!(Box),
+        _ => Boolean(false),
+    });
+    Ok(a)
 }
 
 // piped | | | 0, 0 | Residue (Modulus)
