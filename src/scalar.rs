@@ -1,13 +1,13 @@
 #![allow(dead_code)]
-use std::fmt::Debug;
+use std::fmt::{self, Debug, Display};
 use std::hint::{/*cold_path,*/ unreachable_unchecked};
 use std::ops::*;
 
 use crate::list::List;
-use crate::utils::Arena;
 use crate::utils::error::{Error, Status, err};
+use crate::utils::{Arena, display_boxed};
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug)]
 #[repr(u8)]
 pub enum Scalar {
     Number(i32),
@@ -15,17 +15,6 @@ pub enum Scalar {
     Boolean(bool),
     Char(char),
     Box(*const List),
-}
-
-// Representation of scalar, for casting
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
-pub(crate) struct Repr<T>
-where
-    T: Clone + Copy + Debug + PartialEq + PartialOrd,
-{
-    tag: u8,
-    value: T,
 }
 
 impl Scalar {
@@ -237,4 +226,76 @@ impl_arith_ops! {
         } else { l / r }
     };
     Rem, rem, [l, r] {l % r};
+}
+
+impl PartialEq for Scalar {
+    #[inline]
+    fn eq(&self, o: &Self) -> bool {
+        use Scalar::*;
+        match (&self, &o) {
+            (Number(l), Number(r)) => *l == *r,
+            (Number(l), Float(r)) => *l as f32 == *r,
+            (Number(l), Boolean(b)) if *b => *l == 1,
+            (Number(l), Boolean(_)) => *l == 0,
+            (Number(l), Char(c)) => *l == *c as u32 as i32,
+            (Float(l), Float(r)) => *l == *r,
+            (Float(l), Boolean(b)) if *b => *l == 1.,
+            (Float(l), Boolean(_)) => *l == 0.,
+            (Float(l), Char(c)) => *l == *c as u32 as f32,
+            (Char(c), Boolean(b)) if *b => false,
+            (Char(c), Boolean(_)) => *c == '\0',
+            (Char(c), Char(r)) => *c == *r,
+            (Box(l), Box(r)) => l.eq(&r),
+            (Box(_), _) => false,
+            _ => o.eq(&self),
+        }
+    }
+}
+
+impl PartialOrd for Scalar {
+    #[inline]
+    fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(&o))
+    }
+}
+
+impl Ord for Scalar {
+    #[inline]
+    fn cmp(&self, o: &Self) -> std::cmp::Ordering {
+        if self.is_box() && !o.is_box() || o.is_box() && !self.is_box() {
+            if self.is_box() {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            }
+        } else if self.is_float() || o.is_float() {
+            f32::total_cmp(&self.to_float().unwrap(), &o.to_float().unwrap())
+        } else if self.is_box() && o.is_box() {
+            unsafe { self.unbox_unchecked().cmp(&o.unbox_unchecked()) }
+        } else {
+            self.to_num().unwrap().cmp(&o.to_num().unwrap())
+        }
+    }
+}
+
+impl Eq for Scalar {}
+
+impl Display for Scalar {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Number(n) => write!(f, "{n}"),
+            Self::Float(n) => write!(f, "{n}"),
+            Self::Boolean(b) => write!(f, "{}", *b as u8),
+            Self::Char(c) => write!(f, "{c}"),
+            Self::Box(l) => {
+                if l.is_null() {
+                    err!(MemoryFault, "Lost Box"; !);
+                }
+                // SAFETY: Pointer checked. Taking reference, so other pointers are still valid
+                let list: &List = unsafe { &**l };
+                write!(f, "{}", display_boxed(format!("{list}"), None, None)?)
+            }
+        }
+    }
 }

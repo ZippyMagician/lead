@@ -12,7 +12,7 @@ use smallvec::{SmallVec, smallvec};
 use crate::scalar::Scalar;
 use crate::utils::Arena;
 use crate::utils::error::{Status, err};
-use crate::utils::{compatible, display_boxed, display_boxed_lines};
+use crate::utils::{compatible, display_boxed_lines};
 
 const INLINE_SIZE: usize = 4;
 
@@ -271,25 +271,38 @@ fn eq_rank(a: &[usize], b: &[usize]) -> bool {
     a.iter().zip(b.iter()).all(|(l, r)| l == r)
 }
 
-impl Display for Scalar {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Number(n) => write!(f, "{n}"),
-            Self::Float(n) => write!(f, "{n}"),
-            Self::Boolean(b) => write!(f, "{}", *b as u8),
-            Self::Char(c) => write!(f, "{c}"),
-            Self::Box(l) => {
-                if l.is_null() {
-                    err!(MemoryFault, "Lost Box"; !);
-                }
-                // SAFETY: Pointer checked. Taking reference, so other pointers are still valid
-                let list: &List = unsafe { &**l };
-                write!(f, "{}", display_boxed(format!("{list}"), None, None)?)
-            }
-        }
+impl PartialOrd for List {
+    fn partial_cmp(&self, o: &List) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(&o))
     }
 }
+
+impl PartialEq for List {
+    fn eq(&self, o: &List) -> bool {
+        eq_rank(self.rank(), o.rank()) && self.list().iter().zip(o.list()).all(|(l, r)| *l == *r)
+    }
+}
+
+impl Ord for List {
+    fn cmp(&self, o: &List) -> std::cmp::Ordering {
+        self.dims()
+            .cmp(&o.dims())
+            .then(self.len().cmp(&o.len()))
+            .then_with(|| {
+                let l = self.list();
+                let o = o.list();
+
+                for (l, r) in l.iter().zip(o) {
+                    if l != r {
+                        return l.cmp(&r);
+                    }
+                }
+                std::cmp::Ordering::Equal
+            })
+    }
+}
+
+impl Eq for List {}
 
 // SAFETY: Determined by called
 fn push_and_get<'a>(v: &mut Vec<String>, s: String) -> &'a str {

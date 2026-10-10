@@ -24,7 +24,7 @@ pub(crate) use for_0;
 
 macro_rules! scalar_op {
     ($a:ident, $b:ident, $d:ident) => {
-        if $a.len() == $b.len() {
+        /*if $a.len() == $b.len() {
             let values = $a.list_mut();
             for (l, r) in values.iter_mut().zip($b.list()) {
                 *l = l.$d(*r)?;
@@ -64,8 +64,59 @@ macro_rules! scalar_op {
             Ok($b)
         } else {
             err!(Domain)
-        }
+        }*/
+        scalar_op!($a, $b, 
+            [l, r] = { l.$d(*r)? }; { r.$d(l)? }; { l.$d(r)? };
+        )
     };
+
+    // e1: L is &mut S, R is &S.
+    // e2: L is S, R is &mut S
+    // e3: L is &mut S, R is S
+    ($a:ident, $b:ident, [$l:ident, $r:ident] = $e1:block; $e2:block; $e3:block;) => {
+        if $a.len() == $b.len() {
+            let values = $a.list_mut();
+            for ($l, $r) in values.iter_mut().zip($b.list()) {
+                *$l = $e1;
+            }
+            Ok($a)
+        } else if $a.is_empty() {
+            Ok($b)
+        } else if $b.is_empty() {
+            Ok($a)
+        } else if $a.is_scalar() {
+            // And now it's fucking slower?? what the fuck
+            /*for (l, r) in $b.list_mut().iter_mut().zip(
+                $a.list().iter().cycle()
+            ) {
+                *l = r.$d(*l)?;
+            }*/
+            let $l = $a.list()[0];
+            for_0!($b; [$r] = $e2);
+            Ok($b)
+        } else if $b.is_scalar() {
+            let $r = $b.list()[0];
+            for_0!($a; [$l] = $e3);
+            Ok($a)
+        } else if $a.len() % $b.len() == 0 {
+            let m = $a.list_mut();
+            let o = $b.list();
+            for ($l, $r) in m.iter_mut().zip(o.iter().cycle()) {
+                *$l = $e1;
+            }
+            Ok($a)
+        } else if $b.len() % $a.len() == 0 {
+            let m = $b.list_mut();
+            let o = $a.list();
+            for ($r, $l) in m.iter_mut().zip(o.iter().cycle()) {
+                *$r = $e1;
+            }
+            Ok($b)
+        } else {
+            err!(Domain)
+        }
+
+    }
 }
 
 pub(crate) use scalar_op;

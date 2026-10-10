@@ -189,8 +189,13 @@ pub(crate) fn boxed(a: List, o: &Opts) -> Status<List> {
 }
 
 // leftarrowd | < | 0, 0 | Less than
-pub(crate) fn lt(a: List, b: List, _: &Opts) -> Status<List> {
-    todo!()
+pub(crate) fn lt(mut a: List, mut b: List, _: &Opts) -> Status<List> {
+    scalar_op! {
+        a, b, [l, r] =
+        { Scalar::Boolean(*l < *r) };
+        { Scalar::Boolean(l < *r)  };
+        { Scalar::Boolean(*l < r)  };
+    }
 }
 
 // dollarm | $ | 99 | Shape
