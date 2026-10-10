@@ -24,47 +24,6 @@ pub(crate) use for_0;
 
 macro_rules! scalar_op {
     ($a:ident, $b:ident, $d:ident) => {
-        /*if $a.len() == $b.len() {
-            let values = $a.list_mut();
-            for (l, r) in values.iter_mut().zip($b.list()) {
-                *l = l.$d(*r)?;
-            }
-            Ok($a)
-        } else if $a.is_empty() {
-            Ok($b)
-        } else if $b.is_empty() {
-            Ok($a)
-        } else if $a.is_scalar() {
-            // And now it's fucking slower?? what the fuck
-            /*for (l, r) in $b.list_mut().iter_mut().zip(
-                $a.list().iter().cycle()
-            ) {
-                *l = r.$d(*l)?;
-            }*/
-            let a = $a.list()[0];
-            for_0!($b; [r] = r.$d(a)?);
-            Ok($b)
-        } else if $b.is_scalar() {
-            let b = $b.list()[0];
-            for_0!($a; [l] = l.$d(b)?);
-            Ok($a)
-        } else if $a.len() % $b.len() == 0 {
-            let m = $a.list_mut();
-            let o = $b.list();
-            for (l, r) in m.iter_mut().zip(o.iter().cycle()) {
-                *l = l.$d(*r)?;
-            }
-            Ok($a)
-        } else if $b.len() % $a.len() == 0 {
-            let m = $b.list_mut();
-            let o = $a.list();
-            for (l, r) in m.iter_mut().zip(o.iter().cycle()) {
-                *l = r.$d(*l)?;
-            }
-            Ok($b)
-        } else {
-            err!(Domain)
-        }*/
         scalar_op!($a, $b, 
             [l, r] = { l.$d(*r)? }; { r.$d(l)? }; { l.$d(r)? };
         )

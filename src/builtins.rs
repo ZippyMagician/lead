@@ -44,5 +44,6 @@ define_syms! {
     Pipe => (b"|", 0, false, symbols::not; [0, 0], false, symbols::residue);
     Tilde => (b"~", 0, false, symbols::range; [99, 0], true, symbols::index);
     LeftArrow => (b"<", 99, false, symbols::boxed; [0, 0], false, symbols::lt);
+    RightArrow => (b">", 99, false, symbols::unbox; [0, 0], false, symbols::gt);
     Dollar => (b"$", 99, false, symbols::shape; [1, 99], true, symbols::reshape);
 }

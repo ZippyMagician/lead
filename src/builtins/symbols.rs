@@ -14,13 +14,23 @@ use smallvec::{SmallVec, smallvec};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(C)]
 pub enum Symbol {
+    /// `+`
     Plus,
+    /// `-`
     Dash,
+    /// `*`
     Star,
+    /// `%`
     Percent,
+    /// `|`
     Pipe,
+    /// `~`
     Tilde,
+    /// `<`
     LeftArrow,
+    /// `>`
+    RightArrow,
+    /// `$`
     Dollar,
 }
 
@@ -195,6 +205,33 @@ pub(crate) fn lt(mut a: List, mut b: List, _: &Opts) -> Status<List> {
         { Scalar::Boolean(*l < *r) };
         { Scalar::Boolean(l < *r)  };
         { Scalar::Boolean(*l < r)  };
+    }
+}
+
+// rightarrowm | > | 99 | Unbox / First
+pub(crate) fn unbox(a: List, o: &Opts) -> Status<List> {
+    if a.is_scalar() {
+        let f = &a.list()[0];
+        if f.is_box() {
+            Ok(unsafe { f.unbox_unchecked() })
+        } else {
+            Ok(a)
+        }
+    } else if a.is_empty() {
+        std::hint::cold_path();
+        Ok(a)
+    } else {
+        Ok(List::scalar(a.list()[0]))
+    }
+}
+
+// rightarrowd | > | 0, 0 | Greater than
+pub(crate) fn gt(mut a: List, mut b: List, _: &Opts) -> Status<List> {
+    scalar_op! {
+        a, b, [l, r] =
+        { Scalar::Boolean(*l > *r) };
+        { Scalar::Boolean(l > *r) };
+        { Scalar::Boolean(*l < r) };
     }
 }
 
