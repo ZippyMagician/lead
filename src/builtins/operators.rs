@@ -1,11 +1,13 @@
 use crate::function::{Function, function};
-use crate::scope::{Scope, MaybeInstant};
-use crate::utils::error::{Status, err};
+use crate::scope::{MaybeInstant, Scope};
 use crate::utils::Arena;
+use crate::utils::error::{Status, err};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[repr(C)]
 pub enum Operator {
+    #[default]
+    Null,
     /// `&`
     AtopBind,
     /// `&:`
@@ -16,7 +18,12 @@ pub enum Operator {
     Fold,
 }
 
-pub(crate) fn atop_bind(l: MaybeInstant, r: MaybeInstant, arena: Arena, scope: Scope) -> Status<Function> {
+pub(crate) fn atop_bind(
+    l: MaybeInstant,
+    r: MaybeInstant,
+    arena: Arena,
+    scope: Scope,
+) -> Status<Function> {
     if l.is_instant() && r.is_instant() {
         return err!(Domain);
     }
@@ -56,4 +63,3 @@ pub(crate) fn atop_bind(l: MaybeInstant, r: MaybeInstant, arena: Arena, scope: S
         ))
     }
 }
-

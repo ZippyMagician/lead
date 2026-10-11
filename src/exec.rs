@@ -1,11 +1,12 @@
 use std::hint::unreachable_unchecked;
 use std::mem::take;
 
+use crate::builtins::operators::Operator;
 use crate::function::{Function, function};
 use crate::list::List;
 use crate::parse::Node;
 use crate::scalar::Scalar;
-use crate::scope::Scope;
+use crate::scope::{MaybeInstant, Scope};
 use crate::utils::error::{Error, Status, err};
 use crate::utils::{self, Arena};
 
@@ -75,6 +76,10 @@ impl Exec {
                 LiteralInternal(l) => self.right = Some(self.exec_internal(l)?),
                 Tag(t) => self.exec_tag(t)?,
                 Function(f) => self.right = Some(self.exec_function(f, &mut line, &mut i)?),
+                Op(o, l, r) => {
+                    let op = self.exec_operator(o, *l, *r)?;
+                    self.right = Some(self.exec_function(op, &mut line, &mut i)?);
+                }
                 Assign {
                     head,
                     is_internal,
@@ -180,6 +185,21 @@ impl Exec {
     }
 
     #[inline]
+    fn exec_operator<'a>(
+        &mut self,
+        o: Operator,
+        l: Node<'a>,
+        r: Option<Node<'a>>,
+    ) -> Status<Function> {
+        o.getop(
+            self.maybe_instant(l)?,
+            r.map_or(Ok(None), |n| self.maybe_instant(n).map(Some))?,
+            self.arena.clone(),
+            self.scope.clone(),
+        )
+    }
+
+    #[inline]
     fn exec_train<'a>(&mut self, mut g: Vec<Node<'a>>) -> Status<Function> {
         if g.is_empty() {
             return Ok(Function::scalar(
@@ -199,6 +219,7 @@ impl Exec {
         loop {
             let n = take(&mut g[i]);
             let f: Function;
+            // I don't have to check for operators since these are only stored for now
             if utils::is_instant(&n, &self.scope) {
                 let top = build.pop().unwrap();
                 let topr = top.clone();
@@ -230,6 +251,8 @@ impl Exec {
                 continue;
             } else if let Node::Function(func) = n {
                 f = func;
+            } else if let Node::Op(o, l, r) = n {
+                f = self.exec_operator(o, *l, *r)?;
             } else if let Node::Literal(n) = n {
                 f = self
                     .scope
@@ -364,5 +387,20 @@ impl Exec {
         }
 
         Ok(())
+    }
+
+    #[inline]
+    fn maybe_instant<'a>(&mut self, node: Node<'a>) -> Status<MaybeInstant> {
+        if utils::is_instant(&node, &self.scope) {
+            Ok(MaybeInstant::Instant(self.exec_instant(node)?))
+        } else if let Node::Function(f) = node {
+            Ok(MaybeInstant::Function(f))
+        } else if let Node::Op(o, l, r) = node {
+            Ok(MaybeInstant::Function(self.exec_operator(o, *l, *r)?))
+        } else if let Node::Group(g) = node {
+            Ok(MaybeInstant::Function(self.exec_train(g)?))
+        } else {
+            unreachable!("Internal error @ src/exec.rs:maybe_instant");
+        }
     }
 }

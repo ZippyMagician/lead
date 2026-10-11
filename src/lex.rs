@@ -1,6 +1,8 @@
 use std::iter::Peekable;
 use std::str::CharIndices;
 
+use crate::builtins::operators::Operator;
+use crate::builtins::symbols::Symbol;
 use crate::utils::error::{Error, Status, err};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -12,8 +14,10 @@ pub enum TokenTag {
     String,
     /// `for`, `print`, `add`, etc.
     Literal,
-    /// `+`, `!=`, `.`, etc
+    /// `+`, `=`, etc
     Symbol,
+    /// `&`, `/`, etc
+    Operator,
     /// Has semantic meaning, unlike other whitespace
     /// e.g. in `-> x : . + \n 1 2 3 x`, x's definition should end with the newline
     Newline,
@@ -260,7 +264,13 @@ impl<'a> Lexer<'a> {
             end += 1;
         }
 
-        tok!(Symbol, &self.input[start..end])
+        if Operator::get_operator(&self.input[start..end]).is_some() {
+            tok!(Operator, &self.input[start..end])
+        } else if Symbol::get_symbol(&self.input[start..end]).is_some() {
+            tok!(Symbol, &self.input[start..end])
+        } else {
+            err!(Syntax, "Unrecognized builtin.")
+        }
     }
 
     fn skip_comment(&mut self) -> Option<Token<'a>> {

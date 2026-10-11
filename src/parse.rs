@@ -2,6 +2,7 @@ use std::fmt::{self, Debug};
 use std::iter::Peekable;
 use std::slice::Iter;
 
+use crate::builtins::operators::{self, Operator};
 use crate::builtins::symbols;
 use crate::function::Function;
 use crate::lex::{Token, TokenTag};
@@ -30,6 +31,11 @@ pub enum Node<'a> {
     Function(Function),
     /// Parenthesized group of nodes
     Group(Vec<Node<'a>>),
+    /// Operator waiting to be passed arguments
+    MonadicOp(Operator),
+    DyadicOp(Operator),
+    /// Full operator
+    Op(Operator, Box<Node<'a>>, Box<Option<Node<'a>>>),
     /// Raw colon identifier
     Colon,
     /// Assignment
@@ -101,7 +107,7 @@ impl<'a> Parser<'a> {
             Self::unpack_node(&mut self.nodes, status)?;
         }
         self.nodes.push(Node::Line);
-        self.second_pass();
+        self.second_pass()?;
         Ok(())
     }
 
@@ -119,9 +125,17 @@ impl<'a> Parser<'a> {
             String => self.consume_primitive_string(t.1),
             Symbol => {
                 let f = symbols::Symbol::get_symbol(t.1)
-                    .ok_or(Error::Syntax("Unrecognized symbol.".into()))?
+                    .unwrap()
                     .getfn(self.arena.clone(), self.scope.clone());
                 Ok(Node::Function(f))
+            }
+            Operator => {
+                let o = operators::Operator::get_operator(t.1).unwrap();
+                if o.is_monadic() {
+                    Ok(Node::MonadicOp(o))
+                } else {
+                    Ok(Node::DyadicOp(o))
+                }
             }
             Literal => Ok(if t.1.ends_with('.') {
                 Node::LiteralInternal(t.1.trim_end_matches('.'))
@@ -294,7 +308,7 @@ impl<'a> Parser<'a> {
             Self::unpack_node(&mut self.nodes, node)?;
         }
         self.upto_store.pop();
-        self.second_pass();
+        self.second_pass()?;
         std::mem::swap(&mut nodes, &mut self.nodes);
         Ok(nodes)
     }
@@ -311,28 +325,65 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
-        self.second_pass();
+        self.second_pass()?;
         std::mem::swap(&mut nodes, &mut self.nodes);
         Ok(nodes)
     }
 
-    fn second_pass(&mut self) {
-        'outer: for node in &mut self.nodes {
+    fn second_pass(&mut self) -> Status {
+        let mut i = 0;
+        'outer: while i < self.nodes.len() {
+            let node = &self.nodes[i];
             match node {
                 // Unwrap singleton conditions
-                Node::Group(g) if g.len() == 1 => *node = std::mem::take(&mut g[0]),
+                Node::Group(g) if g.len() == 1 => {
+                    let Node::Group(mut g) = std::mem::take(&mut self.nodes[i]) else {
+                        unsafe { std::hint::unreachable_unchecked() }
+                    };
+                    self.nodes[i] = std::mem::take(&mut g[0]);
+                }
                 Node::Group(g) => {
-                    for i in 1..g.len() {
-                        if !matches!(g[i], Node::Line) {
+                    for j in 1..g.len() {
+                        if !matches!(g[j], Node::Line) {
+                            i += 1;
                             continue 'outer;
                         }
                     }
-                    *node = std::mem::take(&mut g[0])
+                    let Node::Group(mut g) = std::mem::take(&mut self.nodes[i]) else {
+                        unsafe { std::hint::unreachable_unchecked() }
+                    };
+                    self.nodes[i] = std::mem::take(&mut g[0]);
                 }
-                // TODO: Operators pass
+                Node::MonadicOp(_) => {
+                    if i == 0 {
+                        return err!(Syntax, "Missing operator parameter.");
+                    }
+                    let last = self.nodes.remove(i - 1);
+                    let Node::MonadicOp(o) = std::mem::take(&mut self.nodes[i - 1]) else {
+                        unsafe { std::hint::unreachable_unchecked() }
+                    };
+                    self.nodes[i - 1] = Node::Op(o, Box::new(last), Box::new(None));
+                    i -= 1;
+                }
+                Node::DyadicOp(_) => {
+                    if i == 0 || i == self.nodes.len() - 1 {
+                        return err!(Syntax, "Missing operator parameter.");
+                    }
+                    let last = self.nodes.remove(i - 1);
+                    let next = self.nodes.remove(i);
+                    let Node::DyadicOp(o) = std::mem::take(&mut self.nodes[i - 1]) else {
+                        unsafe { std::hint::unreachable_unchecked() }
+                    };
+                    self.nodes[i - 1] = Node::Op(o, Box::new(last), Box::new(Some(next)));
+                    i -= 1;
+                }
                 _ => {}
             }
+
+            i += 1;
         }
+
+        Ok(())
     }
 }
 
@@ -345,6 +396,9 @@ impl<'a> Debug for Node<'a> {
             Node::Literal(l) => write!(f, "Lit({l})"),
             Node::LiteralInternal(l) => write!(f, "Internal({l}.)"),
             Node::Function(_) => write!(f, "Function"),
+            Node::MonadicOp(_) => write!(f, "Adverb"),
+            Node::DyadicOp(_) => write!(f, "Conjunction"),
+            Node::Op(o, l, r) => write!(f, "({l:?}) {o:?} ({r:?})"),
             Node::Line => write!(f, "NL"),
             Node::Tag(t) => write!(f, "[{t}]"),
             Node::Group(g) => write!(f, "({g:?})"),
