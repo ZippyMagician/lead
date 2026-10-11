@@ -131,7 +131,7 @@ pub(crate) fn display_boxed_lines(
 ) -> Result<Vec<String>, std::fmt::Error> {
     //     ╓─╖╙─╜║┌┬┐├┼┤└┴┘│─
     let y = lines.len();
-    let x = if y == 0 { 0 } else { lines[0].len() };
+    let x = if y == 0 { 0 } else { lines[0].chars().count() };
 
     let my = my.unwrap_or(y);
     let mx = mx.unwrap_or(x);
@@ -157,8 +157,9 @@ pub(crate) fn display_boxed_lines(
         } else {
             &lines[i - yoff]
         };
-        let xoff = (mx - line.len() + 2) / 2;
-        if (mx - line.len()) % 2 != 0 {
+        let l = line.chars().count();
+        let xoff = (mx - l + 2) / 2;
+        if (mx - l) % 2 != 0 {
             write!(f, "│{}{}{}│", " ".repeat(xoff), line, " ".repeat(xoff + 1))?;
         } else {
             write!(f, "│{0}{1}{0}│", " ".repeat(xoff), line)?;

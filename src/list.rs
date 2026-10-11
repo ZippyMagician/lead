@@ -327,6 +327,7 @@ impl Display for List {
         if self.is_scalar() {
             write!(f, "{}", self.list()[0])?;
         } else if self.is_empty() {
+            std::hint::cold_path();
             return Ok(());
         } else if self.dims() < 3 {
             let boxed = self.list()[0].is_box();
