@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::hint;
 use std::rc::Rc;
 
-use crate::function::Function;
+use crate::function::{Function, function};
 use crate::list::List;
 use crate::utils::Arena;
 use crate::utils::error::{Status, err};
@@ -32,7 +32,7 @@ impl MaybeInstant {
     }
 
     #[inline]
-    pub fn as_instant(self) -> Status<List> {
+    pub fn to_instant(self) -> Status<List> {
         match self {
             Self::Instant(l) => Ok(l),
             _ => err!(Value),
@@ -40,20 +40,17 @@ impl MaybeInstant {
     }
 
     #[inline]
-    pub fn as_function(self, arena: Arena, scope: Scope) -> Status<Function> {
+    pub fn to_function(self, arena: Arena, scope: Scope) -> Status<Function> {
         match self {
             Self::Function(f) => Ok(f),
             Self::Instant(l) => {
                 hint::cold_path();
                 let m = l.clone();
                 let d = l;
-                Ok(Function::new(
-                    Rc::new(move |_, _| Ok(m.clone())),
-                    Rc::new(move |_, _, _| Ok(d.clone())),
-                    99,
-                    [99, 99],
-                    arena,
-                    scope,
+                Ok(function!(
+                    move |_, _| Ok(m.clone());
+                    move |_, _, _| Ok(d.clone());
+                    arena, scope
                 ))
             }
         }

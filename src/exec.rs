@@ -1,8 +1,7 @@
 use std::hint::unreachable_unchecked;
 use std::mem::take;
-use std::rc::Rc;
 
-use crate::function::{Function, prim_fn};
+use crate::function::{Function, function};
 use crate::list::List;
 use crate::parse::Node;
 use crate::scalar::Scalar;
@@ -113,7 +112,7 @@ impl Exec {
             Primitive(l) => Ok(l),
             PrimitiveString(l) => Ok(l),
             PrimitiveBoxes(l) => Ok(l),
-            Literal(l) => self.scope.borrow().get(l).unwrap().as_instant(),
+            Literal(l) => self.scope.borrow().get(l).unwrap().to_instant(),
             LiteralInternal(_) => todo!("Internals @ <exec.rs> exec_instant"),
             Assign {
                 head,
@@ -146,10 +145,10 @@ impl Exec {
         let s = self.scope.clone();
         let value = s.borrow().get(name).ok_or(Error::Scope)?;
         if value.is_instant() {
-            Ok(value.as_instant().unwrap())
+            Ok(value.to_instant().unwrap())
         } else {
             let f = value
-                .as_function(self.arena.clone(), self.scope.clone())
+                .to_function(self.arena.clone(), self.scope.clone())
                 .unwrap();
             self.exec_function(f, list, i)
         }
@@ -206,24 +205,21 @@ impl Exec {
                 let left = self.exec_instant(n)?;
                 let leftr = left.clone();
                 if build.is_empty() {
-                    build.push(prim_fn(
-                        Rc::new(move |a, _| top.dyadic_call(left.clone(), a)),
-                        Rc::new(move |_, b, _| topr.dyadic_call(leftr.clone(), b)),
-                        self.arena.clone(),
-                        self.scope.clone(),
+                    build.push(function!(
+                        move |a, _| top.dyadic_call(left.clone(), a);
+                        move |_, b, _| topr.dyadic_call(leftr.clone(), b);
+                        self.arena.clone(), self.scope.clone()
                     ));
                 } else {
                     let rightfn = build.pop().unwrap();
                     let rightfnr = rightfn.clone();
-                    build.push(prim_fn(
-                        Rc::new(move |a, _| {
+                    build.push(function!(
+                        move |a, _| {
                             top.dyadic_call(left.clone(), rightfn.monadic_call(a)?)
-                        }),
-                        Rc::new(move |a, b, _| {
+                        };
+                        move |a, b, _| {
                             topr.dyadic_call(leftr.clone(), rightfnr.dyadic_call(a, b)?)
-                        }),
-                        self.arena.clone(),
-                        self.scope.clone(),
+                        }; self.arena.clone(), self.scope.clone()
                     ));
                 }
 
@@ -240,7 +236,7 @@ impl Exec {
                     .borrow()
                     .get(n)
                     .ok_or(Error::Scope)?
-                    .as_function(self.arena.clone(), self.scope.clone())?;
+                    .to_function(self.arena.clone(), self.scope.clone())?;
             } else if let Node::Group(g) = n {
                 f = self.exec_train(g)?;
             } else {
@@ -254,11 +250,10 @@ impl Exec {
                     let fr = f.clone();
                     let g = build.pop().unwrap();
                     let gr = g.clone();
-                    build.push(prim_fn(
-                        Rc::new(move |a, _| f.monadic_call(g.monadic_call(a)?)),
-                        Rc::new(move |a, b, _| fr.monadic_call(gr.dyadic_call(a, b)?)),
-                        self.arena.clone(),
-                        self.scope.clone(),
+                    build.push(function!(
+                        move |a, _| f.monadic_call(g.monadic_call(a)?);
+                        move |a, b, _| fr.monadic_call(gr.dyadic_call(a, b)?);
+                        self.arena.clone(), self.scope.clone()
                     ));
                 }
             } else {
@@ -269,18 +264,16 @@ impl Exec {
                     let fr = f.clone();
                     let gr = g.clone();
                     let hr = h.clone();
-                    build.push(prim_fn(
-                        Rc::new(move |a, _| {
+                    build.push(function!(
+                        move |a, _| {
                             g.dyadic_call(f.monadic_call(a.clone())?, h.monadic_call(a)?)
-                        }),
-                        Rc::new(move |a, b, _| {
+                        };
+                        move |a, b, _| {
                             gr.dyadic_call(
                                 fr.dyadic_call(a.clone(), b.clone())?,
                                 hr.dyadic_call(a, b)?,
                             )
-                        }),
-                        self.arena.clone(),
-                        self.scope.clone(),
+                        }; self.arena.clone(), self.scope.clone()
                     ));
                 } else {
                     build.push(f);
@@ -298,11 +291,10 @@ impl Exec {
             let g = build.pop().unwrap();
             let fr = f.clone();
             let gr = g.clone();
-            Ok(prim_fn(
-                Rc::new(move |a, _| f.monadic_call(g.monadic_call(a)?)),
-                Rc::new(move |a, b, _| fr.monadic_call(gr.dyadic_call(a, b)?)),
-                self.arena.clone(),
-                self.scope.clone(),
+            Ok(function!(
+                move |a, _| f.monadic_call(g.monadic_call(a)?);
+                move |a, b, _| fr.monadic_call(gr.dyadic_call(a, b)?);
+                self.arena.clone(), self.scope.clone()
             ))
         } else {
             build.pop().ok_or(Error::Syntax("Empty expression.".into()))

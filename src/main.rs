@@ -39,8 +39,11 @@ fn main() -> io::Result<()> {
         }
 
         let line = buf.trim_end_matches('\r');
-        if line == "test\n" {
+        if line == "test speed\n" {
             speedtest(arena.clone(), scope.clone());
+            continue;
+        } else if line == "test op\n" {
+            optest(arena.clone(), scope.clone());
             continue;
         }
 
@@ -152,4 +155,24 @@ fn speedtest(arena: Rc<RefCell<Arena<List>>>, scope: seqr::scope::Scope) {
     let t2 = std::time::Instant::now();
     println!("{}: {:?}", result.is_ok(), t2 - t1);
     // --- END --- \\\
+}
+
+fn optest(arena: Rc<RefCell<Arena<List>>>, scope: seqr::scope::Scope) {
+    let seven = List::scalar(Scalar::Number(7));
+    let _plus = Symbol::get_symbol("+")
+        .unwrap()
+        .getfn(arena.clone(), scope.clone());
+    let minus = Symbol::get_symbol("-")
+        .unwrap()
+        .getfn(arena.clone(), scope.clone());
+
+    let op = seqr::builtins::operators::Operator::get_operator("&").unwrap();
+    let atop_bind = op.getop(
+        seqr::scope::MaybeInstant::Function(minus),
+        Some(seqr::scope::MaybeInstant::Instant(seven.clone())),
+        arena,
+        scope,
+    ).unwrap();
+
+    println!("(-&7) 7 :: {:?}", atop_bind.monadic_call(seven))
 }

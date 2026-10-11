@@ -22,10 +22,6 @@ pub struct Function {
 pub type Monad = Rc<dyn Fn(List, &Opts) -> Status<List>>;
 pub type Dyad = Rc<dyn Fn(List, List, &Opts) -> Status<List>>;
 
-pub fn prim_fn(m: Monad, d: Dyad, a: Arena, s: Scope) -> Function {
-    Function::new(m, d, 99, [99, 99], a, s)
-}
-
 impl Function {
     pub fn new(m: Monad, d: Dyad, rm: u8, rd: [u8; 2], a: Arena, s: Scope) -> Self {
         Self {
@@ -116,3 +112,31 @@ pub struct Opts {
     pub a: Arena,
     pub s: Scope,
 }
+
+macro_rules! function {
+    ($monad:expr; $dyad:expr; $arena:expr, $scope:expr) => {
+        crate::function::Function::new(
+            ::std::rc::Rc::new($monad),
+            ::std::rc::Rc::new($dyad),
+            99,
+            [99, 99],
+            $arena,
+            $scope,
+        )
+    };
+
+    ($rm:literal, $am:ident, $monad:expr; $rd:expr, $ad:ident, $dyad:expr; $a:ident, $s:ident) => {{
+        crate::function::Function::new_applied(
+            ::std::rc::Rc::new($monad),
+            ::std::rc::Rc::new($dyad),
+            $rm,
+            $rd,
+            $am,
+            $ad,
+            $a,
+            $s,
+        )
+    }};
+}
+
+pub(crate) use function;
