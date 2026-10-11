@@ -168,7 +168,7 @@ fn c(i: i32) -> Status<Scalar> {
 }
 
 macro_rules! impl_arith_ops {
-    ($($name:ident, $f:ident, [$a1:ident, $a2:ident] $operation:block);*;) => {
+    ($($name:ident, $f:ident, $uniq:ident, [$a1:ident, $a2:ident] $operation:block, $operation2:block);*;) => {
         $(
             impl $name for Scalar {
                 type Output = Status<Self>;
@@ -185,6 +185,12 @@ macro_rules! impl_arith_ops {
                         let $a1 = self.to_float()?;
                         let $a2 = rhs.to_float()?;
                         f($operation)
+                    } else if $uniq && self.is_bool() && rhs.is_bool() {
+                        #[allow(unused_variables)]
+                        let $a1 = unsafe { self.to_bool_unchecked() };
+                        #[allow(unused_variables)]
+                        let $a2 = unsafe { rhs.to_bool_unchecked() };
+                        b($operation2)
                     } else {
                         let $a1 = self.to_num()?;
                         let $a2 = rhs.to_num()?;
@@ -215,17 +221,17 @@ macro_rules! impl_arith_ops {
 }
 
 impl_arith_ops! {
-    Add, add, [l, r] {l + r};
-    Sub, sub, [l, r] {l - r};
-    Mul, mul, [l, r] {l * r};
-    Div, div, [l, r] {
+    Add, add, false, [l, r] {l + r}, { false };
+    Sub, sub, false, [l, r] {l - r}, { false };
+    Mul, mul, true, [l, r] {l * r}, {l && r};
+    Div, div, false, [l, r] {
         // So we don't panic on division by 0. f32 lacks
         // a `checked_div`.
         if r == Default::default() {
             std::hint::cold_path(); return err!(NaN);
         } else { l / r }
-    };
-    Rem, rem, [l, r] {l % r};
+    }, { false };
+    Rem, rem, true, [l, r] {l % r}, {l || r};
 }
 
 impl PartialEq for Scalar {

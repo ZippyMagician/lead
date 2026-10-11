@@ -69,7 +69,7 @@ pub(super) fn sub(mut a: List, mut b: List, _: &Opts) -> Status<List> {
     scalar_op!(a, b, sub)
 }
 
-// starm | * | 0 | Sign / Case / Boolean And
+// starm | * | 0 | Sign / Case
 pub(super) fn signum(mut a: List, _: &Opts) -> Status<List> {
     for_0!(a; [v] = match v {
         Char(c) if c.is_lowercase() => Number(-1),
@@ -84,7 +84,7 @@ pub(super) fn signum(mut a: List, _: &Opts) -> Status<List> {
     Ok(a)
 }
 
-// stard | * | 0, 0 | Multiplication
+// stard | * | 0, 0 | Multiplication / Boolean And
 pub(super) fn mul(mut a: List, mut b: List, _: &Opts) -> Status<List> {
     scalar_op!(a, b, mul)
 }
