@@ -61,7 +61,7 @@ macro_rules! define_op {
                 a: crate::utils::Arena,
                 s: crate::scope::Scope,
             ) -> crate::utils::error::Status<crate::function::Function> {
-                $(define_op!(@emit, self, $rep, $flag, $func, l, r, a, s))*;
+                $(define_op!(@emit, self, $rep, $flag, $func, l, r, a, s));*;
                 todo!("<builtins.rs> @ Operator::getop")
             }
         }
@@ -82,4 +82,7 @@ define_syms! {
 
 define_op! {
     AtopBind => (b"&", false, operators::atop_bind);
+    HookDefault => (b"&:", false, operators::hook_default);
+    OverRank => (b"@", false, operators::over_rank);
+    Fold => (b"/", true, operators::fold);
 }

@@ -133,8 +133,11 @@ impl Exec {
                 Ok(list)
             }
             Group(body) => {
+                let r = self.right.take();
                 self.exec_line(body)?;
-                Ok(self.right.take().unwrap_or(List::empty()))
+                let out = self.right.take();
+                self.right = r;
+                Ok(out.unwrap_or(List::empty()))
             }
             _ => unreachable!(),
         }

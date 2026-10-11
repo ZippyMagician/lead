@@ -1,3 +1,4 @@
+use std::fmt::{self, Debug};
 use std::rc::Rc;
 
 use crate::list::List;
@@ -13,8 +14,8 @@ pub struct Function {
     // Dyad
     d: Dyad,
     // Is it applyable? (i.e., `@` works)
-    am: bool,
-    ad: bool,
+    pub(crate) am: bool,
+    pub(crate) ad: bool,
     // Opts
     op: Opts,
 }
@@ -100,6 +101,12 @@ impl Function {
             self.d = Rc::new(move |a, b, o| apply_loosed(&o.a, a, b, o.rd, |a, b| (d)(a, b, &o)));
             self.ad = true;
         }
+    }
+}
+
+impl Debug for Function {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Function")
     }
 }
 

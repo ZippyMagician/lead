@@ -14,7 +14,7 @@ pub fn new_scope() -> Scope {
     Rc::new(RefCell::new(ScopeInternal::new()))
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum MaybeInstant {
     Instant(List),
     Function(Function),
