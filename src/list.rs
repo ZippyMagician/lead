@@ -256,8 +256,17 @@ impl List {
             }
 
             let dims = usize::max(rank.len() + trailing_rank.len(), original);
-            let mut rank: SmallVec<[usize; 4]> = rank.into();
+            let mut rank: SmallVec<[usize; 4]> = if eq_rank(rank, &[1]) {
+                smallvec![]
+            } else {
+                rank.into()
+            };
             rank.extend(trailing_rank.iter().copied());
+
+            let diff = build.len() / rank.iter().product::<usize>();
+            if diff != 1 {
+                rank.push(diff);
+            }
             List::mat(build, dims, rank)
         }
     }

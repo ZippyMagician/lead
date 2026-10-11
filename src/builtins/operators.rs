@@ -1,7 +1,9 @@
-use crate::function::{Function, function};
+use crate::function::{Function, Opts, function};
+use crate::list::List;
 use crate::scope::{MaybeInstant, Scope};
 use crate::utils::Arena;
 use crate::utils::error::{Status, err};
+use crate::utils::function::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[repr(C)]
@@ -158,7 +160,74 @@ pub(crate) fn over_rank(
 }
 
 #[inline]
-pub fn fold(f: MaybeInstant, _a: Arena, _s: Scope) -> Status<Function> {
-    println!("FOLD: {f:?}");
-    todo!()
+pub fn fold(f: MaybeInstant, a: Arena, s: Scope) -> Status<Function> {
+    let f = f.to_function(a.clone(), s.clone())?;
+    let fr = f.clone();
+    let monad = move |a: List, o: &Opts| {
+        if a.is_empty() {
+            std::hint::cold_path();
+            return Ok(a);
+        }
+
+        apply_loosem(&o.a, a, o.rm, |a| {
+            if a.is_scalar() {
+                std::hint::cold_path();
+                return Ok(a);
+            }
+
+            if o.rm == 1 && a.dims() == 1 {
+                let items = a.list();
+                let mut acc = List::scalar(items[0]);
+                for item in items.iter().skip(1) {
+                    acc = f.dyadic_call(acc, List::scalar(*item))?;
+                }
+                return Ok(acc);
+            }
+
+            let d = a.dims();
+            let mut items = a.ranked(d - 1)?.into_iter();
+            let mut acc = items.next().unwrap();
+            for item in items {
+                acc = f.dyadic_call(acc, item)?;
+            }
+            Ok(acc)
+        })
+    };
+    let f = fr;
+
+    let dyad = move |a: List, b: List, o: &Opts| {
+        if b.is_scalar() {
+            return Ok(b);
+        }
+        if !a.is_scalar() {
+            return err!(Domain);
+        }
+        let window = a.list()[0].to_num()?;
+        let mut unique = false;
+        let window = if window < 0 {
+            unique = true;
+            (-window) as usize
+        } else {
+            window as usize
+        };
+
+        let dims = b.dims();
+        let mut arr = b.ranked(dims - 1)?;
+        let jump = if unique { window } else { 1 };
+
+        let mut cells = vec![List::empty(); 1 + (arr.len() - window) / jump];
+        let mut j = 0;
+        while j <= arr.len() - window {
+            let i = j / jump;
+            cells[i] = std::mem::take(&mut arr[j]);
+            for k in j + 1..j + window {
+                let previous = std::mem::take(&mut cells[i]);
+                cells[i] = f.dyadic_call(previous, arr[k].clone())?;
+            }
+            j += jump;
+        }
+        List::unranked(&o.a, dims, &[], cells)
+    };
+
+    Ok(function!(1, true, monad; [0, 99], false, dyad; a, s))
 }

@@ -18,7 +18,11 @@ macro_rules! define_syms {
 
             pub fn getfn(&self, a: crate::utils::Arena, s: crate::scope::Scope) -> crate::function::Function {
                 match self {
-                    $(Self::$rep => { function!($rm, $am, $monad; $rd, $ad, $dyad; a, s) }),*
+                    $(Self::$rep => { 
+                        function!(
+                            $rm, $am, $monad; $rd, $ad, $dyad; a, s, Some(crate::builtins::symbols::Symbol::$rep)
+                        ) 
+                    }),*
                 }
             }
         }

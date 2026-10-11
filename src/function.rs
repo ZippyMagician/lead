@@ -1,6 +1,7 @@
 use std::fmt::{self, Debug};
 use std::rc::Rc;
 
+use crate::builtins::symbols::Symbol;
 use crate::list::List;
 use crate::scope::Scope;
 use crate::utils::Arena;
@@ -13,9 +14,12 @@ pub struct Function {
     m: Monad,
     // Dyad
     d: Dyad,
+
     // Is it applyable? (i.e., `@` works)
     pub(crate) am: bool,
     pub(crate) ad: bool,
+    // Underlying symbol
+    pub(crate) s: Option<Symbol>,
     // Opts
     op: Opts,
 }
@@ -24,12 +28,21 @@ pub type Monad = Rc<dyn Fn(List, &Opts) -> Status<List>>;
 pub type Dyad = Rc<dyn Fn(List, List, &Opts) -> Status<List>>;
 
 impl Function {
-    pub fn new(m: Monad, d: Dyad, rm: u8, rd: [u8; 2], a: Arena, s: Scope) -> Self {
+    pub fn new(
+        m: Monad,
+        d: Dyad,
+        rm: u8,
+        rd: [u8; 2],
+        a: Arena,
+        s: Scope,
+        sym: Option<Symbol>,
+    ) -> Self {
         Self {
             m,
             d,
             am: false,
             ad: false,
+            s: sym,
             op: Opts { rm, rd, a, s },
         }
     }
@@ -41,6 +54,7 @@ impl Function {
             d: Rc::new(move |_, _, _| Ok(scr.clone())),
             am: false,
             ad: false,
+            s: None,
             op: Opts {
                 rm: 99,
                 rd: [99, 99],
@@ -59,12 +73,14 @@ impl Function {
         ad: bool,
         a: Arena,
         s: Scope,
+        sym: Option<Symbol>,
     ) -> Self {
         Self {
             m,
             d,
             am,
             ad,
+            s: sym,
             op: Opts { rm, rd, a, s },
         }
     }
@@ -129,10 +145,15 @@ macro_rules! function {
             [99, 99],
             $arena,
             $scope,
+            None,
         )
     };
 
     ($rm:literal, $am:ident, $monad:expr; $rd:expr, $ad:ident, $dyad:expr; $a:ident, $s:ident) => {{
+        crate::function::function!($rm, $am, $monad; $rd, $ad, $dyad; $a, $s, None)
+    }};
+
+    ($rm:literal, $am:ident, $monad:expr; $rd:expr, $ad:ident, $dyad:expr; $a:ident, $s:ident, $sym:expr) => {{
         crate::function::Function::new_applied(
             ::std::rc::Rc::new($monad),
             ::std::rc::Rc::new($dyad),
@@ -142,8 +163,9 @@ macro_rules! function {
             $ad,
             $a,
             $s,
+            $sym,
         )
-    }};
+    }}
 }
 
 pub(crate) use function;
