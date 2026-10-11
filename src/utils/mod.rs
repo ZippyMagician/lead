@@ -106,6 +106,7 @@ pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Funct
         [99, 99],
         arena,
         scope,
+        None,
     )
 }
 

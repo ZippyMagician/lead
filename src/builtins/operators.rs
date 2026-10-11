@@ -1,5 +1,9 @@
+use std::ops::*;
+
+use crate::builtins::symbols::Symbol;
 use crate::function::{Function, Opts, function};
 use crate::list::List;
+use crate::scalar::Scalar;
 use crate::scope::{MaybeInstant, Scope};
 use crate::utils::Arena;
 use crate::utils::error::{Status, err};
@@ -176,6 +180,71 @@ pub fn fold(f: MaybeInstant, a: Arena, s: Scope) -> Status<Function> {
             }
 
             if o.rm == 1 && a.dims() == 1 {
+                if let Some(s) = &f.s {
+                    let list = a.list();
+                    let mut acc = list[0];
+                    match s {
+                        Symbol::Plus => {
+                            for n in list.iter().skip(1) {
+                                acc = acc.add(*n)?;
+                            }
+                            return Ok(List::scalar(acc));
+                        }
+                        Symbol::Dash => {
+                            let mut acc = list[0];
+                            for n in list.iter().skip(1) {
+                                acc = acc.sub(*n)?;
+                            }
+                            return Ok(List::scalar(acc));
+                        }
+                        Symbol::Star => {
+                            let mut acc = list[0];
+                            if acc.is_bool() {
+                                for n in list.iter().skip(1) {
+                                    if !unsafe { acc.to_bool_unchecked() } {
+                                        break;
+                                    }
+                                    acc = Scalar::Boolean(
+                                        unsafe { acc.to_bool_unchecked() }
+                                            && unsafe { n.to_bool_unchecked() },
+                                    );
+                                }
+                            } else {
+                                for n in list.iter().skip(1) {
+                                    acc = acc.mul(*n)?;
+                                }
+                            }
+                            return Ok(List::scalar(acc));
+                        }
+                        Symbol::Percent => {
+                            let mut acc = list[0];
+                            for n in list.iter().skip(1) {
+                                acc = acc.div(*n)?;
+                            }
+                            return Ok(List::scalar(acc));
+                        }
+                        Symbol::Pipe => {
+                            let mut acc = list[0];
+                            if acc.is_bool() {
+                                for n in list.iter().skip(1) {
+                                    if unsafe { acc.to_bool_unchecked() } {
+                                        break;
+                                    }
+                                    acc = Scalar::Boolean(
+                                        unsafe { acc.to_bool_unchecked() }
+                                            || unsafe { n.to_bool_unchecked() },
+                                    );
+                                }
+                            } else {
+                                for n in list.iter().skip(1) {
+                                    acc = acc.rem(*n)?;
+                                }
+                            }
+                            return Ok(List::scalar(acc));
+                        }
+                        _ => {}
+                    }
+                }
                 let items = a.list();
                 let mut acc = List::scalar(items[0]);
                 for item in items.iter().skip(1) {

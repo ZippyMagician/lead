@@ -98,6 +98,7 @@ impl Function {
     // Applies new rank to monadic function
     #[inline]
     pub fn apply_rm(&mut self, rm: u8) {
+        self.s = None;
         if self.am {
             self.op.rm = rm;
         } else {
@@ -110,6 +111,7 @@ impl Function {
     // Applies new rank to dyadic function
     #[inline]
     pub fn apply_rd(&mut self, rd: [u8; 2]) {
+        self.s = None;
         if self.ad {
             self.op.rd = rd;
         } else {
