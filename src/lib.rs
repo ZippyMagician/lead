@@ -3,6 +3,7 @@ pub mod exec;
 pub mod function;
 pub mod lex;
 pub mod list;
+pub mod map;
 pub mod parse;
 pub mod scalar;
 pub mod scope;

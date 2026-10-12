@@ -27,6 +27,8 @@ pub enum Node<'a> {
     LiteralInternal(&'a str),
     /// Tag (bracketed word/symbol)
     Tag(&'a str),
+    /// Map
+    Map(Vec<(&'a str, Vec<Node<'a>>)>),
     /// Any function
     Function(Function),
     /// Parenthesized group of nodes
@@ -262,21 +264,30 @@ impl<'a> Parser<'a> {
         if tag == "{" {
             // block: [{] x + y
             self.consume_block(TokenTag::Newline)
+        } else if tag == ":" {
+            // map: [:] { a: 1; b: 2 }
+            self.consume_map()
         } else {
             Ok(Node::Tag(tag))
         }
     }
 
+    #[inline]
     fn consume_accessor(&mut self) -> Status<Node<'a>> {
-        err!(Internal, "TODO: Consume accessor @ <parse.rs> consume_accessor")
+        err!(
+            Internal,
+            "TODO: Consume accessor @ <parse.rs> consume_accessor"
+        )
     }
 
+    #[inline]
     fn consume_group(&mut self) -> Status<Node<'a>> {
         let nodes = self.consume_upto_tag(TokenTag::CloseParen)?;
         self.tokens.next(); // consume_upto does not consume the closing token
         Ok(Node::Group(nodes))
     }
 
+    #[inline]
     fn consume_block(&mut self, end: TokenTag) -> Status<Node<'a>> {
         let nodes = self.consume_upto_tag(end)?;
         if end != TokenTag::Newline {
@@ -287,6 +298,51 @@ impl<'a> Parser<'a> {
             ScopeInternal::child(self.scope.clone()),
             self.arena.clone(),
         )))
+    }
+
+    #[inline]
+    fn consume_map(&mut self) -> Status<Node<'a>> {
+        if self
+            .tokens
+            .next_if(|(t, c)| *t == TokenTag::Symbol && *c == "{")
+            .is_none()
+        {
+            return err!(Syntax, "Expected '{'");
+        }
+
+        let mut body = Vec::new();
+        while let Some(tok) = self
+            .tokens
+            .next_if(|(t, c)| *t != TokenTag::Symbol || *c != "}")
+        {
+            if let (TokenTag::Literal, name) = tok {
+                if self
+                    .tokens
+                    .next_if(|(t, _)| *t == TokenTag::Colon)
+                    .is_none()
+                {
+                    return err!(Syntax, "Expected ':'");
+                }
+                let mut nodes = Vec::new();
+                std::mem::swap(&mut nodes, &mut self.nodes);
+                while let Some(tok) = self
+                    .tokens
+                    .next_if(|(t, c)| *t != TokenTag::Symbol || *c != ";" && *c != "}")
+                {
+                    let node = self.consume_node(tok);
+                    Self::unpack_node(&mut self.nodes, node)?;
+                }
+                self.tokens.next_if(|(_, c)| *c == ";");
+                self.second_pass()?;
+                std::mem::swap(&mut nodes, &mut self.nodes);
+                body.push((*name, nodes));
+            } else {
+                return err!(Syntax, "Unexpected token in map");
+            }
+        }
+        self.tokens.next();
+
+        Ok(Node::Map(body))
     }
 
     #[inline]
@@ -424,6 +480,7 @@ impl<'a> Debug for Node<'a> {
                     if *is_internal { "." } else { "" }
                 )
             }
+            Node::Map(keys) => write!(f, "Map({keys:?})"),
             _ => todo!(),
         }
     }

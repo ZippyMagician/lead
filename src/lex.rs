@@ -266,7 +266,11 @@ impl<'a> Lexer<'a> {
 
         if Operator::get_operator(&self.input[start..end]).is_some() {
             tok!(Operator, &self.input[start..end])
-        } else if Symbol::get_symbol(&self.input[start..end]).is_some() {
+        } else if Symbol::get_symbol(&self.input[start..end]).is_some()
+            || &self.input[start..end] == "{"
+            || &self.input[start..end] == "}"
+            || &self.input[start..end] == ";"
+        {
             tok!(Symbol, &self.input[start..end])
         } else {
             err!(Syntax, "Unrecognized builtin.")

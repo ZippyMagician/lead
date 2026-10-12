@@ -15,6 +15,7 @@ use seqr::scope::new_scope;
 use seqr::builtins::symbols::Symbol;
 use seqr::list::List;
 use seqr::scalar::Scalar;
+use seqr::map::map;
 
 use typed_arena::Arena;
 
@@ -44,6 +45,9 @@ fn main() -> io::Result<()> {
             continue;
         } else if line == "test op\n" {
             optest(arena.clone(), scope.clone());
+            continue;
+        } else if line == "test map\n" {
+            maptest();
             continue;
         }
 
@@ -175,4 +179,14 @@ fn optest(arena: Rc<RefCell<Arena<List>>>, scope: seqr::scope::Scope) {
     ).unwrap();
 
     println!("(-&7) 7 :: {:?}", atop_bind.monadic_call(seven))
+}
+
+fn maptest() {
+    let m = map! {
+        "a" => List::empty(),
+        "b" => List::string("word"),
+        "c" => List::from_vec(vec![Scalar::Number(1), Scalar::Number(2), Scalar::Number(-7)]).unwrap(),
+    };
+
+    println!("{m}");
 }

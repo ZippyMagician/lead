@@ -114,10 +114,10 @@ pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Funct
 }
 
 // const BOXES: &str = "┌┬┐├┼┤└┴┘│─";
-const BOXES_TL: &str = "┌├┌├┌├┌├┬┼┬┼┬┼┬┼";
-const BOXES_TR: &str = "┐┤┬┼┐┤┬┼┐┤┬┼┐┤┬┼";
-const BOXES_BR: &str = "┘┘┴┴┤┤┼┼┘┘┴┴┤┤┼┼";
-const BOXES_BL: &str = "└└└└├├├├┴┴┴┴┼┼┼┼";
+pub const BOXES_TL: &str = "┌├┌├┌├┌├┬┼┬┼┬┼┬┼";
+pub const BOXES_TR: &str = "┐┤┬┼┐┤┬┼┐┤┬┼┐┤┬┼";
+pub const BOXES_BR: &str = "┘┘┴┴┤┤┼┼┘┘┴┴┤┤┼┼";
+pub const BOXES_BL: &str = "└└└└├├├├┴┴┴┴┼┼┼┼";
 
 #[inline(always)]
 fn g(b: &'static str, mask: u8) -> char {

@@ -5,6 +5,7 @@ use std::rc::Rc;
 
 use crate::function::{Function, function};
 use crate::list::List;
+use crate::map::Map;
 use crate::utils::Arena;
 use crate::utils::error::{Status, err};
 
@@ -18,6 +19,7 @@ pub fn new_scope() -> Scope {
 pub enum MaybeInstant {
     Instant(List),
     Function(Function),
+    Map(Map),
 }
 
 impl MaybeInstant {
@@ -29,6 +31,11 @@ impl MaybeInstant {
     #[inline]
     pub fn is_function(&self) -> bool {
         matches!(self, Self::Function(_))
+    }
+
+    #[inline]
+    pub fn is_map(&self) -> bool {
+        matches!(self, Self::Map(_))
     }
 
     #[inline]
@@ -53,6 +60,7 @@ impl MaybeInstant {
                     arena, scope
                 ))
             }
+            Self::Map(_) => err!(Domain),
         }
     }
 }

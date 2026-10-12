@@ -7,6 +7,8 @@ use crate::list::List;
 use crate::utils::error::{Error, Status, err};
 use crate::utils::{Arena, display_boxed};
 
+use typed_arena;
+
 #[derive(Clone, Copy, Debug)]
 #[repr(u8)]
 pub enum Scalar {
@@ -22,6 +24,12 @@ impl Scalar {
     pub fn boxed(a: &Arena, l: List) -> Status<Self> {
         let arena = a.borrow_mut();
         let r = arena.alloc(l);
+        Ok(Box(r as *const List))
+    }
+
+    #[inline]
+    pub fn boxed_custom(a: &mut typed_arena::Arena<List>, l: List) -> Status<Self> {
+        let r = a.alloc(l);
         Ok(Box(r as *const List))
     }
 
