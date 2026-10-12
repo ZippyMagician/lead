@@ -14,6 +14,7 @@ pub enum Error {
     Scope,
     Box,
     Value,
+    Internal(Cow<'static, str>),
     // TODO: whatever else I need
 }
 
@@ -53,6 +54,7 @@ impl Display for Error {
             Value => write!(f, "VALUE [4]"),
             Argument => write!(f, "ARG [5]"),
             Scope => write!(f, "SCOPE [6]"),
+            Internal(s) => write!(f, "INTERNAL [-1]: {s}"),
         }
     }
 }

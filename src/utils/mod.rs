@@ -62,8 +62,10 @@ pub fn is_instant(node: &Node<'_>, scope: &Scope) -> bool {
 // Shorthand for this ridiculous code block
 macro_rules! run_block {
     ($a:ident, $o:ident, $n:ident) => {{
-        let mut s = $o.s.borrow_mut();
+        let sc = $o.s.clone();
+        let mut s = sc.borrow_mut();
         s.set_instant("y", $a);
+        // s.set_function("v", generate_block($n.clone(), $o.s.clone(), $o.a.clone()));
         drop(s);
         let mut e = Exec::new_imm($o.a.clone(), $o.s.clone());
         e.exec($n.clone())?;
@@ -71,9 +73,11 @@ macro_rules! run_block {
     }};
 
     ($a:ident, $b:ident, $o:ident, $n:ident) => {{
-        let mut s = $o.s.borrow_mut();
+        let sc = $o.s.clone();
+        let mut s = sc.borrow_mut();
         s.set_instant("x", $a);
         s.set_instant("y", $b);
+        // s.set_function("v", generate_block($n.clone(), $o.s.clone(), $o.a.clone()));
         drop(s);
         let mut e = Exec::new_imm($o.a.clone(), $o.s.clone());
         e.exec($n.clone())?;
@@ -87,26 +91,24 @@ pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Funct
     let n1: Vec<Node<'static>> = unsafe { std::mem::transmute(nodes) };
     let n2 = n1.clone();
 
-    Function::new(
-        Rc::new(move |a, o| {
+    crate::function::function!(
+        99, true, move |a, o| {
             if o.rm as usize >= a.dims() {
                 run_block!(a, o, n1)
             } else {
                 apply_loosem(&o.a, a, o.rm, |v| run_block!(v, o, n1))
             }
-        }),
-        Rc::new(move |a, b, o| {
+        };
+        [99, 99], true, move |a, b, o| {
             if o.rd[0] as usize >= a.dims() && o.rd[1] as usize >= b.dims() {
                 run_block!(a, b, o, n2)
             } else {
                 apply_loosed(&o.a, a, b, o.rd, |l, r| run_block!(l, r, o, n2))
             }
-        }),
-        99,
-        [99, 99],
+        };
         arena,
         scope,
-        None,
+        None
     )
 }
 

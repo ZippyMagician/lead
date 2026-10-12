@@ -16,7 +16,8 @@ pub struct Exec {
     scope: Scope,
     arena: Arena,
 
-    pub(crate) inner: bool,
+    pub(crate) block: bool,
+    pub(crate) reference: Option<Vec<Node<'static>>>,
     pub(crate) right: Option<List>,
 }
 
@@ -26,7 +27,8 @@ impl Exec {
         Self {
             scope,
             arena: arena,
-            inner: false,
+            block: false,
+            reference: None,
             right: None,
         }
     }
@@ -36,7 +38,8 @@ impl Exec {
         Self {
             scope,
             arena: arena,
-            inner: true,
+            block: true,
+            reference: None,
             right: None,
         }
     }
@@ -44,10 +47,15 @@ impl Exec {
     pub fn exec<'a>(&mut self, mut node_lines: Vec<Node<'a>>) -> Status {
         let mut current = Vec::new();
         node_lines.push(Node::Line);
+        if self.block && self.reference.is_none() {
+            self.reference = Some(unsafe {
+                std::mem::transmute::<Vec<Node<'a>>, Vec<Node<'static>>>(node_lines.clone())
+            });
+        }
         for node in node_lines {
             if matches!(node, Node::Line) {
                 self.exec_line(take(&mut current))?;
-                if !self.inner
+                if !self.block
                     && let Some(v) = self.right.take()
                 {
                     println!("{v}");
@@ -97,7 +105,13 @@ impl Exec {
                     let train = self.exec_train(g)?;
                     self.right = Some(self.exec_function(train, &mut line, &mut i)?);
                 }
-                node => todo!("Execute node {node:?}"),
+                Line => {
+                    if !self.block {
+                        return err!(Internal, "Unexpected node in line");
+                    }
+                    self.right = None;
+                }
+                node => return err!(Internal, format!("TODO: Execute node {node:?}.")),
             }
 
             if i == 0 {
@@ -147,18 +161,51 @@ impl Exec {
     fn exec_literal<'a>(
         &mut self,
         name: &'a str,
-        list: &mut [Node<'a>],
+        list: &mut Vec<Node<'a>>,
         i: &mut usize,
     ) -> Status<List> {
         let s = self.scope.clone();
-        let value = s.borrow().get(name).ok_or(Error::Scope)?;
-        if value.is_instant() {
-            Ok(value.to_instant().unwrap())
+        if self.block && name == "v" {
+            if self.right.is_none() {
+                return err!(Argument);
+            }
+            let mut left = None;
+            let right = self.right.take().unwrap();
+            if *i > 0 && utils::is_instant(&list[*i - 1], &self.scope) {
+                left = Some(self.exec_instant(take(&mut list[*i - 1]))?);
+                *i -= 1;
+            }
+            if *i == 0 {
+                let mut sc = s.borrow_mut();
+                if let Some(left) = left {
+                    sc.set_instant("x", left);
+                }
+                sc.set_instant("y", right);
+                *list = self.reference.as_ref().unwrap().clone();
+                *i = list.len();
+                Ok(List::empty())
+            } else {
+                let f = utils::generate_block(
+                    take(self.reference.as_mut().unwrap()),
+                    self.scope.clone(),
+                    self.arena.clone(),
+                );
+                if let Some(left) = left {
+                    f.dyadic_call(left, right)
+                } else {
+                    f.monadic_call(right)
+                }
+            }
         } else {
-            let f = value
-                .to_function(self.arena.clone(), self.scope.clone())
-                .unwrap();
-            self.exec_function(f, list, i)
+            let value = s.borrow().get(name).ok_or(Error::Scope)?;
+            if value.is_instant() {
+                Ok(value.to_instant().unwrap())
+            } else {
+                let f = value
+                    .to_function(self.arena.clone(), self.scope.clone())
+                    .unwrap();
+                self.exec_function(f, list, i)
+            }
         }
     }
 
