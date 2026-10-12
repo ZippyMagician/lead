@@ -55,6 +55,7 @@ pub fn is_instant(node: &Node<'_>, scope: &Scope) -> bool {
         Literal(s) => scope.borrow().get(s).is_some_and(|m| m.is_instant()),
         LiteralInternal(_) => todo!("Literal internal"),
         Group(body) if body.last().is_none_or(|n| is_instant(n, scope)) => true,
+        If { .. } => true, // Statements (almost) always yield something
         _ => false,
     }
 }
