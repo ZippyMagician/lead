@@ -36,10 +36,12 @@ I.             -- STDIN
 ```
 
 ### TODO
-- [ ] Non-instant groups (mainly trains)
-- [ ] Operators
-- [ ] Proper `@` rank support
-- [ ] Recursive blocks via `v`
-- [ ] Port symbols
+- [x] Non-instant groups (mainly trains)
+- [x] Operators
+- [x] Proper `@` rank support
+- [x] Recursive blocks via `v`
+- [ ] Port symbols + operators
 - [ ] Maps
+- [ ] Accessors
+- [ ] Redesign/remove Internals
 - [ ] Tables?
