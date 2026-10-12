@@ -66,7 +66,7 @@ macro_rules! define_op {
                 s: crate::scope::Scope,
             ) -> crate::utils::error::Status<crate::function::Function> {
                 $(define_op!(@emit, self, $rep, $flag, $func, l, r, a, s));*;
-                todo!("<builtins.rs> @ Operator::getop")
+                crate::utils::error::err!(Internal, "TODO: <builtins.rs> @ Operator::getop")
             }
         }
     }

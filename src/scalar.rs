@@ -87,6 +87,18 @@ impl Scalar {
     }
 
     #[inline]
+    pub fn to_bool(&self) -> Status<bool> {
+        match self {
+            Self::Char('\0') => Ok(false),
+            Self::Number(0) => Ok(false),
+            Self::Float(0.) => Ok(false),
+            Self::Boolean(b) => Ok(*b),
+            Self::Box(_) => err!(Domain),
+            _ => Ok(true),
+        }
+    }
+
+    #[inline]
     pub fn repr(&self) -> u8 {
         match self {
             Self::Number(_) | Self::Float(_) => 0,

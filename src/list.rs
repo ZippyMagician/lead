@@ -95,7 +95,7 @@ impl List {
             let _start = unsafe { start.to_char_unchecked() };
             let _end = unsafe { end.to_char_unchecked() };
 
-            todo!("Alphabetical range @ <list.rs> rnage");
+            return err!(Internal, "TODO: Alphabetical range @ <list.rs> range");
         } else {
             let start = start.to_num()?;
             let end = end.to_num()?;

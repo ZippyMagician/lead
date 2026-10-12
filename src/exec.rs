@@ -98,6 +98,11 @@ impl Exec {
                     is_internal,
                     i > 0 && !utils::is_instant(&line[i - 1], &self.scope),
                 )?,
+                If {
+                    cond,
+                    body,
+                    otherwise,
+                } => self.exec_if(cond, body, otherwise)?,
                 n @ Group(_) if utils::is_instant(&n, &self.scope) => {
                     self.right = Some(self.exec_instant(n)?)
                 }
@@ -132,14 +137,14 @@ impl Exec {
             PrimitiveString(l) => Ok(l),
             PrimitiveBoxes(l) => Ok(l),
             Literal(l) => self.scope.borrow().get(l).unwrap().to_instant(),
-            LiteralInternal(_) => todo!("Internals @ <exec.rs> exec_instant"),
+            LiteralInternal(_) => err!(Internal, "TODO: Internals @ <exec.rs> exec_instant"),
             Assign {
                 head,
                 is_internal,
                 body,
             } => {
                 if is_internal {
-                    todo!("Internals @ <exec.rs> exec_instant");
+                    return err!(Internal, "Internals @ <exec.rs> exec_instant");
                 }
                 let s = self.scope.clone();
                 let list = self.exec_instant(Node::Group(body))?;
@@ -152,6 +157,14 @@ impl Exec {
                 let out = self.right.take();
                 self.right = r;
                 Ok(out.unwrap_or(List::empty()))
+            }
+            If {
+                cond,
+                body,
+                otherwise,
+            } => {
+                self.exec_if(cond, body, otherwise)?;
+                Ok(self.right.take().unwrap())
             }
             _ => unreachable!(),
         }
@@ -186,7 +199,7 @@ impl Exec {
                 Ok(List::empty())
             } else {
                 let f = utils::generate_block(
-                    take(self.reference.as_mut().unwrap()),
+                    self.reference.take().unwrap(),
                     self.scope.clone(),
                     self.arena.clone(),
                 );
@@ -211,7 +224,7 @@ impl Exec {
 
     #[inline]
     fn exec_internal(&mut self, _name: &str) -> Status<List> {
-        todo!("Internals @ <exec.rs> exec_internal");
+        err!(Internal, "TODO: Internals @ <exec.rs> exec_internal")
     }
 
     #[inline]
@@ -383,7 +396,7 @@ impl Exec {
         preserve_instant: bool,
     ) -> Status {
         if is_internal {
-            todo!("Internals @ <exec.rs> exec_line");
+            return err!(Internal, "TODO: Internals @ <exec.rs> exec_line");
         }
         let group = Node::Group(body);
         if utils::is_instant(&group, &self.scope) {
@@ -411,6 +424,22 @@ impl Exec {
             }
         }
 
+        Ok(())
+    }
+
+    #[inline]
+    fn exec_if<'a>(
+        &mut self,
+        cond: Box<Node<'a>>,
+        body: Vec<Node<'a>>,
+        otherwise: Vec<Node<'a>>,
+    ) -> Status {
+        let list = self.exec_instant(*cond)?;
+        if list.is_empty() || list.list()[0].to_bool()? {
+            self.exec_line(body)?;
+        } else {
+            self.exec_line(otherwise)?;
+        }
         Ok(())
     }
 

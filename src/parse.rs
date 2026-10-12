@@ -148,7 +148,7 @@ impl<'a> Parser<'a> {
             OpenCurly => self.consume_block(TokenTag::CloseCurly),
             Colon => self.maybe_assign(),
             EOF => err!(Complete),
-            _ => err!(Syntax, "Unrecognized token."),
+            _ => err!(Syntax, format!("Unrecognized token {:?}.", t)),
         }
     }
 
@@ -268,7 +268,7 @@ impl<'a> Parser<'a> {
     }
 
     fn consume_accessor(&mut self) -> Status<Node<'a>> {
-        todo!("Consume accessor @ <parse.rs> consume_accessor")
+        err!(Internal, "TODO: Consume accessor @ <parse.rs> consume_accessor")
     }
 
     fn consume_group(&mut self) -> Status<Node<'a>> {
@@ -317,7 +317,10 @@ impl<'a> Parser<'a> {
     fn consume_upto(&mut self, check: impl Fn(&Node<'a>) -> bool) -> Status<Vec<Node<'a>>> {
         let mut nodes = Vec::new();
         std::mem::swap(&mut nodes, &mut self.nodes);
-        while let Some(tok) = self.tokens.next() {
+        while let Some(tok) = self
+            .tokens
+            .next_if(|(t, _)| self.upto_store.last().is_none_or(|g| *g != *t))
+        {
             let node = self.consume_node(tok);
             Self::unpack_node(&mut self.nodes, node)?;
             if check(unsafe { self.nodes.get_unchecked(self.nodes.len() - 1) }) {
@@ -336,6 +339,7 @@ impl<'a> Parser<'a> {
             let node = &self.nodes[i];
             match node {
                 // Unwrap singleton conditions
+                Node::Group(g) if g.is_empty() => {}
                 Node::Group(g) if g.len() == 1 => {
                     let Node::Group(mut g) = std::mem::take(&mut self.nodes[i]) else {
                         unsafe { std::hint::unreachable_unchecked() }
