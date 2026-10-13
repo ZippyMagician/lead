@@ -35,6 +35,10 @@ pub enum Symbol {
     Caret,
     /// `$`
     Dollar,
+    /// `[`
+    LeftBracket,
+    /// `]`
+    RightBracket,
     /// `~`
     Tilde,
 }
@@ -295,6 +299,23 @@ pub(crate) fn reshape(a: List, b: List, o: &Opts) -> Status<List> {
             .collect::<Status<SmallVec<[usize; 4]>>>()?;
         b.with_rank(&rank)
     })
+}
+
+// lbracketm / rbracketm | [ / ] | 99 | Identity
+pub(super) const fn identity(a: List, _: &Opts) -> Status<List> {
+    Ok(a)
+}
+
+// lbracketd | [ | 99, 99 | Left
+#[inline(always)]
+pub(super) fn left(a: List, b: List, _: &Opts) -> Status<List> {
+    Ok(a)
+}
+
+// rbracketd | ] | 99, 99 | Right
+#[inline(always)]
+pub(super) fn right(a: List, b: List, _: &Opts) -> Status<List> {
+    Ok(b)
 }
 
 // tildem | ~ | 0 | 1-range / Rising alphabet

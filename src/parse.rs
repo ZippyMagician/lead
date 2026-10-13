@@ -125,7 +125,7 @@ impl<'a> Parser<'a> {
             Number => self.consume_primitive(Scalar::Number(parse_number(t.1)?)),
             Float => self.consume_primitive(Scalar::Float(parse_float(t.1)?)),
             String => self.consume_primitive_string(t.1),
-            Symbol => {
+            Symbol | CloseBracket => {
                 let f = symbols::Symbol::get_symbol(t.1)
                     .unwrap()
                     .getfn(self.arena.clone(), self.scope.clone());
@@ -156,25 +156,25 @@ impl<'a> Parser<'a> {
 
     fn maybe_tag(&mut self) -> Status<Node<'a>> {
         let sym = symbols::Symbol::get_symbol("[")
-            .ok_or(Error::Syntax("TODO: Left identity function.".into()))
-            .map(|n| n.getfn(self.arena.clone(), self.scope.clone()));
+            .unwrap()
+            .getfn(self.arena.clone(), self.scope.clone());
 
         if let Some(next) = self.tokens.next() {
             match next {
                 (TokenTag::CloseBracket, _) => self.consume_accessor(),
                 (TokenTag::Newline, _) => {
-                    Ok(Node::Two(Node::Function(sym?).into(), Node::Line.into()))
+                    Ok(Node::Two(Node::Function(sym).into(), Node::Line.into()))
                 }
                 (t, tag) if self.next_if(TokenTag::CloseBracket).is_some() => {
                     self.consume_tag(*t, tag)
                 }
                 next => Ok(Node::Two(
-                    Node::Function(sym?).into(),
+                    Node::Function(sym).into(),
                     self.consume_node(next)?.into(),
                 )),
             }
         } else {
-            Ok(Node::Function(sym?))
+            Ok(Node::Function(sym))
         }
     }
 

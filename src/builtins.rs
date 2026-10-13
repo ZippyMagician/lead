@@ -83,6 +83,8 @@ define_syms! {
     RightArrow => (b">", 99, false, symbols::unbox; [0, 0], false, symbols::gt);
     Caret => (b"^", 0, false, symbols::exp; [0, 0], false, symbols::bitand);
     Dollar => (b"$", 99, false, symbols::shape; [1, 99], true, symbols::reshape);
+    LeftBracket => (b"[", 99, false, symbols::identity; [99, 99], false, symbols::left);
+    RightBracket => (b"]", 99, false, symbols::identity; [99, 99], false, symbols::right);
     Tilde => (b"~", 0, false, symbols::range; [99, 0], true, symbols::index);
 }
 
