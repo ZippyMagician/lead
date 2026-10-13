@@ -85,6 +85,7 @@ define_syms! {
     Dollar => (b"$", 99, false, symbols::shape; [1, 99], true, symbols::reshape);
     LeftBracket => (b"[", 99, false, symbols::identity; [99, 99], false, symbols::left);
     RightBracket => (b"]", 99, false, symbols::identity; [99, 99], false, symbols::right);
+    Question => (b"?", 99, true, symbols::dedup_sieve; [99, 1], true, symbols::group);
     Tilde => (b"~", 0, false, symbols::range; [99, 0], true, symbols::index);
 }
 

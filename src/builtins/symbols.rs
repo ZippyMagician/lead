@@ -41,6 +41,8 @@ pub enum Symbol {
     LeftBracket,
     /// `]`
     RightBracket,
+    /// `?`
+    Question,
     /// `~`
     Tilde,
 }
@@ -318,6 +320,42 @@ pub(super) fn left(a: List, b: List, _: &Opts) -> Status<List> {
 #[inline(always)]
 pub(super) fn right(a: List, b: List, _: &Opts) -> Status<List> {
     Ok(b)
+}
+
+// questionm | ? | 99 | Dedup sieve
+pub(super) fn dedup_sieve(a: List, o: &Opts) -> Status<List> {
+    if o.rm == 0 {
+        let mut m = std::collections::HashSet::new();
+        let mut new = Vec::with_capacity(a.len());
+        for s in a.list() {
+            if m.contains(s) {
+                continue;
+            }
+            m.insert(*s);
+            new.push(*s);
+        }
+        List::from_vec(new)
+    } else {
+        let rank = a.rank().to_vec();
+        let ldims = usize::min(o.rm as usize, a.dims() - 1);
+        let runs = a.ranked(ldims)?;
+        let mut m = std::collections::HashSet::new();
+        let mut new = Vec::with_capacity(runs.len());
+        for run in runs.iter() {
+            if m.contains(run) {
+                continue;
+            }
+            m.insert(run);
+            new.push(run.clone());
+        }
+
+        List::unranked(&o.a, rank.len(), &rank[..ldims], new)
+    }
+}
+
+// questiond | ? | 99, 1 | Group
+pub(super) fn group(a: List, b: List, o: &Opts) -> Status<List> {
+    err!(Internal, "TODO: Dyadic '?' :: Group")
 }
 
 // tildem | ~ | 0 | 1-range / Rising alphabet
