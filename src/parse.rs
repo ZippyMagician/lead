@@ -26,7 +26,7 @@ pub enum Node<'a> {
     /// Internal identifier
     LiteralInternal(&'a str),
     /// Tag (bracketed word/symbol)
-    Tag(&'a str),
+    Tag(Token<'a>),
     /// Map
     Map(Vec<(&'a str, Vec<Node<'a>>)>),
     /// Any function
@@ -165,7 +165,9 @@ impl<'a> Parser<'a> {
                 (TokenTag::Newline, _) => {
                     Ok(Node::Two(Node::Function(sym?).into(), Node::Line.into()))
                 }
-                (_, tag) if self.next_if(TokenTag::CloseBracket).is_some() => self.consume_tag(tag),
+                (t, tag) if self.next_if(TokenTag::CloseBracket).is_some() => {
+                    self.consume_tag(*t, tag)
+                }
                 next => Ok(Node::Two(
                     Node::Function(sym?).into(),
                     self.consume_node(next)?.into(),
@@ -260,15 +262,15 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    fn consume_tag(&mut self, tag: &'a str) -> Status<Node<'a>> {
+    fn consume_tag(&mut self, ident: TokenTag, tag: &'a str) -> Status<Node<'a>> {
         if tag == "{" {
             // block: [{] x + y
             self.consume_block(TokenTag::Newline)
-        } else if tag == ":" {
+        } else if ident == TokenTag::Colon {
             // map: [:] { a: 1; b: 2 }
             self.consume_map()
         } else {
-            Ok(Node::Tag(tag))
+            Ok(Node::Tag((ident, tag)))
         }
     }
 
@@ -460,7 +462,7 @@ impl<'a> Debug for Node<'a> {
             Node::DyadicOp(_) => write!(f, "Conjunction"),
             Node::Op(o, l, r) => write!(f, "({l:?}) {o:?} ({r:?})"),
             Node::Line => write!(f, "NL"),
-            Node::Tag(t) => write!(f, "[{t}]"),
+            Node::Tag(t) => write!(f, "[{t:?}]"),
             Node::Group(g) => write!(f, "({g:?})"),
             Node::If {
                 cond,

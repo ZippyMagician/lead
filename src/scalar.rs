@@ -65,6 +65,39 @@ impl Scalar {
     }
 
     #[inline]
+    pub fn to_cast(self, tag: char) -> Status<Self> {
+        let res = match tag {
+            'N' => match self {
+                Self::Box(p) => Self::Number(p as u32 as i32),
+                Self::Number(_) | Self::Float(_) => self,
+                _ => Self::Number(self.to_num().unwrap()),
+            },
+            'I' => match self {
+                Self::Box(p) => Self::Number(p as u32 as i32),
+                Self::Number(_) => self,
+                _ => Self::Number(self.to_num().unwrap()),
+            },
+            'F' => match self {
+                Self::Box(p) => Self::Float(p as u32 as f32),
+                Self::Float(_) => self,
+                _ => Self::Float(self.to_float().unwrap()),
+            },
+            'C' => match self {
+                Self::Box(p) => Self::Char(char::from_u32(p as u32).ok_or(Error::NaN)?),
+                Self::Char(_) => self,
+                _ => Self::Char(self.to_char().unwrap()),
+            },
+            'B' => match self {
+                Self::Box(_) => Self::Boolean(!unsafe { self.as_unboxed_unchecked() }.is_empty()),
+                Self::Boolean(_) => self,
+                _ => Self::Boolean(self.to_bool().unwrap()),
+            },
+            _ => return err!(Value),
+        };
+        Ok(res)
+    }
+
+    #[inline]
     pub fn to_num(&self) -> Status<i32> {
         match self {
             Self::Number(n) => Ok(*n),

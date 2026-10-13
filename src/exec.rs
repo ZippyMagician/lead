@@ -444,12 +444,14 @@ impl Exec {
     }
 
     #[inline]
-    fn exec_tag(&mut self, tag: &str) -> Status {
+    fn exec_tag<'a>(&mut self, tag: crate::lex::Token<'a>) -> Status {
+        use crate::lex::TokenTag;
+
         match tag {
             // Silent
-            "~" => self.right = None,
+            (TokenTag::Symbol, "~") => self.right = None,
             // Get type
-            "?" => {
+            (TokenTag::Symbol, "?") => {
                 let right = self.right.take().ok_or(Error::Value)?;
                 if right.is_empty() {
                     self.right = Some(List::string("()"));
@@ -460,6 +462,16 @@ impl Exec {
                         Scalar::Char(_) => List::string("S"),
                         Scalar::Box(_) => List::string("B"),
                     })
+                }
+            }
+            (TokenTag::String, s) if s.len() == 1 => {
+                let mut right = self.right.take().ok_or(Error::Value)?;
+                if right.is_empty() {
+                    self.right = Some(right);
+                } else {
+                    let ident = s.as_bytes()[0] as char;
+                    crate::utils::symbols::for_0!(right; [v] = v.to_cast(ident)?);
+                    self.right = Some(right);
                 }
             }
             _ => return err!(Syntax, "Unrecognized tag."),
