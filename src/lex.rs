@@ -37,6 +37,8 @@ pub enum TokenTag {
     CloseBracket,
     /// `:`
     Colon,
+    /// `.`
+    Dot,
 }
 
 pub type Token<'a> = (TokenTag, &'a str);
@@ -161,6 +163,8 @@ impl<'a> Lexer<'a> {
                 && (c.is_numeric() || chr == 'e' && *c == '_')
             {
                 self.consume_number(start)
+            } else if chr == '.' {
+                Ok((TokenTag::Dot, &self.input[start..start + 1]))
             } else {
                 self.consume_lit(start)
             }
@@ -227,11 +231,6 @@ impl<'a> Lexer<'a> {
     fn calculate_var_bounds(&mut self, start: usize) -> (usize, usize) {
         let mut end = start + 1;
         while self.next_if(Self::valid_lit_chr).is_some() {
-            end += 1;
-        }
-
-        if self.nth(end) == Some('.') {
-            self.chars.next();
             end += 1;
         }
 

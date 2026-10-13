@@ -412,7 +412,7 @@ impl Exec {
         preserve_instant: bool,
     ) -> Status {
         if is_internal {
-            return err!(Internal, "TODO: Internals @ <exec.rs> exec_line");
+            return err!(Internal, "TODO: Internals @ <exec.rs> exec_assignment");
         }
         let group = Node::Group(body);
         if utils::is_instant(&group, &self.scope) {

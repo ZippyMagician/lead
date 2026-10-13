@@ -139,18 +139,14 @@ impl<'a> Parser<'a> {
                     Ok(Node::DyadicOp(o))
                 }
             }
-            Literal => Ok(if t.1.ends_with('.') {
-                Node::LiteralInternal(t.1.trim_end_matches('.'))
-            } else {
-                Node::Literal(t.1)
-            }),
+            Literal => Ok(Node::Literal(t.1)),
             Newline | CloseParen => Ok(Node::Line),
             OpenBracket => self.maybe_tag(),
             OpenParen => self.consume_group(),
             OpenCurly => self.consume_block(TokenTag::CloseCurly),
             Colon => self.maybe_assign(),
             EOF => err!(Complete),
-            _ => err!(Syntax, format!("Unrecognized token {:?}.", t)),
+            _ => err!(Syntax, format!("Unexpected token {:?}.", t.1)),
         }
     }
 
@@ -276,10 +272,11 @@ impl<'a> Parser<'a> {
 
     #[inline]
     fn consume_accessor(&mut self) -> Status<Node<'a>> {
-        err!(
-            Internal,
-            "TODO: Consume accessor @ <parse.rs> consume_accessor"
-        )
+        if let Some((_, lit)) = self.next_if(TokenTag::Literal) {
+            Ok(Node::LiteralInternal(lit))
+        } else {
+            err!(Syntax, "Invalid use of accessor")
+        }
     }
 
     #[inline]
