@@ -48,19 +48,26 @@ fn replace_chars(string: &str) -> String {
 }
 
 #[inline]
-pub fn parse_number(string: &str) -> Status<i32> {
+pub fn parse_number(string: &str) -> Status<i64> {
     let string = replace_chars(string);
     if string.contains('e') {
-        match string.parse::<f32>() {
-            Ok(n) => Ok(unsafe { n.to_int_unchecked::<i32>() }),
+        match string.parse::<f64>() {
+            Ok(n) => Ok(unsafe { n.to_int_unchecked::<i64>() }),
             _ => err!(NaN),
         }
     } else {
-        Ok(string.parse::<i32>()?)
+        Ok(string.parse::<i64>()?)
     }
 }
 
 #[inline]
-pub fn parse_float(string: &str) -> Status<f32> {
-    Ok(replace_chars(string).parse::<f32>()?)
+pub fn parse_float(string: &str) -> Status<f64> {
+    let string = &replace_chars(string);
+    if string == "-" {
+        Ok(f64::INFINITY)
+    } else if string == "--" {
+        Ok(f64::NEG_INFINITY)
+    } else {
+        Ok(replace_chars(string).parse::<f64>()?)
+    }
 }

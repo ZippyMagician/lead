@@ -44,9 +44,9 @@ pub(super) fn abs(mut a: List, _: &Opts) -> Status<List> {
     for_0!(a; [v] = match v {
         Number(n) => Number(n.abs()),
         Float(n) => Float(n.abs()),
-        Boolean(n) => Number(*n as i32),
-        Char(c) => Number(*c as u32 as i32),
-        Scalar::Box(ptr) => Number(ptr.addr() as i32),
+        Boolean(n) => Number(*n as i64),
+        Char(c) => Number(*c as u32 as i64),
+        Scalar::Box(ptr) => Number(ptr.addr() as i64),
     });
     Ok(a)
 }
@@ -117,7 +117,7 @@ pub(super) fn signum(mut a: List, _: &Opts) -> Status<List> {
         Char(c) if c.is_uppercase() => Number(1),
         Char(_) => Number(0),
         Number(n) => Number(n.signum()),
-        Float(n) => Number(n.signum() as i32),
+        Float(n) => Number(n.signum() as i64),
         Boolean(b) if *b => Number(1),
         Boolean(_) => Number(0),
         Scalar::Box(ptr) => Number(0),
@@ -156,9 +156,9 @@ pub(super) fn reciprocal(mut a: List, _: &Opts) -> Status<List> {
             std::hint::cold_path();
             return err!(NaN);
         }
-        Char(c) => Float(f32::recip(*c as u32 as f32)),
-        Number(n) => Float(f32::recip(*n as f32)),
-        Float(f) => Float(f32::recip(*f)),
+        Char(c) => Float(f64::recip(*c as u32 as f64)),
+        Number(n) => Float(f64::recip(*n as f64)),
+        Float(f) => Float(f64::recip(*f)),
         Boolean(_) => Float(1.0),
         _ => return err!(NaN),
     });
@@ -271,7 +271,7 @@ pub(crate) fn gt(mut a: List, mut b: List, _: &Opts) -> Status<List> {
 
 // caretm | ^ | 0 | Exponential
 pub(super) fn exp(mut a: List, _: &Opts) -> Status<List> {
-    for_0!(a; [v] = Scalar::Float(f32::exp(v.to_float()?)));
+    for_0!(a; [v] = Scalar::Float(f64::exp(v.to_float()?)));
     Ok(a)
 }
 
@@ -282,7 +282,7 @@ pub(super) fn bitand(mut a: List, mut b: List, _: &Opts) -> Status<List> {
 
 // dollarm | $ | 99 | Shape
 pub(crate) fn shape(a: List, _: &Opts) -> Status<List> {
-    List::from_vec(a.rank().iter().map(|n| Scalar::Number(*n as i32)).collect())
+    List::from_vec(a.rank().iter().map(|n| Scalar::Number(*n as i64)).collect())
 }
 
 // dollard | $ | 1, 99 | Reshape

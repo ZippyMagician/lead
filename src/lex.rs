@@ -170,7 +170,7 @@ impl<'a> Lexer<'a> {
     }
 
     #[inline(always)]
-    fn nth(&mut self, i: usize) -> Option<char> {
+    fn nth(&self, i: usize) -> Option<char> {
         self.input.chars().nth(i)
     }
 
@@ -197,8 +197,12 @@ impl<'a> Lexer<'a> {
                 'e' if !found_e => {
                     found_e = true;
                 }
-                '_' if found_signs == 1 && found_e => {
+                // I can't use self.nth becuase the borrow checker hates me
+                '_' if self.input.chars().nth(start).unwrap() != 'e' || found_signs == 0 => {
                     found_signs += 1;
+                    if found_signs == 2 && !found_e {
+                        break;
+                    }
                 }
                 '0'..='9' => {}
                 _ => break,
@@ -207,7 +211,7 @@ impl<'a> Lexer<'a> {
             end += 1;
         }
 
-        if found_e || found_decimals > 0 {
+        if found_e || found_decimals > 0 || found_signs == end - start {
             tok!(Float, &self.input[start..end])
         } else {
             tok!(Number, &self.input[start..end])

@@ -12,8 +12,8 @@ use typed_arena;
 #[derive(Clone, Copy, Debug)]
 #[repr(u8)]
 pub enum Scalar {
-    Number(i32),
-    Float(f32),
+    Number(i64),
+    Float(f64),
     Boolean(bool),
     Char(char),
     Box(*const List),
@@ -68,17 +68,17 @@ impl Scalar {
     pub fn to_cast(self, tag: char) -> Status<Self> {
         let res = match tag {
             'N' => match self {
-                Self::Box(p) => Self::Number(p as u32 as i32),
+                Self::Box(p) => Self::Number(p as u32 as i64),
                 Self::Number(_) | Self::Float(_) => self,
                 _ => Self::Number(self.to_num().unwrap()),
             },
             'I' => match self {
-                Self::Box(p) => Self::Number(p as u32 as i32),
+                Self::Box(p) => Self::Number(p as u32 as i64),
                 Self::Number(_) => self,
                 _ => Self::Number(self.to_num().unwrap()),
             },
             'F' => match self {
-                Self::Box(p) => Self::Float(p as u32 as f32),
+                Self::Box(p) => Self::Float(p as u32 as f64),
                 Self::Float(_) => self,
                 _ => Self::Float(self.to_float().unwrap()),
             },
@@ -98,23 +98,23 @@ impl Scalar {
     }
 
     #[inline]
-    pub fn to_num(&self) -> Status<i32> {
+    pub fn to_num(&self) -> Status<i64> {
         match self {
             Self::Number(n) => Ok(*n),
-            Self::Float(f) => Ok(*f as i32),
-            Self::Char(c) => Ok(*c as i32),
-            Self::Boolean(b) => Ok(*b as i32),
+            Self::Float(f) => Ok(*f as i64),
+            Self::Char(c) => Ok(*c as i64),
+            Self::Boolean(b) => Ok(*b as i64),
             _ => err!(NaN),
         }
     }
 
     #[inline]
-    pub fn to_float(&self) -> Status<f32> {
+    pub fn to_float(&self) -> Status<f64> {
         match self {
-            Self::Number(n) => Ok(*n as f32),
+            Self::Number(n) => Ok(*n as f64),
             Self::Float(f) => Ok(*f),
-            Self::Char(c) => Ok(*c as u32 as f32),
-            Self::Boolean(b) => Ok(*b as u8 as f32),
+            Self::Char(c) => Ok(*c as u32 as f64),
+            Self::Boolean(b) => Ok(*b as u8 as f64),
             _ => err!(NaN),
         }
     }
@@ -123,7 +123,7 @@ impl Scalar {
     pub fn to_char(&self) -> Status<char> {
         match self {
             Self::Char(c) => Ok(*c),
-            _ => err!(Domain),
+            _ => err!(Value),
         }
     }
 
@@ -134,7 +134,7 @@ impl Scalar {
             Self::Number(0) => Ok(false),
             Self::Float(0.) => Ok(false),
             Self::Boolean(b) => Ok(*b),
-            Self::Box(_) => err!(Domain),
+            Self::Box(_) => err!(Value),
             _ => Ok(true),
         }
     }
@@ -166,7 +166,7 @@ impl Scalar {
     }
 
     #[inline]
-    pub(crate) unsafe fn to_num_unchecked(&self) -> i32 {
+    pub(crate) unsafe fn to_num_unchecked(&self) -> i64 {
         match self {
             Self::Number(n) => *n,
             _ => unsafe { unreachable_unchecked() },
@@ -174,7 +174,7 @@ impl Scalar {
     }
 
     #[inline]
-    pub(crate) unsafe fn to_float_unchecked(&self) -> f32 {
+    pub(crate) unsafe fn to_float_unchecked(&self) -> f64 {
         match self {
             Self::Float(f) => *f,
             _ => unsafe { unreachable_unchecked() },
@@ -201,12 +201,12 @@ impl Scalar {
 use Scalar::*;
 
 #[inline(always)]
-pub(crate) fn n(i: i32) -> Status<Scalar> {
+pub(crate) fn n(i: i64) -> Status<Scalar> {
     Ok(Scalar::Number(i))
 }
 
 #[inline(always)]
-pub(crate) fn f(i: f32) -> Status<Scalar> {
+pub(crate) fn f(i: f64) -> Status<Scalar> {
     Ok(Scalar::Float(i))
 }
 
@@ -235,27 +235,39 @@ macro_rules! impl_arith_ops {
                     // Note: ::std::hint::cold_path makes this slightly slower
                     if self.is_box() || rhs.is_box() {
                         err!(NaN)
+                    } else if self.is_num() && rhs.is_num() {
+                        unsafe {
+                            let $a1 = self.to_num_unchecked();
+                            let $a2 = self.to_num_unchecked();
+                            n($operation)
+                        }
+                    } else if self.is_float() && rhs.is_float() {
+                        unsafe {
+                            let $a1 = self.to_float_unchecked();
+                            let $a2 = rhs.to_float_unchecked();
+                            f($operation)
+                        }
                     } else if self.is_float() || rhs.is_float() {
                         let $a1 = self.to_float()?;
                         let $a2 = rhs.to_float()?;
                         f($operation)
                     } else {
                         let $a1 = self.to_num()?;
-                        let $a2 = rhs.to_num()?;
+                        let $a2 = self.to_num()?;
                         n($operation)
                     }
                 }
             }
 
-            impl $name<i32> for Scalar {
+            impl $name<i64> for Scalar {
                 type Output = Status<Self>;
 
-                fn $f(self, rhs: i32) -> Self::Output {
+                fn $f(self, rhs: i64) -> Self::Output {
                     if self.is_box() {
                         err!(NaN)
                     } else if let Float(fl) = self {
                         let $a1 = fl;
-                        let $a2 = rhs as f32;
+                        let $a2 = rhs as f64;
                         f($operation)
                     } else {
                         let $a1 = self.to_num()?;
@@ -273,7 +285,7 @@ impl_arith_ops! {
     Sub, sub, [l, r] {l - r};
     Mul, mul, [l, r] {l * r};
     Div, div, [l, r] {
-        // So we don't panic on division by 0. f32 lacks
+        // So we don't panic on division by 0. f64 lacks
         // a `checked_div`.
         if r == Default::default() {
             std::hint::cold_path(); return err!(NaN);
@@ -292,14 +304,14 @@ impl PartialEq for Scalar {
         use Scalar::*;
         match (&self, &o) {
             (Number(l), Number(r)) => *l == *r,
-            (Number(l), Float(r)) => *l as f32 == *r,
+            (Number(l), Float(r)) => *l as f64 == *r,
             (Number(l), Boolean(b)) if *b => *l == 1,
             (Number(l), Boolean(_)) => *l == 0,
-            (Number(l), Char(c)) => *l == *c as u32 as i32,
+            (Number(l), Char(c)) => *l == *c as u32 as i64,
             (Float(l), Float(r)) => *l == *r,
             (Float(l), Boolean(b)) if *b => *l == 1.,
             (Float(l), Boolean(_)) => *l == 0.,
-            (Float(l), Char(c)) => *l == *c as u32 as f32,
+            (Float(l), Char(c)) => *l == *c as u32 as f64,
             (Char(c), Boolean(b)) if *b => false,
             (Char(c), Boolean(_)) => *c == '\0',
             (Char(c), Char(r)) => *c == *r,
@@ -327,7 +339,7 @@ impl Ord for Scalar {
                 std::cmp::Ordering::Greater
             }
         } else if self.is_float() || o.is_float() {
-            f32::total_cmp(&self.to_float().unwrap(), &o.to_float().unwrap())
+            f64::total_cmp(&self.to_float().unwrap(), &o.to_float().unwrap())
         } else if self.is_box() && o.is_box() {
             unsafe { self.unbox_unchecked().cmp(&o.unbox_unchecked()) }
         } else {
