@@ -287,7 +287,11 @@ impl_arith_ops! {
             std::hint::cold_path(); return err!(NaN);
         } else { l / r }
     }, { false }, { 0 };
-    Rem, rem, true, false, [l, r] {l % r}, {l || r}, { 0 };
+    Rem, rem, true, false, [l, r] {
+        if r == Default::default() {
+            std::hint::cold_path(); return err!(NaN);
+        } else { l % r }
+    }, {l || r}, { 0 };
 }
 
 impl PartialEq for Scalar {
