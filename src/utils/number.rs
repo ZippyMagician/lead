@@ -1,5 +1,7 @@
 use super::error::{Status, err};
 
+use ordered_float::{FloatCore, OrderedFloat};
+
 pub fn is_number(string: &str) -> bool {
     let count_ = string.matches('_').count();
     if string.is_empty() || count_ > 2 {
@@ -61,13 +63,13 @@ pub fn parse_number(string: &str) -> Status<i64> {
 }
 
 #[inline]
-pub fn parse_float(string: &str) -> Status<f64> {
+pub fn parse_float(string: &str) -> Status<OrderedFloat<f64>> {
     let string = &replace_chars(string);
     if string == "-" {
-        Ok(f64::INFINITY)
+        Ok(OrderedFloat::infinity())
     } else if string == "--" {
-        Ok(f64::NEG_INFINITY)
+        Ok(OrderedFloat::neg_infinity())
     } else {
-        Ok(replace_chars(string).parse::<f64>()?)
+        Ok(OrderedFloat(replace_chars(string).parse::<f64>()?))
     }
 }

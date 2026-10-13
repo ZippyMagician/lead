@@ -16,7 +16,7 @@ use crate::utils::{compatible, display_boxed_lines};
 
 const INLINE_SIZE: usize = 4;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct List {
     dt: Box<[Scalar]>,
     ct: usize,

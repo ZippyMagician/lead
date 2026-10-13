@@ -10,6 +10,8 @@ use crate::utils::function::*;
 use crate::utils::symbols::{for_0, scalar_op};
 use scalar::Scalar::{self, Boolean, Char, Float, Number};
 
+use num_traits::AsPrimitive;
+use ordered_float::{Float as OrderFloat, OrderedFloat};
 use smallvec::{SmallVec, smallvec};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,7 +49,7 @@ pub enum Symbol {
 pub(super) fn abs(mut a: List, _: &Opts) -> Status<List> {
     for_0!(a; [v] = match v {
         Number(n) => Number(n.abs()),
-        Float(n) => Float(n.abs()),
+        Float(f) => Float(f.abs()),
         Boolean(n) => Number(*n as i64),
         Char(c) => Number(*c as u32 as i64),
         Scalar::Box(ptr) => Number(ptr.addr() as i64),
@@ -121,7 +123,7 @@ pub(super) fn signum(mut a: List, _: &Opts) -> Status<List> {
         Char(c) if c.is_uppercase() => Number(1),
         Char(_) => Number(0),
         Number(n) => Number(n.signum()),
-        Float(n) => Number(n.signum() as i64),
+        Float(n) => Number(n.signum().as_()),
         Boolean(b) if *b => Number(1),
         Boolean(_) => Number(0),
         Scalar::Box(ptr) => Number(0),
@@ -156,14 +158,14 @@ pub(super) fn mul(mut a: List, mut b: List, _: &Opts) -> Status<List> {
 // percentm | % | 0 | Reciprocal
 pub(super) fn reciprocal(mut a: List, _: &Opts) -> Status<List> {
     for_0!(a; [v] = match v {
-        Char('\0') | Number(0) | Float(0.0) | Boolean(false) => {
+        Char('\0') | Number(0) | Float(OrderedFloat(0.)) | Boolean(false) => {
             std::hint::cold_path();
             return err!(NaN);
         }
-        Char(c) => Float(f64::recip(*c as u32 as f64)),
-        Number(n) => Float(f64::recip(*n as f64)),
-        Float(f) => Float(f64::recip(*f)),
-        Boolean(_) => Float(1.0),
+        Char(c) => Float(OrderedFloat(*c as u32 as f64).recip()),
+        Number(n) => Float(OrderedFloat(*n as f64).recip()),
+        Float(f) => Float(f.recip()),
+        Boolean(_) => Float(OrderedFloat(1.0)),
         _ => return err!(NaN),
     });
     Ok(a)
@@ -275,7 +277,7 @@ pub(crate) fn gt(mut a: List, mut b: List, _: &Opts) -> Status<List> {
 
 // caretm | ^ | 0 | Exponential
 pub(super) fn exp(mut a: List, _: &Opts) -> Status<List> {
-    for_0!(a; [v] = Scalar::Float(f64::exp(v.to_float()?)));
+    for_0!(a; [v] = Float(v.to_float()?.exp()));
     Ok(a)
 }
 
@@ -382,4 +384,3 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
         }
     })
 }
-

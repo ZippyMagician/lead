@@ -2,5 +2,7 @@
 /target
 Cargo.lock
 
+*.vim
+
 # Offline
 /vendor
