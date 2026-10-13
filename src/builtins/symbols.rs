@@ -4,10 +4,11 @@ use std::ops::*;
 
 use crate::function::Opts;
 use crate::list::List;
-use crate::scalar::Scalar::{self, Boolean, Char, Float, Number};
+use crate::scalar;
 use crate::utils::error::{Error, Status, err};
 use crate::utils::function::*;
 use crate::utils::symbols::{for_0, scalar_op};
+use scalar::Scalar::{self, Boolean, Char, Float, Number};
 
 use smallvec::{SmallVec, smallvec};
 
@@ -24,14 +25,18 @@ pub enum Symbol {
     Percent,
     /// `|`
     Pipe,
-    /// `~`
-    Tilde,
+    /// `!`
+    Exclamation,
     /// `<`
     LeftArrow,
     /// `>`
     RightArrow,
+    /// `^`
+    Caret,
     /// `$`
     Dollar,
+    /// `~`
+    Tilde,
 }
 
 // plusm | + | 0 | Absolute value / Cast to int
@@ -126,7 +131,8 @@ pub(super) fn mul(mut a: List, mut b: List, _: &Opts) -> Status<List> {
         return Ok(b);
     } else if b.is_empty() {
         return Ok(a);
-    } else if matches!(a.list()[0], Scalar::Boolean(_)) && matches!(b.list()[0], Scalar::Boolean(_)) {
+    } else if matches!(a.list()[0], Scalar::Boolean(_)) && matches!(b.list()[0], Scalar::Boolean(_))
+    {
         scalar_op!(a, b,
             [l, r] = { Scalar::Boolean(
                 unsafe { l.to_bool_unchecked() && r.to_bool_unchecked() }
@@ -183,7 +189,8 @@ pub(super) fn residue(mut a: List, mut b: List, _: &Opts) -> Status<List> {
         return Ok(b);
     } else if b.is_empty() {
         return Ok(a);
-    } else if matches!(a.list()[0], Scalar::Boolean(_)) && matches!(b.list()[0], Scalar::Boolean(_)) {
+    } else if matches!(a.list()[0], Scalar::Boolean(_)) && matches!(b.list()[0], Scalar::Boolean(_))
+    {
         scalar_op!(a, b,
             [l, r] = { Scalar::Boolean(
                 unsafe { l.to_bool_unchecked() || r.to_bool_unchecked() }
@@ -198,6 +205,96 @@ pub(super) fn residue(mut a: List, mut b: List, _: &Opts) -> Status<List> {
     } else {
         scalar_op!(b, a, rem)
     }
+}
+
+// exclamationm | ! | 0 | Factorial
+pub(super) fn factorial(mut a: List, _: &Opts) -> Status<List> {
+    for_0!(a; [v] = {
+        let n = v.to_num()?;
+        if n < 0 {
+            return err!(Value);
+        } else if n == 0 {
+            Scalar::Number(1)
+        } else {
+            Scalar::Number((1..n).product())
+        }
+    });
+    Ok(a)
+}
+
+// exclamationd | ! | 0, 0 | Bitwise OR
+pub(super) fn bitor(mut a: List, mut b: List, _: &Opts) -> Status<List> {
+    scalar_op!(a, b, [l, r] = { Scalar::Number(l.to_num()? | r.to_num()?) })
+}
+
+// leftarrowm | < | 99 | Box
+pub(crate) fn boxed(a: List, o: &Opts) -> Status<List> {
+    Ok(List::scalar(Scalar::boxed(&o.a, a)?))
+}
+
+// leftarrowd | < | 0, 0 | Less than
+pub(crate) fn lt(mut a: List, mut b: List, _: &Opts) -> Status<List> {
+    scalar_op! {
+        a, b, [l, r] =
+        { Scalar::Boolean(*l < *r) };
+        { Scalar::Boolean(l < *r)  };
+        { Scalar::Boolean(*l < r)  };
+    }
+}
+
+// rightarrowm | > | 99 | Unbox / First
+pub(crate) fn unbox(a: List, o: &Opts) -> Status<List> {
+    if a.is_scalar() {
+        let f = &a.list()[0];
+        if f.is_box() {
+            Ok(unsafe { f.unbox_unchecked() })
+        } else {
+            Ok(a)
+        }
+    } else if a.is_empty() {
+        std::hint::cold_path();
+        Ok(a)
+    } else {
+        Ok(List::scalar(a.list()[0]))
+    }
+}
+
+// rightarrowd | > | 0, 0 | Greater than
+pub(crate) fn gt(mut a: List, mut b: List, _: &Opts) -> Status<List> {
+    scalar_op! {
+        a, b, [l, r] =
+        { Scalar::Boolean(*l > *r) };
+        { Scalar::Boolean(l > *r) };
+        { Scalar::Boolean(*l < r) };
+    }
+}
+
+// caretm | ^ | 0 | Exponential
+pub(super) fn exp(mut a: List, _: &Opts) -> Status<List> {
+    for_0!(a; [v] = Scalar::Float(f32::exp(v.to_float()?)));
+    Ok(a)
+}
+
+// caretd | ^ | 0, 0 | Bitwise AND
+pub(super) fn bitand(mut a: List, mut b: List, _: &Opts) -> Status<List> {
+    scalar_op!(a, b, [l, r] = { Scalar::Number(l.to_num()? & r.to_num()?) })
+}
+
+// dollarm | $ | 99 | Shape
+pub(crate) fn shape(a: List, _: &Opts) -> Status<List> {
+    List::from_vec(a.rank().iter().map(|n| Scalar::Number(*n as i32)).collect())
+}
+
+// dollard | $ | 1, 99 | Reshape
+pub(crate) fn reshape(a: List, b: List, o: &Opts) -> Status<List> {
+    apply_loosed(&o.a, a, b, o.rd, |a, b| {
+        let rank = a
+            .list()
+            .iter()
+            .map(|n| n.to_num().map(|n| n as usize))
+            .collect::<Status<SmallVec<[usize; 4]>>>()?;
+        b.with_rank(&rank)
+    })
 }
 
 // tildem | ~ | 0 | 1-range / Rising alphabet
@@ -265,61 +362,3 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
     })
 }
 
-// leftarrowm | < | 99 | Box
-pub(crate) fn boxed(a: List, o: &Opts) -> Status<List> {
-    Ok(List::scalar(Scalar::boxed(&o.a, a)?))
-}
-
-// leftarrowd | < | 0, 0 | Less than
-pub(crate) fn lt(mut a: List, mut b: List, _: &Opts) -> Status<List> {
-    scalar_op! {
-        a, b, [l, r] =
-        { Scalar::Boolean(*l < *r) };
-        { Scalar::Boolean(l < *r)  };
-        { Scalar::Boolean(*l < r)  };
-    }
-}
-
-// rightarrowm | > | 99 | Unbox / First
-pub(crate) fn unbox(a: List, o: &Opts) -> Status<List> {
-    if a.is_scalar() {
-        let f = &a.list()[0];
-        if f.is_box() {
-            Ok(unsafe { f.unbox_unchecked() })
-        } else {
-            Ok(a)
-        }
-    } else if a.is_empty() {
-        std::hint::cold_path();
-        Ok(a)
-    } else {
-        Ok(List::scalar(a.list()[0]))
-    }
-}
-
-// rightarrowd | > | 0, 0 | Greater than
-pub(crate) fn gt(mut a: List, mut b: List, _: &Opts) -> Status<List> {
-    scalar_op! {
-        a, b, [l, r] =
-        { Scalar::Boolean(*l > *r) };
-        { Scalar::Boolean(l > *r) };
-        { Scalar::Boolean(*l < r) };
-    }
-}
-
-// dollarm | $ | 99 | Shape
-pub(crate) fn shape(a: List, _: &Opts) -> Status<List> {
-    List::from_vec(a.rank().iter().map(|n| Scalar::Number(*n as i32)).collect())
-}
-
-// dollard | $ | 1, 99 | Reshape
-pub(crate) fn reshape(a: List, b: List, o: &Opts) -> Status<List> {
-    apply_loosed(&o.a, a, b, o.rd, |a, b| {
-        let rank = a
-            .list()
-            .iter()
-            .map(|n| n.to_num().map(|n| n as usize))
-            .collect::<Status<SmallVec<[usize; 4]>>>()?;
-        b.with_rank(&rank)
-    })
-}

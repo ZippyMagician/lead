@@ -201,22 +201,22 @@ impl Scalar {
 use Scalar::*;
 
 #[inline(always)]
-fn n(i: i32) -> Status<Scalar> {
+pub(crate) fn n(i: i32) -> Status<Scalar> {
     Ok(Scalar::Number(i))
 }
 
 #[inline(always)]
-fn f(i: f32) -> Status<Scalar> {
+pub(crate) fn f(i: f32) -> Status<Scalar> {
     Ok(Scalar::Float(i))
 }
 
 #[inline(always)]
-fn b(i: bool) -> Status<Scalar> {
+pub(crate) fn b(i: bool) -> Status<Scalar> {
     Ok(Scalar::Boolean(i))
 }
 
 #[inline(always)]
-fn c(i: u32) -> Status<Scalar> {
+pub(crate) fn c(i: u32) -> Status<Scalar> {
     Ok(Scalar::Char(char::from_u32(i).ok_or(Error::Domain)?))
 }
 

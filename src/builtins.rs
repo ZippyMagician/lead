@@ -78,10 +78,12 @@ define_syms! {
     Star => (b"*", 0, false, symbols::signum; [0, 0], false, symbols::mul);
     Percent => (b"%", 0, false, symbols::reciprocal; [0, 0], false, symbols::div);
     Pipe => (b"|", 0, false, symbols::not; [0, 0], false, symbols::residue);
-    Tilde => (b"~", 0, false, symbols::range; [99, 0], true, symbols::index);
+    Exclamation => (b"!", 0, false, symbols::factorial; [0, 0], false, symbols::bitor);
     LeftArrow => (b"<", 99, false, symbols::boxed; [0, 0], false, symbols::lt);
     RightArrow => (b">", 99, false, symbols::unbox; [0, 0], false, symbols::gt);
+    Caret => (b"^", 0, false, symbols::exp; [0, 0], false, symbols::bitand);
     Dollar => (b"$", 99, false, symbols::shape; [1, 99], true, symbols::reshape);
+    Tilde => (b"~", 0, false, symbols::range; [99, 0], true, symbols::index);
 }
 
 define_op! {

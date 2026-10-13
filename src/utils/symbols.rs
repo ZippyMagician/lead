@@ -29,6 +29,10 @@ macro_rules! scalar_op {
         )
     };
 
+    ($a:ident, $b:ident, [$l:ident, $r:ident] = $bl:block) => {
+        scalar_op!($a, $b, [$l, $r] = $bl; $bl; $bl;)
+    };
+
     // e1: L is &mut S, R is &S.
     // e2: L is S, R is &mut S
     // e3: L is &mut S, R is S
