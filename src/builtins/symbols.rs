@@ -55,14 +55,14 @@ pub(super) fn add(mut a: List, mut b: List, _: &Opts) -> Status<List> {
     } else if matches!(a.list()[0], Scalar::Char(_)) || matches!(b.list()[0], Scalar::Char(_)) {
         scalar_op!(a, b,
             [l, r] = { Scalar::Char(char::from_u32(
-                unsafe { l.to_char_unchecked() as u32 + r.to_char_unchecked() as u32 }).ok_or(Error::NaN)?
-            ) };
+                l.to_num()? as u32 + r.to_num()? as u32
+            ).ok_or(Error::NaN)?) };
             { Scalar::Char(char::from_u32(
-                unsafe { l.to_char_unchecked() as u32 + r.to_char_unchecked() as u32 }).ok_or(Error::NaN)?
-            ) };
+                l.to_num()? as u32 + r.to_num()? as u32
+            ).ok_or(Error::NaN)?) };
             { Scalar::Char(char::from_u32(
-                unsafe { l.to_char_unchecked() as u32 + r.to_char_unchecked() as u32 }).ok_or(Error::NaN)?)
-            };
+                l.to_num()? as u32 + r.to_num()? as u32
+            ).ok_or(Error::NaN)?) };
         )
     } else {
         scalar_op!(a, b, add)
@@ -91,14 +91,14 @@ pub(super) fn sub(mut a: List, mut b: List, _: &Opts) -> Status<List> {
     } else if matches!(a.list()[0], Scalar::Char(_)) || matches!(b.list()[0], Scalar::Char(_)) {
         scalar_op!(a, b,
             [l, r] = { Scalar::Char(char::from_u32(
-                unsafe { l.to_char_unchecked() as u32 - r.to_char_unchecked() as u32 }).ok_or(Error::NaN)?
-            ) };
+                l.to_num()? as u32 - r.to_num()? as u32
+            ).ok_or(Error::NaN)?) };
             { Scalar::Char(char::from_u32(
-                unsafe { l.to_char_unchecked() as u32 - r.to_char_unchecked() as u32 }).ok_or(Error::NaN)?
-            ) };
+                l.to_num()? as u32 - r.to_num()? as u32
+            ).ok_or(Error::NaN)?) };
             { Scalar::Char(char::from_u32(
-                unsafe { l.to_char_unchecked() as u32 - r.to_char_unchecked() as u32 }).ok_or(Error::NaN)?)
-            };
+                l.to_num()? as u32 - r.to_num()? as u32
+            ).ok_or(Error::NaN)?) };
         )
     } else {
         scalar_op!(a, b, sub)

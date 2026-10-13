@@ -102,7 +102,7 @@ impl Exec {
                     cond,
                     body,
                     otherwise,
-                } => self.exec_if(cond, body, otherwise)?,
+                } => self.exec_if(cond, body, otherwise, &mut line, &mut i)?,
                 n @ Group(_) if utils::is_instant(&n, &self.scope) => {
                     self.right = Some(self.exec_instant(n)?)
                 }
@@ -163,8 +163,16 @@ impl Exec {
                 body,
                 otherwise,
             } => {
-                self.exec_if(cond, body, otherwise)?;
-                Ok(self.right.take().unwrap())
+                let prev = self.right.take();
+                let list = self.exec_instant(*cond)?;
+                if list.is_empty() || list.list()[0].to_bool()? {
+                    self.exec_line(body)?;
+                } else {
+                    self.exec_line(otherwise)?;
+                }
+                let res = self.right.take();
+                self.right = prev;
+                Ok(res.ok_or(Error::Value)?)
             }
             _ => unreachable!(),
         }
@@ -317,12 +325,20 @@ impl Exec {
             } else if let Node::Op(o, l, r) = n {
                 f = self.exec_operator(o, *l, *r)?;
             } else if let Node::Literal(n) = n {
-                f = self
-                    .scope
-                    .borrow()
-                    .get(n)
-                    .ok_or(Error::Scope)?
-                    .to_function(self.arena.clone(), self.scope.clone())?;
+                if self.block && n == "v" {
+                    f = utils::generate_block(
+                        self.reference.take().unwrap(),
+                        self.scope.clone(),
+                        self.arena.clone(),
+                    );
+                } else {
+                    f = self
+                        .scope
+                        .borrow()
+                        .get(n)
+                        .ok_or(Error::Scope)?
+                        .to_function(self.arena.clone(), self.scope.clone())?;
+                }
             } else if let Node::Group(g) = n {
                 f = self.exec_train(g)?;
             } else {
@@ -433,13 +449,18 @@ impl Exec {
         cond: Box<Node<'a>>,
         body: Vec<Node<'a>>,
         otherwise: Vec<Node<'a>>,
+        line: &mut Vec<Node<'a>>,
+        i: &mut usize,
     ) -> Status {
         let list = self.exec_instant(*cond)?;
+        line.drain(*i..);
         if list.is_empty() || list.list()[0].to_bool()? {
-            self.exec_line(body)?;
+            line.reserve(body.len());
+            line.extend(body);
         } else {
-            self.exec_line(otherwise)?;
+            line.extend(otherwise);
         }
+        *i = line.len();
         Ok(())
     }
 
@@ -459,8 +480,8 @@ impl Exec {
                     self.right = Some(match right.list()[0] {
                         Scalar::Number(_) | Scalar::Float(_) => List::string("N"),
                         Scalar::Boolean(_) => List::string("B"),
-                        Scalar::Char(_) => List::string("S"),
-                        Scalar::Box(_) => List::string("B"),
+                        Scalar::Char(_) => List::string("C"),
+                        Scalar::Box(_) => List::string("X"),
                     })
                 }
             }
