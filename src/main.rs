@@ -14,8 +14,8 @@ use seqr::scope::new_scope;
 
 use seqr::builtins::symbols::Symbol;
 use seqr::list::List;
-use seqr::scalar::Scalar;
 use seqr::map::map;
+use seqr::scalar::Scalar;
 
 use typed_arena::Arena;
 
@@ -171,12 +171,14 @@ fn optest(arena: Rc<RefCell<Arena<List>>>, scope: seqr::scope::Scope) {
         .getfn(arena.clone(), scope.clone());
 
     let op = seqr::builtins::operators::Operator::get_operator("&").unwrap();
-    let atop_bind = op.getop(
-        seqr::scope::MaybeInstant::Function(minus),
-        Some(seqr::scope::MaybeInstant::Instant(seven.clone())),
-        arena,
-        scope,
-    ).unwrap();
+    let atop_bind = op
+        .getop(
+            seqr::scope::MaybeInstant::Function(minus),
+            Some(seqr::scope::MaybeInstant::Instant(seven.clone())),
+            arena,
+            scope,
+        )
+        .unwrap();
 
     println!("(-&7) 7 :: {:?}", atop_bind.monadic_call(seven))
 }

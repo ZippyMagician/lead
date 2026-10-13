@@ -20,11 +20,32 @@ macro_rules! for_0 {
     }};
 }
 
+macro_rules! for_1 {
+    ($a:ident; [$v:ident, $r:ident] $b:expr) => {
+        '_for_1: {
+            if $a.is_empty() {
+                break '_for_1;
+            }
+
+            let lists = $a.list();
+            let size = $a.rank()[0];
+            for i in 0..lists.len() / size {
+                let $v = &lists[i * size..i * size + size];
+                let $r = size;
+                {
+                    $b
+                };
+            }
+        }
+    };
+}
+
 pub(crate) use for_0;
+pub(crate) use for_1;
 
 macro_rules! scalar_op {
     ($a:ident, $b:ident, $d:ident) => {
-        scalar_op!($a, $b, 
+        scalar_op!($a, $b,
             [l, r] = { l.$d(*r)? }; { r.$d(l)? }; { l.$d(r)? };
         )
     };

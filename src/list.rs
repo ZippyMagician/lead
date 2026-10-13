@@ -69,6 +69,20 @@ impl List {
     }
 
     #[inline]
+    pub fn mat_ref(data: &[Scalar], ds: usize, rk: &[usize]) -> Status<Self> {
+        if !compatible(data) {
+            return err!(Domain);
+        }
+        let size = data.len();
+        Ok(Self {
+            dt: data.into(),
+            ct: size,
+            ds,
+            rk: rk.into(),
+        })
+    }
+
+    #[inline]
     pub fn scalar(data: Scalar) -> Self {
         Self {
             dt: [data].into(),

@@ -48,7 +48,11 @@ impl Display for Map {
         let mut pairs = Vec::new();
         let mut arena = Arena::new();
         if self.internal.is_empty() {
-            return write!(f, "{}", Scalar::boxed_custom(&mut arena, List::empty()).unwrap());
+            return write!(
+                f,
+                "{}",
+                Scalar::boxed_custom(&mut arena, List::empty()).unwrap()
+            );
         }
         for (key, value) in &self.internal {
             pairs.push(Scalar::boxed_custom(&mut arena, List::string(key)).unwrap());

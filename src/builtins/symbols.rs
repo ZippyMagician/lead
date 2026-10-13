@@ -7,7 +7,7 @@ use crate::list::List;
 use crate::scalar;
 use crate::utils::error::{Error, Status, err};
 use crate::utils::function::*;
-use crate::utils::symbols::{for_0, scalar_op};
+use crate::utils::symbols::{for_0, for_1, scalar_op};
 use scalar::Scalar::{self, Boolean, Char, Float, Number};
 
 use num_traits::AsPrimitive;
@@ -336,7 +336,7 @@ pub(super) fn dedup_sieve(a: List, o: &Opts) -> Status<List> {
         }
         List::from_vec(new)
     } else {
-        let rank = a.rank().to_vec();
+        let rank: SmallVec<[usize; 4]> = SmallVec::from(a.rank());
         let ldims = usize::min(o.rm as usize, a.dims() - 1);
         let runs = a.ranked(ldims)?;
         let mut m = std::collections::HashSet::new();
@@ -355,7 +355,48 @@ pub(super) fn dedup_sieve(a: List, o: &Opts) -> Status<List> {
 
 // questiond | ? | 99, 1 | Group
 pub(super) fn group(a: List, b: List, o: &Opts) -> Status<List> {
-    err!(Internal, "TODO: Dyadic '?' :: Group")
+    if b.is_empty() {
+        return err!(Domain);
+    }
+    if a.is_empty() {
+        return Ok(a);
+    }
+
+    let ldims = usize::min(o.rm as usize, a.dims() - 1);
+    let rank: SmallVec<[usize; 4]> = SmallVec::from(a.rank());
+    let dims = a.dims();
+    let runs = a.ranked(ldims)?;
+
+    let mut build: Vec<List> = Vec::with_capacity(b.len() / b.rank()[0]);
+    for_1!(b; [b, r] {
+        if rank[ldims] != b.len() {
+            return err!(Domain);
+        }
+        let mut map: std::collections::HashMap<usize, Vec<&[Scalar]>> =
+            std::collections::HashMap::new();
+        let bucket = b.into_iter().map(|n| n.to_num().map(|n| n as usize))
+            .collect::<Status<Vec<usize>>>()?;
+        for i in 0..=*bucket.iter().max().unwrap() {
+            map.insert(i, vec![]);
+        }
+        for (run, i) in runs.iter().zip(0..) {
+            map.get_mut(&bucket[i]).unwrap().push(run.list());
+        }
+        let mut construct = vec![List::empty(); map.len()];
+        for (key, value) in map.into_iter() {
+            if !value.is_empty() {
+                construct[key] = List::unranked(&o.a, ldims, &rank[..ldims],
+                    value.into_iter().map(|v| List::mat_ref(v, ldims, &rank[..ldims]))
+                        .collect::<Status<Vec<List>>>()?
+                )?
+            };
+        }
+        build.push(List::from_vec(construct.into_iter().map(
+            |n| Scalar::boxed(&o.a, n)
+        ).collect::<Status<Vec<Scalar>>>()?)?);
+    });
+
+    List::unranked(&o.a, dims, &rank, build)
 }
 
 // tildem | ~ | 0 | 1-range / Rising alphabet
