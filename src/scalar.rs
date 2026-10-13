@@ -221,7 +221,7 @@ fn c(i: u32) -> Status<Scalar> {
 }
 
 macro_rules! impl_arith_ops {
-    ($($name:ident, $f:ident, $uniq:ident, $char:ident, [$a1:ident, $a2:ident] $operation:block, $operation2:block, $operation3:block);*;) => {
+    ($($name:ident, $f:ident, [$a1:ident, $a2:ident] $operation:block);*;) => {
         $(
             impl $name for Scalar {
                 type Output = Status<Self>;
@@ -239,14 +239,6 @@ macro_rules! impl_arith_ops {
                         let $a1 = self.to_float()?;
                         let $a2 = rhs.to_float()?;
                         f($operation)
-                    } else if $uniq && self.is_bool() && rhs.is_bool() {
-                        let $a1 = unsafe { self.to_bool_unchecked() };
-                        let $a2 = unsafe { rhs.to_bool_unchecked() };
-                        b($operation2)
-                    } else if $char && self.is_char() || rhs.is_char() {
-                        let $a1 = self.to_num()?;
-                        let $a2 = rhs.to_num()?;
-                        c($operation3)
                     } else {
                         let $a1 = self.to_num()?;
                         let $a2 = rhs.to_num()?;
@@ -277,21 +269,21 @@ macro_rules! impl_arith_ops {
 }
 
 impl_arith_ops! {
-    Add, add, false, true, [l, r] {l + r}, { false }, {(l + r) as u32};
-    Sub, sub, false, true, [l, r] {l - r}, { false }, {(l - r) as u32};
-    Mul, mul, true, false, [l, r] {l * r}, {l && r}, { 0 };
-    Div, div, false, false, [l, r] {
+    Add, add, [l, r] {l + r};
+    Sub, sub, [l, r] {l - r};
+    Mul, mul, [l, r] {l * r};
+    Div, div, [l, r] {
         // So we don't panic on division by 0. f32 lacks
         // a `checked_div`.
         if r == Default::default() {
             std::hint::cold_path(); return err!(NaN);
         } else { l / r }
-    }, { false }, { 0 };
-    Rem, rem, true, false, [l, r] {
+    };
+    Rem, rem, [l, r] {
         if r == Default::default() {
             std::hint::cold_path(); return err!(NaN);
         } else { l % r }
-    }, {l || r}, { 0 };
+    };
 }
 
 impl PartialEq for Scalar {

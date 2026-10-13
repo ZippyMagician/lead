@@ -5,7 +5,7 @@ use std::ops::*;
 use crate::function::Opts;
 use crate::list::List;
 use crate::scalar::Scalar::{self, Boolean, Char, Float, Number};
-use crate::utils::error::{Status, err};
+use crate::utils::error::{Error, Status, err};
 use crate::utils::function::*;
 use crate::utils::symbols::{for_0, scalar_op};
 
@@ -48,7 +48,25 @@ pub(super) fn abs(mut a: List, _: &Opts) -> Status<List> {
 
 // plusd | + | 0, 0 | Addition
 pub(super) fn add(mut a: List, mut b: List, _: &Opts) -> Status<List> {
-    scalar_op!(a, b, add)
+    if a.is_empty() {
+        return Ok(b);
+    } else if b.is_empty() {
+        return Ok(a);
+    } else if matches!(a.list()[0], Scalar::Char(_)) || matches!(b.list()[0], Scalar::Char(_)) {
+        scalar_op!(a, b,
+            [l, r] = { Scalar::Char(char::from_u32(
+                unsafe { l.to_char_unchecked() as u32 + r.to_char_unchecked() as u32 }).ok_or(Error::NaN)?
+            ) };
+            { Scalar::Char(char::from_u32(
+                unsafe { l.to_char_unchecked() as u32 + r.to_char_unchecked() as u32 }).ok_or(Error::NaN)?
+            ) };
+            { Scalar::Char(char::from_u32(
+                unsafe { l.to_char_unchecked() as u32 + r.to_char_unchecked() as u32 }).ok_or(Error::NaN)?)
+            };
+        )
+    } else {
+        scalar_op!(a, b, add)
+    }
 }
 
 // dashm | - | 0 | Negate / Swap case / Boolean not
@@ -66,7 +84,25 @@ pub(super) fn negate(mut a: List, _: &Opts) -> Status<List> {
 
 // dashd | - | 0, 0 | Subtraction
 pub(super) fn sub(mut a: List, mut b: List, _: &Opts) -> Status<List> {
-    scalar_op!(a, b, sub)
+    if a.is_empty() {
+        return Ok(b);
+    } else if b.is_empty() {
+        return Ok(a);
+    } else if matches!(a.list()[0], Scalar::Char(_)) || matches!(b.list()[0], Scalar::Char(_)) {
+        scalar_op!(a, b,
+            [l, r] = { Scalar::Char(char::from_u32(
+                unsafe { l.to_char_unchecked() as u32 - r.to_char_unchecked() as u32 }).ok_or(Error::NaN)?
+            ) };
+            { Scalar::Char(char::from_u32(
+                unsafe { l.to_char_unchecked() as u32 - r.to_char_unchecked() as u32 }).ok_or(Error::NaN)?
+            ) };
+            { Scalar::Char(char::from_u32(
+                unsafe { l.to_char_unchecked() as u32 - r.to_char_unchecked() as u32 }).ok_or(Error::NaN)?)
+            };
+        )
+    } else {
+        scalar_op!(a, b, sub)
+    }
 }
 
 // starm | * | 0 | Sign / Case
@@ -86,7 +122,25 @@ pub(super) fn signum(mut a: List, _: &Opts) -> Status<List> {
 
 // stard | * | 0, 0 | Multiplication / Boolean And
 pub(super) fn mul(mut a: List, mut b: List, _: &Opts) -> Status<List> {
-    scalar_op!(a, b, mul)
+    if a.is_empty() {
+        return Ok(b);
+    } else if b.is_empty() {
+        return Ok(a);
+    } else if matches!(a.list()[0], Scalar::Boolean(_)) && matches!(b.list()[0], Scalar::Boolean(_)) {
+        scalar_op!(a, b,
+            [l, r] = { Scalar::Boolean(
+                unsafe { l.to_bool_unchecked() && r.to_bool_unchecked() }
+            ) };
+            { Scalar::Boolean(
+                unsafe { l.to_bool_unchecked() && r.to_bool_unchecked() }
+            ) };
+            { Scalar::Boolean(
+                unsafe { l.to_bool_unchecked() && r.to_bool_unchecked() }
+            ) };
+        )
+    } else {
+        scalar_op!(a, b, mul)
+    }
 }
 
 // percentm | % | 0 | Reciprocal
@@ -125,7 +179,25 @@ pub(super) fn not(mut a: List, _: &Opts) -> Status<List> {
 
 // piped | | | 0, 0 | Residue (Modulus) / Boolean Or
 pub(super) fn residue(mut a: List, mut b: List, _: &Opts) -> Status<List> {
-    scalar_op!(b, a, rem)
+    if a.is_empty() {
+        return Ok(b);
+    } else if b.is_empty() {
+        return Ok(a);
+    } else if matches!(a.list()[0], Scalar::Boolean(_)) && matches!(b.list()[0], Scalar::Boolean(_)) {
+        scalar_op!(a, b,
+            [l, r] = { Scalar::Boolean(
+                unsafe { l.to_bool_unchecked() || r.to_bool_unchecked() }
+            ) };
+            { Scalar::Boolean(
+                unsafe { l.to_bool_unchecked() || r.to_bool_unchecked() }
+            ) };
+            { Scalar::Boolean(
+                unsafe { l.to_bool_unchecked() || r.to_bool_unchecked() }
+            ) };
+        )
+    } else {
+        scalar_op!(b, a, rem)
+    }
 }
 
 // tildem | ~ | 0 | 1-range / Rising alphabet

@@ -186,3 +186,11 @@ pub(crate) fn display_boxed<T: AsRef<str>>(
 
     display_boxed_lines(lines.collect(), mx, my, 0b0000).map(|n| n.join("\n"))
 }
+
+#[inline(always)]
+pub const fn unlikely(b: bool) -> bool {
+    if b {
+        std::hint::cold_path();
+    }
+    b
+}
