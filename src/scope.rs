@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::hint;
 use std::rc::Rc;
 
+use crate::exec::Value;
 use crate::function::{Function, function};
 use crate::list::List;
 use crate::map::Map;
@@ -60,6 +61,15 @@ impl MaybeInstant {
             Self::Map(_) => err!(Domain),
         }
     }
+
+    #[inline]
+    pub fn to_value(self) -> Status<Value> {
+        match self {
+            Self::Function(_) => err!(Value),
+            Self::Instant(l) => Ok(Value::List(l)),
+            Self::Map(m) => Ok(Value::Map(m)),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -102,7 +112,28 @@ impl ScopeInternal {
         self.env.insert(name.to_string(), MaybeInstant::Instant(l));
     }
 
+    pub fn set_value(&mut self, name: &str, l: Value) {
+        self.env.insert(
+            name.to_string(),
+            match l {
+                Value::List(l) => MaybeInstant::Instant(l),
+                Value::Map(m) => MaybeInstant::Map(m),
+            },
+        );
+    }
+
     pub fn set_function(&mut self, name: &str, f: Function) {
         self.env.insert(name.to_string(), MaybeInstant::Function(f));
     }
 }
+
+impl From<Value> for MaybeInstant {
+    #[inline]
+    fn from(v: Value) -> Self {
+        match v {
+            Value::List(l) => Self::Instant(l),
+            Value::Map(m) => Self::Map(m),
+        }
+    }
+}
+

@@ -14,18 +14,26 @@ pub struct Map {
 }
 
 impl Map {
+    #[inline]
     pub fn new() -> Self {
         Self {
             internal: HashMap::new(),
         }
     }
 
+    #[inline]
     pub fn insert(&mut self, key: String, value: List) -> Option<List> {
         self.internal.insert(key.to_string(), value)
     }
 
+    #[inline]
     pub fn get(&self, key: &str) -> Option<&List> {
         self.internal.get(key)
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.internal.is_empty()
     }
 }
 

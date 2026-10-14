@@ -1,5 +1,6 @@
 #![allow(unused_variables)]
 
+use std::collections::{HashMap, HashSet};
 use std::ops::*;
 
 use crate::function::Opts;
@@ -325,7 +326,7 @@ pub(super) fn right(a: List, b: List, _: &Opts) -> Status<List> {
 // questionm | ? | 99 | Dedup sieve
 pub(super) fn dedup_sieve(a: List, o: &Opts) -> Status<List> {
     if o.rm == 0 {
-        let mut m = std::collections::HashSet::new();
+        let mut m = HashSet::new();
         let mut new = Vec::with_capacity(a.len());
         for s in a.list() {
             if m.contains(s) {
@@ -339,7 +340,7 @@ pub(super) fn dedup_sieve(a: List, o: &Opts) -> Status<List> {
         let rank: SmallVec<[usize; 4]> = SmallVec::from(a.rank());
         let ldims = usize::min(o.rm as usize, a.dims() - 1);
         let runs = a.ranked(ldims)?;
-        let mut m = std::collections::HashSet::new();
+        let mut m = HashSet::new();
         let mut new = Vec::with_capacity(runs.len());
         for run in runs.iter() {
             if m.contains(run) {
@@ -372,8 +373,7 @@ pub(super) fn group(a: List, b: List, o: &Opts) -> Status<List> {
         if rank[ldims] != b.len() {
             return err!(Domain);
         }
-        let mut map: std::collections::HashMap<usize, Vec<&[Scalar]>> =
-            std::collections::HashMap::new();
+        let mut map: HashMap<usize, Vec<&[Scalar]>> = HashMap::new();
         let bucket = b.into_iter().map(|n| n.to_num().map(|n| n as usize))
             .collect::<Status<Vec<usize>>>()?;
         for i in 0..=*bucket.iter().max().unwrap() {

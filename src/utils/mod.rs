@@ -8,7 +8,7 @@ use std::fmt::Write;
 use std::hint::assert_unchecked;
 use std::rc::Rc;
 
-use super::exec::Exec;
+use super::exec::{Exec, Value};
 use super::function::Function;
 use super::list::List;
 use super::parse::Node;
@@ -75,7 +75,7 @@ macro_rules! run_block {
         drop(s);
         let mut e = Exec::new_imm($o.a.clone(), $o.s.clone());
         e.exec($n.clone())?;
-        Ok(e.right.unwrap_or(List::empty()))
+        e.right.unwrap_or(Value::List(List::empty())).to_list()
     }};
 }
 

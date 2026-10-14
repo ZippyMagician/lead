@@ -1,9 +1,11 @@
+use std::fmt::{self, Display};
 use std::hint::unreachable_unchecked;
 use std::mem::take;
 
 use crate::builtins::operators::Operator;
 use crate::function::{Function, function};
 use crate::list::List;
+use crate::map::Map;
 use crate::parse::Node;
 use crate::scalar::Scalar;
 use crate::scope::{MaybeInstant, Scope};
@@ -18,7 +20,42 @@ pub struct Exec {
 
     pub(crate) block: bool,
     pub(crate) reference: Option<Vec<Node<'static>>>,
-    pub(crate) right: Option<List>,
+    pub(crate) right: Option<Value>,
+}
+
+#[repr(u8)]
+#[derive(Clone, Debug)]
+pub enum Value {
+    List(List),
+    Map(Map),
+}
+
+impl Value {
+    #[inline]
+    pub fn to_list(self) -> Status<List> {
+        match self {
+            Self::List(l) => Ok(l),
+            Self::Map(_) => err!(ValueS, "Cannot treat map as primitive list."),
+        }
+    }
+
+    #[inline]
+    pub fn to_map(self) -> Status<Map> {
+        match self {
+            Self::List(_) => err!(ValueS, "Cannot treat primitive list as map."),
+            Self::Map(m) => Ok(m),
+        }
+    }
+
+    #[inline]
+    pub fn is_map(&self) -> bool {
+        matches!(self, Self::Map(_))
+    }
+
+    #[inline]
+    pub fn is_list(&self) -> bool {
+        matches!(self, Self::List(_))
+    }
 }
 
 impl Exec {
@@ -77,9 +114,9 @@ impl Exec {
         let mut i = line.len() - 1;
         loop {
             match take(unsafe { line.get_unchecked_mut(i) }) {
-                Primitive(list) => self.right = Some(list),
-                PrimitiveString(list) => self.right = Some(list),
-                PrimitiveBoxes(list) => self.right = Some(list),
+                Primitive(list) => self.right = Some(Value::List(list)),
+                PrimitiveString(list) => self.right = Some(Value::List(list)),
+                PrimitiveBoxes(list) => self.right = Some(Value::List(list)),
                 Literal(l) => self.right = Some(self.exec_literal(l, &mut line, &mut i)?),
                 LiteralInternal(l) => self.right = Some(self.exec_internal(l)?),
                 Tag(t) => self.exec_tag(t)?,
@@ -129,14 +166,14 @@ impl Exec {
     }
 
     #[inline]
-    fn exec_instant<'a>(&mut self, node: Node<'a>) -> Status<List> {
+    fn exec_instant<'a>(&mut self, node: Node<'a>) -> Status<Value> {
         use Node::*;
 
         match node {
-            Primitive(l) => Ok(l),
-            PrimitiveString(l) => Ok(l),
-            PrimitiveBoxes(l) => Ok(l),
-            Literal(l) => self.scope.borrow().get(l).unwrap().to_instant(),
+            Primitive(l) => Ok(Value::List(l)),
+            PrimitiveString(l) => Ok(Value::List(l)),
+            PrimitiveBoxes(l) => Ok(Value::List(l)),
+            Literal(l) => self.scope.borrow().get(l).unwrap().to_value(),
             LiteralInternal(_) => err!(Internal, "TODO: Internals @ <exec.rs> exec_instant"),
             Assign {
                 head,
@@ -148,7 +185,7 @@ impl Exec {
                 }
                 let s = self.scope.clone();
                 let list = self.exec_instant(Node::Group(body))?;
-                s.borrow_mut().set_instant(head, list.clone());
+                s.borrow_mut().set_value(head, list.clone());
                 Ok(list)
             }
             Group(body) => {
@@ -156,7 +193,7 @@ impl Exec {
                 self.exec_line(body)?;
                 let out = self.right.take();
                 self.right = r;
-                Ok(out.unwrap_or(List::empty()))
+                Ok(out.unwrap_or(Value::List(List::empty())))
             }
             If {
                 cond,
@@ -164,7 +201,7 @@ impl Exec {
                 otherwise,
             } => {
                 let prev = self.right.take();
-                let list = self.exec_instant(*cond)?;
+                let list = self.exec_instant(*cond)?.to_list()?;
                 if list.is_empty() || list.list()[0].to_bool()? {
                     self.exec_line(body)?;
                 } else {
@@ -184,7 +221,7 @@ impl Exec {
         name: &'a str,
         list: &mut Vec<Node<'a>>,
         i: &mut usize,
-    ) -> Status<List> {
+    ) -> Status<Value> {
         let s = self.scope.clone();
         if self.block && name == "v" {
             if self.right.is_none() {
@@ -198,29 +235,32 @@ impl Exec {
             }
             if *i == 0 {
                 let mut sc = s.borrow_mut();
+                // TODO: Check for maps, support alternate calls for blocks
                 if let Some(left) = left {
-                    sc.set_instant("x", left);
+                    sc.set_instant("x", left.to_list()?);
                 }
-                sc.set_instant("y", right);
+                sc.set_instant("y", right.to_list()?);
                 *list = self.reference.as_ref().unwrap().clone();
                 *i = list.len();
-                Ok(List::empty())
+                Ok(Value::List(List::empty()))
             } else {
                 let f = utils::generate_block(
                     self.reference.take().unwrap(),
                     self.scope.clone(),
                     self.arena.clone(),
                 );
+                // TODO: Check for maps, support alternate calls for blocks
                 if let Some(left) = left {
-                    f.dyadic_call(left, right)
+                    f.dyadic_call(left.to_list()?, right.to_list()?)
+                        .map(Value::List)
                 } else {
-                    f.monadic_call(right)
+                    f.monadic_call(right.to_list()?).map(Value::List)
                 }
             }
         } else {
             let value = s.borrow().get(name).ok_or(Error::Scope)?;
             if value.is_instant() {
-                Ok(value.to_instant().unwrap())
+                value.to_instant().map(Value::List)
             } else {
                 let f = value
                     .to_function(self.arena.clone(), self.scope.clone())
@@ -231,7 +271,7 @@ impl Exec {
     }
 
     #[inline]
-    fn exec_internal(&mut self, _name: &str) -> Status<List> {
+    fn exec_internal(&mut self, _name: &str) -> Status<Value> {
         err!(Internal, "TODO: Internals @ <exec.rs> exec_internal")
     }
 
@@ -241,17 +281,19 @@ impl Exec {
         f: Function,
         line: &mut [Node<'a>],
         i: &mut usize,
-    ) -> Status<List> {
+    ) -> Status<Value> {
         if self.right.is_none() {
             return err!(Argument);
         }
         let right = self.right.take().unwrap();
+        // TODO: Check is value is map, support alternate block calls
         if *i > 0 && utils::is_instant(&line[*i - 1], &self.scope) {
             let left = self.exec_instant(take(&mut line[*i - 1]))?;
             *i -= 1;
-            f.dyadic_call(left, right)
+            f.dyadic_call(left.to_list()?, right.to_list()?)
+                .map(Value::List)
         } else {
-            f.monadic_call(right)
+            f.monadic_call(right.to_list()?).map(Value::List)
         }
     }
 
@@ -293,7 +335,7 @@ impl Exec {
             // I don't have to check for operators since these are only stored for now
             if utils::is_instant(&n, &self.scope) {
                 let top = build.pop().unwrap();
-                let left = self.exec_instant(n)?;
+                let left = self.exec_instant(n)?.to_list()?;
                 if build.is_empty() {
                     build.push(function!(
                         move |a, b, _| top.dyadic_call(left.clone(), b.unwrap_or(a));
@@ -355,7 +397,7 @@ impl Exec {
                     build.push(function!(
                         move |a, b, _| {
                             g.dyadic_call(
-                                f.call_fn(a.clone(), b.clone())?, 
+                                f.call_fn(a.clone(), b.clone())?,
                                 h.call_fn(a, b)?,
                             )
                         }; self.arena.clone(), self.scope.clone()
@@ -402,7 +444,7 @@ impl Exec {
                 // Preserves when used
                 self.right = Some(list.clone());
             }
-            s.borrow_mut().set_instant(head, list);
+            s.borrow_mut().set_value(head, list);
         } else {
             // SAFETY: This is set as a `Node::Group` a few lines ago
             let Node::Group(mut body) = group else {
@@ -432,7 +474,7 @@ impl Exec {
         line: &mut Vec<Node<'a>>,
         i: &mut usize,
     ) -> Status {
-        let list = self.exec_instant(*cond)?;
+        let list = self.exec_instant(*cond)?.to_list()?;
         line.drain(*i..);
         if list.is_empty() || list.list()[0].to_bool()? {
             line.reserve(body.len());
@@ -454,25 +496,30 @@ impl Exec {
             // Get type
             (TokenTag::Symbol, "?") => {
                 let right = self.right.take().ok_or(Error::Value)?;
-                if right.is_empty() {
-                    self.right = Some(List::string("()"));
+                if right.is_map() {
+                    self.right = Some(Value::List(List::string("`:")));
                 } else {
-                    self.right = Some(match right.list()[0] {
-                        Scalar::Number(_) | Scalar::Float(_) => List::string("N"),
-                        Scalar::Boolean(_) => List::string("B"),
-                        Scalar::Char(_) => List::string("C"),
-                        Scalar::Box(_) => List::string("X"),
-                    })
+                    let right = right.to_list().unwrap();
+                    if right.is_empty() {
+                        self.right = Some(Value::List(List::string("()")));
+                        return Ok(());
+                    }
+                    self.right = Some(Value::List(match right.list()[0] {
+                        Scalar::Number(_) | Scalar::Float(_) => List::string("`N"),
+                        Scalar::Boolean(_) => List::string("`B"),
+                        Scalar::Char(_) => List::string("`C"),
+                        Scalar::Box(_) => List::string("`X"),
+                    }))
                 }
             }
             (TokenTag::String, s) if s.len() == 1 => {
-                let mut right = self.right.take().ok_or(Error::Value)?;
+                let mut right = self.right.take().ok_or(Error::Value)?.to_list()?;
                 if right.is_empty() {
-                    self.right = Some(right);
+                    self.right = Some(Value::List(right));
                 } else {
                     let ident = s.as_bytes()[0] as char;
                     crate::utils::symbols::for_0!(right; [v] = v.to_cast(ident)?);
-                    self.right = Some(right);
+                    self.right = Some(Value::List(right));
                 }
             }
             _ => return err!(Syntax, "Unrecognized tag."),
@@ -484,7 +531,7 @@ impl Exec {
     #[inline]
     fn maybe_instant<'a>(&mut self, node: Node<'a>) -> Status<MaybeInstant> {
         if utils::is_instant(&node, &self.scope) {
-            Ok(MaybeInstant::Instant(self.exec_instant(node)?))
+            Ok(MaybeInstant::from(self.exec_instant(node)?))
         } else if let Node::Function(f) = node {
             Ok(MaybeInstant::Function(f))
         } else if let Node::Op(o, l, r) = node {
@@ -493,6 +540,15 @@ impl Exec {
             Ok(MaybeInstant::Function(self.exec_train(g)?))
         } else {
             unreachable!("Internal error @ src/exec.rs:maybe_instant");
+        }
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::List(l) => write!(f, "{l}"),
+            Self::Map(m) => write!(f, "{m}"),
         }
     }
 }
