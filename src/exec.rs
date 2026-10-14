@@ -5,7 +5,7 @@ use std::mem::take;
 use crate::builtins::operators::Operator;
 use crate::function::{Function, function};
 use crate::list::List;
-use crate::map::Map;
+use crate::map::{self, Map};
 use crate::parse::Node;
 use crate::scalar::Scalar;
 use crate::scope::{MaybeInstant, Scope};
@@ -24,7 +24,7 @@ pub struct Exec {
 }
 
 #[repr(u8)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
 pub enum Value {
     List(List),
     Map(Map),
@@ -48,6 +48,14 @@ impl Value {
     }
 
     #[inline]
+    pub fn as_map(&self) -> Status<&Map> {
+        match &self {
+            Self::List(_) => err!(ValueS, "Cannot treat primitive list as map."),
+            Self::Map(m) => Ok(m),
+        }
+    }
+
+    #[inline]
     pub fn is_map(&self) -> bool {
         matches!(self, Self::Map(_))
     }
@@ -55,6 +63,14 @@ impl Value {
     #[inline]
     pub fn is_list(&self) -> bool {
         matches!(self, Self::List(_))
+    }
+
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::List(l) => l.is_empty(),
+            Self::Map(m) => m.is_empty(),
+        }
     }
 }
 
@@ -147,6 +163,7 @@ impl Exec {
                     let train = self.exec_train(g)?;
                     self.right = Some(self.exec_function(train, &mut line, &mut i)?);
                 }
+                n @ (Map(_) | Accessor(_, _)) => self.right = Some(self.exec_instant(n)?),
                 Line => {
                     if !self.block {
                         return err!(Internal, "Unexpected node in line");
@@ -211,6 +228,25 @@ impl Exec {
                 self.right = prev;
                 Ok(res.ok_or(Error::Value)?)
             }
+            Map(m) => {
+                let mut map = map::Map::new();
+                for (key, value) in m {
+                    map.insert(key.to_string(), self.exec_instant(Node::Group(value))?);
+                }
+                Ok(Value::Map(map))
+            }
+            Accessor(head, body) => {
+                let s = self.scope.borrow();
+                let map = s.get(head).ok_or(Error::Scope)?.to_map()?;
+                drop(s);
+                let mut acc = &map;
+                if body.len() > 1 {
+                    for k in 0..=body.len() - 2 {
+                        acc = acc.get(&body[k]).ok_or(Error::Domain)?.as_map()?;
+                    }
+                }
+                acc.get(&body.last().unwrap()).cloned().ok_or(Error::Domain)
+            }
             _ => unreachable!(),
         }
     }
@@ -259,13 +295,13 @@ impl Exec {
             }
         } else {
             let value = s.borrow().get(name).ok_or(Error::Scope)?;
-            if value.is_instant() {
-                value.to_instant().map(Value::List)
-            } else {
+            if value.is_function() {
                 let f = value
                     .to_function(self.arena.clone(), self.scope.clone())
                     .unwrap();
                 self.exec_function(f, list, i)
+            } else {
+                value.to_value()
             }
         }
     }

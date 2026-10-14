@@ -63,6 +63,22 @@ impl MaybeInstant {
     }
 
     #[inline]
+    pub fn to_map(self) -> Status<Map> {
+        match self {
+            Self::Map(m) => Ok(m),
+            _ => err!(ValueS, "Cannot treat as map"),
+        }
+    }
+
+    #[inline]
+    pub fn as_map(&self) -> Status<&Map> {
+        match &self {
+            Self::Map(m) => Ok(m),
+            _ => err!(ValueS, "Cannot treat as map"),
+        }
+    }
+
+    #[inline]
     pub fn to_value(self) -> Status<Value> {
         match self {
             Self::Function(_) => err!(Value),

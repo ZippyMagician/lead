@@ -29,6 +29,8 @@ pub enum Node<'a> {
     Tag(Token<'a>),
     /// Map
     Map(Vec<(&'a str, Vec<Node<'a>>)>),
+    /// Accessor
+    Accessor(&'a str, Vec<&'a str>),
     /// Any function
     Function(Function),
     /// Parenthesized group of nodes
@@ -139,7 +141,7 @@ impl<'a> Parser<'a> {
                     Ok(Node::DyadicOp(o))
                 }
             }
-            Literal => Ok(Node::Literal(t.1)),
+            Literal => self.maybe_accessor(t),
             Newline | CloseParen => Ok(Node::Line),
             OpenBracket => self.maybe_tag(),
             OpenParen => self.consume_group(),
@@ -157,7 +159,7 @@ impl<'a> Parser<'a> {
 
         if let Some(next) = self.tokens.next() {
             match next {
-                (TokenTag::CloseBracket, _) => self.consume_accessor(),
+                (TokenTag::CloseBracket, _) => self.consume_internal(),
                 (TokenTag::Newline, _) => {
                     Ok(Node::Two(Node::Function(sym).into(), Node::Line.into()))
                 }
@@ -187,6 +189,26 @@ impl<'a> Parser<'a> {
                 err!(Syntax, "Invalid use of colon")
             }
             _ => self.consume_if(top),
+        }
+    }
+
+    fn maybe_accessor(&mut self, head: &'a Token<'a>) -> Status<Node<'a>> {
+        if self.next_if(TokenTag::Dot).is_some() {
+            let mut build = Vec::new();
+            loop {
+                // TODO: Support variadic accessing?
+                if let Some(child) = self.next_if(TokenTag::Literal) {
+                    build.push(child.1);
+                } else {
+                    return err!(Syntax, "Empty accessor");
+                }
+                if self.next_if(TokenTag::Dot).is_none() {
+                    break;
+                }
+            }
+            Ok(Node::Accessor(head.1, build))
+        } else {
+            Ok(Node::Literal(head.1))
         }
     }
 
@@ -271,11 +293,11 @@ impl<'a> Parser<'a> {
     }
 
     #[inline]
-    fn consume_accessor(&mut self) -> Status<Node<'a>> {
+    fn consume_internal(&mut self) -> Status<Node<'a>> {
         if let Some((_, lit)) = self.next_if(TokenTag::Literal) {
             Ok(Node::LiteralInternal(lit))
         } else {
-            err!(Syntax, "Invalid use of accessor")
+            err!(Syntax, "Invalid use of internal indicator.")
         }
     }
 
@@ -480,6 +502,13 @@ impl<'a> Debug for Node<'a> {
                 )
             }
             Node::Map(keys) => write!(f, "Map({keys:?})"),
+            Node::Accessor(head, body) => {
+                write!(f, "{head}")?;
+                for item in body {
+                    write!(f, ".{item}")?;
+                }
+                Ok(())
+            }
             _ => todo!(),
         }
     }

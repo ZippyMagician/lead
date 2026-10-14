@@ -4,6 +4,7 @@ use std::fmt::{self, Debug, Display};
 use std::hint::{/*cold_path,*/ unreachable_unchecked};
 use std::ops::*;
 
+use crate::exec::Value;
 use crate::list::List;
 use crate::utils::error::{Error, Status, err};
 use crate::utils::{Arena, display_boxed};
@@ -19,26 +20,28 @@ pub enum Scalar {
     Float(OrderedFloat<f64>),
     Boolean(bool),
     Char(char),
-    Box(*const List),
+    Box(*const Value),
 }
 
 impl Scalar {
     #[inline]
     pub fn boxed(a: &Arena, l: List) -> Status<Self> {
         let arena = a.borrow_mut();
+        let l = Value::List(l);
         let r = arena.alloc(l);
-        Ok(Box(r as *const List))
+        Ok(Box(r as *const Value))
     }
 
     #[inline]
-    pub fn boxed_custom(a: &mut typed_arena::Arena<List>, l: List) -> Status<Self> {
+    pub fn boxed_custom(a: &mut typed_arena::Arena<Value>, l: Value) -> Status<Self> {
         let r = a.alloc(l);
-        Ok(Box(r as *const List))
+        Ok(Box(r as *const Value))
     }
 
     #[inline]
     pub fn boxed_leak(l: List) -> Status<Self> {
         use std::boxed::Box;
+        let l = Value::List(l);
         Ok(Self::Box(Box::into_raw(Box::new(l))))
     }
 
@@ -153,7 +156,7 @@ impl Scalar {
     }
 
     #[inline]
-    pub(crate) unsafe fn as_unboxed_unchecked(&self) -> &List {
+    pub(crate) unsafe fn as_unboxed_unchecked(&self) -> &Value {
         match self {
             Self::Box(p) => unsafe { &**p },
             _ => unsafe { unreachable_unchecked() },
@@ -161,7 +164,7 @@ impl Scalar {
     }
 
     #[inline]
-    pub(crate) unsafe fn unbox_unchecked(self) -> List {
+    pub(crate) unsafe fn unbox_unchecked(self) -> Value {
         match self {
             Self::Box(p) => unsafe { (*p).clone() },
             _ => unsafe { unreachable_unchecked() },
@@ -368,7 +371,7 @@ impl Display for Scalar {
                     err!(MemoryFault, "Lost Box"; !);
                 }
                 // SAFETY: Pointer checked. Taking reference, so other pointers are still valid
-                let list: &List = unsafe { &**l };
+                let list: &Value = unsafe { &**l };
                 write!(f, "{}", display_boxed(format!("{list}"), None, None)?)
             }
         }

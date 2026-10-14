@@ -18,7 +18,7 @@ use function::apply_loose;
 
 use typed_arena;
 
-pub(crate) type Arena = Rc<RefCell<typed_arena::Arena<List>>>;
+pub(crate) type Arena = Rc<RefCell<typed_arena::Arena<Value>>>;
 
 // Check to ensure lists contain matching scalar values
 #[inline]
@@ -55,7 +55,9 @@ pub fn is_instant(node: &Node<'_>, scope: &Scope) -> bool {
         Literal(s) => scope.borrow().get(s).is_some_and(|m| m.is_instant()),
         LiteralInternal(_) => todo!("Literal internal"),
         Group(body) if body.last().is_none_or(|n| is_instant(n, scope)) => true,
+        Accessor(_, _) => true,
         If { .. } => true, // Statements (almost) always yield something
+        Map(_) => true,
         _ => false,
     }
 }

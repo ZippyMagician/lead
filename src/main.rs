@@ -14,7 +14,6 @@ use seqr::scope::new_scope;
 
 use seqr::builtins::symbols::Symbol;
 use seqr::list::List;
-use seqr::map::map;
 use seqr::scalar::Scalar;
 
 use typed_arena::Arena;
@@ -42,12 +41,6 @@ fn main() -> io::Result<()> {
         let line = buf.trim_end_matches('\r');
         if line == "test speed\n" {
             speedtest(arena.clone(), scope.clone());
-            continue;
-        } else if line == "test op\n" {
-            optest(arena.clone(), scope.clone());
-            continue;
-        } else if line == "test map\n" {
-            maptest();
             continue;
         }
 
@@ -144,7 +137,7 @@ fn main() -> Result<(), seqr::utils::error::Error> {
     Ok(())
 }*/
 
-fn speedtest(arena: Rc<RefCell<Arena<List>>>, scope: seqr::scope::Scope) {
+fn speedtest(arena: Rc<RefCell<Arena<seqr::exec::Value>>>, scope: seqr::scope::Scope) {
     // --- SPEED TEST --- \\
     let mut build = Vec::with_capacity(10_000_000);
     for i in 0..10_000_000 {
@@ -161,34 +154,3 @@ fn speedtest(arena: Rc<RefCell<Arena<List>>>, scope: seqr::scope::Scope) {
     // --- END --- \\\
 }
 
-fn optest(arena: Rc<RefCell<Arena<List>>>, scope: seqr::scope::Scope) {
-    let seven = List::scalar(Scalar::Number(7));
-    let _plus = Symbol::get_symbol("+")
-        .unwrap()
-        .getfn(arena.clone(), scope.clone());
-    let minus = Symbol::get_symbol("-")
-        .unwrap()
-        .getfn(arena.clone(), scope.clone());
-
-    let op = seqr::builtins::operators::Operator::get_operator("&").unwrap();
-    let atop_bind = op
-        .getop(
-            seqr::scope::MaybeInstant::Function(minus),
-            Some(seqr::scope::MaybeInstant::Instant(seven.clone())),
-            arena,
-            scope,
-        )
-        .unwrap();
-
-    println!("(-&7) 7 :: {:?}", atop_bind.monadic_call(seven))
-}
-
-fn maptest() {
-    let m = map! {
-        "a" => List::empty(),
-        "b" => List::string("word"),
-        "c" => List::from_vec(vec![Scalar::Number(1), Scalar::Number(2), Scalar::Number(-7)]).unwrap(),
-    };
-
-    println!("{m}");
-}
