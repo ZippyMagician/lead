@@ -6,8 +6,14 @@ use super::function::function;
 use operators::Operator;
 use symbols::Symbol;
 
+macro_rules! _len {
+    ($obj:literal) => { 1 };
+    () => { 0 };
+    ($obj:literal, $($objs:literal),+) => { 1 + _len!($($objs),+) }
+}
+
 macro_rules! define_syms {
-    ($($rep:ident => ($tok:pat, $rm:literal, $am:ident, $monad:expr; $rd:expr, $ad:ident, $dyad:expr));*;) => {
+    ($($rep:ident => ($tok:literal, $rm:literal, $am:ident, $monad:expr; $rd:expr, $ad:ident, $dyad:expr));*;) => {
         impl Symbol {
             pub fn get_symbol(s: &str) -> Option<Self> {
                 match s.as_bytes() {
@@ -26,6 +32,8 @@ macro_rules! define_syms {
                 }
             }
         }
+
+        pub const SYMBOLS: [&[u8]; _len!($($tok),*)] = [$($tok),*];
     }
 }
 
@@ -42,7 +50,7 @@ macro_rules! define_op {
         }
     };
 
-    ($($rep:ident => ($tok:pat, $flag:ident, $func:expr));*;) => {
+    ($($rep:ident => ($tok:literal, $flag:ident, $func:expr));*;) => {
         impl Operator {
             pub fn get_operator(s: &str) -> Option<Self> {
                 match s.as_bytes() {
@@ -69,6 +77,8 @@ macro_rules! define_op {
                 crate::utils::error::err!(Internal, "TODO: <builtins.rs> @ Operator::getop")
             }
         }
+
+        pub const OPERATORS: [&[u8]; _len!($($tok),*)] = [$($tok),*];
     }
 }
 

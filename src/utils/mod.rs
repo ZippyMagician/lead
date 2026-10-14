@@ -114,18 +114,18 @@ pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Funct
 }
 
 // const BOXES: &str = "┌┬┐├┼┤└┴┘│─";
-pub const BOXES_TL: &str = "┌├┌├┌├┌├┬┼┬┼┬┼┬┼";
-pub const BOXES_TR: &str = "┐┤┬┼┐┤┬┼┐┤┬┼┐┤┬┼";
-pub const BOXES_BR: &str = "┘┘┴┴┤┤┼┼┘┘┴┴┤┤┼┼";
-pub const BOXES_BL: &str = "└└└└├├├├┴┴┴┴┼┼┼┼";
-
-#[inline(always)]
-fn g(b: &'static str, mask: u8) -> char {
-    unsafe {
-        assert_unchecked((mask as usize) < b.len());
-        b.chars().nth(mask as usize).unwrap_unchecked()
-    }
-}
+pub const BOXES_TL: [char; 16] = [
+    '┌', '├', '┌', '├', '┌', '├', '┌', '├', '┬', '┼', '┬', '┼', '┬', '┼', '┬', '┼',
+];
+pub const BOXES_TR: [char; 16] = [
+    '┐', '┤', '┬', '┼', '┐', '┤', '┬', '┼', '┐', '┤', '┬', '┼', '┐', '┤', '┬', '┼',
+];
+pub const BOXES_BR: [char; 16] = [
+    '┘', '┘', '┴', '┴', '┤', '┤', '┼', '┼', '┘', '┘', '┴', '┴', '┤', '┤', '┼', '┼',
+];
+pub const BOXES_BL: [char; 16] = [
+    '└', '└', '└', '└', '├', '├', '├', '├', '┴', '┴', '┴', '┴', '┼', '┼', '┼', '┼',
+];
 
 pub(crate) fn display_boxed_lines(
     lines: Vec<&str>,
@@ -144,14 +144,16 @@ pub(crate) fn display_boxed_lines(
         collected.push(String::with_capacity(mx + 4));
     }
 
-    collected[0].push(g(BOXES_TL, mask));
-    collected[my + 1].push(g(BOXES_BL, mask));
+    let mask = mask as usize;
+    unsafe { assert_unchecked(mask < 16) }
+    collected[0].push(BOXES_TL[mask]);
+    collected[my + 1].push(BOXES_BL[mask]);
     for _ in 0..mx + 2 {
         collected[0].push('─');
         collected[my + 1].push('─');
     }
-    collected[0].push(g(BOXES_TR, mask));
-    collected[my + 1].push(g(BOXES_BR, mask));
+    collected[0].push(BOXES_TR[mask]);
+    collected[my + 1].push(BOXES_BR[mask]);
 
     let yoff = (my - lines.len()) / 2;
     for i in 0..my {

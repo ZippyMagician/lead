@@ -3,6 +3,7 @@ use std::str::CharIndices;
 
 use crate::builtins::operators::Operator;
 use crate::builtins::symbols::Symbol;
+use crate::builtins::{OPERATORS, SYMBOLS};
 use crate::utils::error::{Error, Status, err};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -263,14 +264,21 @@ impl<'a> Lexer<'a> {
     // Symbols are one character, possibly with a colon or period following it.
     fn consume_builtin(&mut self, start: usize) -> Status<Token<'a>> {
         let mut end = start + 1;
-        if self.next_if(|c| c == ':' || c == '.').is_some() {
+        if self
+            .next_if(|_| {
+                SYMBOLS.contains(&self.input[start..end + 1].as_bytes())
+                    || OPERATORS.contains(&self.input[start..end + 1].as_bytes())
+            })
+            .is_some()
+        {
             end += 1;
         }
 
         if Operator::get_operator(&self.input[start..end]).is_some() {
             tok!(Operator, &self.input[start..end])
         } else if Symbol::get_symbol(&self.input[start..end]).is_some()
-            || &self.input[start..end] == "{"
+            || &self.input[start..end] == "{" // TODO: Remove these once these symbols are
+                                              // implemented
             || &self.input[start..end] == "}"
             || &self.input[start..end] == ";"
         {
