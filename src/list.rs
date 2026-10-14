@@ -373,7 +373,7 @@ impl Display for List {
                     fm = push_and_get(&mut formatted, format!("{num}"));
                     x = usize::max(x, fm.len());
                 }
-                strings.push(fm.trim_end().split('\n').collect());
+                strings.push(fm.trim_end_matches('\n').split('\n').collect());
             }
             for ys in strings.iter() {
                 y = usize::max(y, ys.len());
