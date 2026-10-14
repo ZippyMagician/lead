@@ -1,5 +1,6 @@
 use std::hint;
 
+use crate::function::Opts;
 use crate::list::List;
 use crate::scalar::Scalar;
 
@@ -27,6 +28,19 @@ pub fn applym<'a, T>(l: &'a mut List, r: u8) -> (Vec<&'a mut [Scalar]>, SmallVec
         v.push(chunk);
     }
     (v, rank)
+}
+
+// Applies optionally monadic or dyadic
+#[inline]
+pub fn apply_loose<T>(o: &Opts, a: List, b: Option<List>, f: T) -> Status<List>
+where
+    T: Fn(List, Option<List>) -> Status<List>,
+{
+    if let Some(b) = b {
+        apply_loosed(&o.a, a, b, o.rd, |a, b| f(a, Some(b)))
+    } else {
+        apply_loosem(&o.a, a, o.rm, |a| f(a, None))
+    }
 }
 
 // Applies function generally over monadic input. Does not make any assumptions

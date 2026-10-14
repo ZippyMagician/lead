@@ -293,24 +293,17 @@ impl Exec {
             // I don't have to check for operators since these are only stored for now
             if utils::is_instant(&n, &self.scope) {
                 let top = build.pop().unwrap();
-                let topr = top.clone();
                 let left = self.exec_instant(n)?;
-                let leftr = left.clone();
                 if build.is_empty() {
                     build.push(function!(
-                        move |a, _| top.dyadic_call(left.clone(), a);
-                        move |_, b, _| topr.dyadic_call(leftr.clone(), b);
+                        move |a, b, _| top.dyadic_call(left.clone(), b.unwrap_or(a));
                         self.arena.clone(), self.scope.clone()
                     ));
                 } else {
                     let rightfn = build.pop().unwrap();
-                    let rightfnr = rightfn.clone();
                     build.push(function!(
-                        move |a, _| {
-                            top.dyadic_call(left.clone(), rightfn.monadic_call(a)?)
-                        };
                         move |a, b, _| {
-                            topr.dyadic_call(leftr.clone(), rightfnr.dyadic_call(a, b)?)
+                            top.dyadic_call(left.clone(), rightfn.call_fn(a, b)?)
                         }; self.arena.clone(), self.scope.clone()
                     ));
                 }
@@ -349,12 +342,9 @@ impl Exec {
                 if build.is_empty() {
                     build.push(f);
                 } else {
-                    let fr = f.clone();
                     let g = build.pop().unwrap();
-                    let gr = g.clone();
                     build.push(function!(
-                        move |a, _| f.monadic_call(g.monadic_call(a)?);
-                        move |a, b, _| fr.monadic_call(gr.dyadic_call(a, b)?);
+                        move |a, b, _| f.monadic_call(g.call_fn(a, b)?);
                         self.arena.clone(), self.scope.clone()
                     ));
                 }
@@ -362,18 +352,11 @@ impl Exec {
                 if build.len() == 2 {
                     let g = build.pop().unwrap();
                     let h = build.pop().unwrap();
-
-                    let fr = f.clone();
-                    let gr = g.clone();
-                    let hr = h.clone();
                     build.push(function!(
-                        move |a, _| {
-                            g.dyadic_call(f.monadic_call(a.clone())?, h.monadic_call(a)?)
-                        };
                         move |a, b, _| {
-                            gr.dyadic_call(
-                                fr.dyadic_call(a.clone(), b.clone())?,
-                                hr.dyadic_call(a, b)?,
+                            g.dyadic_call(
+                                f.call_fn(a.clone(), b.clone())?, 
+                                h.call_fn(a, b)?,
                             )
                         }; self.arena.clone(), self.scope.clone()
                     ));
@@ -391,11 +374,8 @@ impl Exec {
         if build.len() == 2 {
             let f = build.pop().unwrap();
             let g = build.pop().unwrap();
-            let fr = f.clone();
-            let gr = g.clone();
             Ok(function!(
-                move |a, _| f.monadic_call(g.monadic_call(a)?);
-                move |a, b, _| fr.monadic_call(gr.dyadic_call(a, b)?);
+                move |a, b, _| f.monadic_call(g.call_fn(a, b)?);
                 self.arena.clone(), self.scope.clone()
             ))
         } else {

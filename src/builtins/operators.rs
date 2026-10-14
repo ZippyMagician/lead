@@ -38,34 +38,22 @@ pub(crate) fn atop_bind(
     if l.is_instant() {
         let l = l.to_instant()?;
         let r = r.to_function(arena.clone(), scope.clone())?;
-
-        let lr = l.clone();
-        let rr = r.clone();
         Ok(function!(
-            move |a, _| r.dyadic_call(l.clone(), a);
-            move |_, b, _| rr.dyadic_call(lr.clone(), b);
+            move |a, b, _| r.dyadic_call(l.clone(), b.unwrap_or(a));
             arena.clone(), scope.clone()
         ))
     } else if r.is_instant() {
         let l = l.to_function(arena.clone(), scope.clone())?;
         let r = r.to_instant()?;
-
-        let lr = l.clone();
-        let rr = r.clone();
         Ok(function!(
-            move |a, _| l.dyadic_call(a, r.clone());
-            move |a, _, _| lr.dyadic_call(a, rr.clone());
+            move |a, _, _| l.dyadic_call(a, r.clone());
             arena.clone(), scope.clone()
         ))
     } else {
         let l = l.to_function(arena.clone(), scope.clone())?;
         let r = r.to_function(arena.clone(), scope.clone())?;
-
-        let lr = l.clone();
-        let rr = r.clone();
         Ok(function!(
-            move |a, _| l.monadic_call(r.monadic_call(a)?);
-            move |a, b, _| lr.monadic_call(rr.dyadic_call(a, b)?);
+            move |a, b, _| l.monadic_call(r.call_fn(a, b)?);
             arena.clone(), scope.clone()
         ))
     }
@@ -85,32 +73,27 @@ pub(crate) fn hook_default(
     if l.is_instant() {
         let l = l.to_instant()?;
         let r = r.to_function(arena.clone(), scope.clone())?;
-
-        let rr = r.clone();
         Ok(function!(
-            move |a, _| r.dyadic_call(l.clone(), a);
-            move |a, b, _| rr.dyadic_call(a, b);
+            move |a, b, _| if let Some(b) = b {
+                r.dyadic_call(a, b)
+            } else { r.dyadic_call(l.clone(), a) };
             arena.clone(), scope.clone()
         ))
     } else if r.is_instant() {
         let l = l.to_function(arena.clone(), scope.clone())?;
         let r = r.to_instant()?;
-
-        let lr = l.clone();
         Ok(function!(
-            move |a, _| l.dyadic_call(a, r.clone());
-            move |a, b, _| lr.dyadic_call(a, b);
+            move |a, b, _|
+                l.dyadic_call(a, b.unwrap_or_else(|| r.clone()));
             arena.clone(), scope.clone()
         ))
     } else {
         let l = l.to_function(arena.clone(), scope.clone())?;
         let r = r.to_function(arena.clone(), scope.clone())?;
-
-        let lr = l.clone();
-        let rr = r.clone();
         Ok(function!(
-            move |a, _| l.dyadic_call(a.clone(), r.monadic_call(a)?);
-            move |a, b, _| lr.dyadic_call(a, rr.monadic_call(b)?);
+            move |a, b, _| if let Some(b) = b {
+                l.dyadic_call(a, r.monadic_call(b)?)
+            } else { l.dyadic_call(a.clone(), r.monadic_call(a)?) };
             arena.clone(), scope.clone()
         ))
     }
@@ -129,35 +112,32 @@ pub(crate) fn over_rank(
 
     if r.is_instant() {
         let mut l = l.to_function(arena.clone(), scope.clone())?;
+        println!("{:?}", l.s);
         let r = r.to_instant()?;
 
         if r.is_empty() || r.len() > 2 {
             return err!(Domain);
         } else if r.is_scalar() {
-            let n = r.list()[0].to_num()?;
+            let mut n = r.list()[0].to_num()?;
+            if n > 99 { n = 99 }
             l.apply_rm(n as u8);
             l.apply_rd([n as u8, n as u8]);
         } else {
-            let a = r.list()[0].to_num()?;
-            let b = r.list()[1].to_num()?;
+            let mut a = r.list()[0].to_num()?;
+            let mut b = r.list()[1].to_num()?;
+            if a > 99 { a = 99 }
+            if b > 99 { b = 99 }
             l.apply_rd([a as u8, b as u8]);
         }
-
-        let lr = l.clone();
-        Ok(function!(
-            move |a, _| l.monadic_call(a);
-            move |a, b, _| lr.dyadic_call(a, b);
-            arena.clone(), scope.clone()
-        ))
+        Ok(l)
     } else {
         let l = l.to_function(arena.clone(), scope.clone())?;
         let r = r.to_function(arena.clone(), scope.clone())?;
-
-        let lr = l.clone();
-        let rr = r.clone();
         Ok(function!(
-            move |a, _| l.monadic_call(r.monadic_call(a)?);
-            move |a, b, _| lr.dyadic_call(rr.monadic_call(a)?, rr.monadic_call(b)?);
+            move |a, b, _| l.call_fn(
+                r.monadic_call(a)?, 
+                b.map(|b| r.monadic_call(b)).transpose()?,
+            );
             arena.clone(), scope.clone()
         ))
     }
@@ -298,5 +278,7 @@ pub fn fold(f: MaybeInstant, a: Arena, s: Scope) -> Status<Function> {
         List::unranked(&o.a, dims, &[], cells)
     };
 
-    Ok(function!(1, true, monad; [0, 99], false, dyad; a, s))
+    Ok(function!(1, [0, 99], true, false, move |a, b, o| {
+        if let Some(b) = b { dyad(a, b, o) } else { monad(a, o) }
+    }; a, s))
 }

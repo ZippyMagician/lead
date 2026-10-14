@@ -52,11 +52,8 @@ impl MaybeInstant {
             Self::Function(f) => Ok(f),
             Self::Instant(l) => {
                 hint::cold_path();
-                let m = l.clone();
-                let d = l;
                 Ok(function!(
-                    move |_, _| Ok(m.clone());
-                    move |_, _, _| Ok(d.clone());
+                    move |_, _, _| Ok(l.clone());
                     arena, scope
                 ))
             }

@@ -10,10 +10,8 @@ use crate::utils::function::*;
 
 #[derive(Clone)]
 pub struct Function {
-    // Monad
-    m: Monad,
-    // Dyad
-    d: Dyad,
+    // Monad / Dyad
+    f: Func,
 
     // Is it applyable? (i.e., `@` works)
     pub(crate) am: bool,
@@ -24,13 +22,13 @@ pub struct Function {
     op: Opts,
 }
 
+pub type Func = Rc<dyn Fn(List, Option<List>, &Opts) -> Status<List>>;
 pub type Monad = Rc<dyn Fn(List, &Opts) -> Status<List>>;
 pub type Dyad = Rc<dyn Fn(List, List, &Opts) -> Status<List>>;
 
 impl Function {
     pub fn new(
-        m: Monad,
-        d: Dyad,
+        f: Func,
         rm: u8,
         rd: [u8; 2],
         a: Arena,
@@ -38,8 +36,7 @@ impl Function {
         sym: Option<Symbol>,
     ) -> Self {
         Self {
-            m,
-            d,
+            f,
             am: false,
             ad: false,
             s: sym,
@@ -48,10 +45,8 @@ impl Function {
     }
 
     pub fn scalar(sc: List, a: Arena, s: Scope) -> Self {
-        let scr = sc.clone();
         Self {
-            m: Rc::new(move |_, _| Ok(sc.clone())),
-            d: Rc::new(move |_, _, _| Ok(scr.clone())),
+            f: Rc::new(move |_, _, _| Ok(sc.clone())),
             am: false,
             ad: false,
             s: None,
@@ -65,8 +60,7 @@ impl Function {
     }
 
     pub fn new_applied(
-        m: Monad,
-        d: Dyad,
+        f: Func,
         rm: u8,
         rd: [u8; 2],
         am: bool,
@@ -76,8 +70,7 @@ impl Function {
         sym: Option<Symbol>,
     ) -> Self {
         Self {
-            m,
-            d,
+            f,
             am,
             ad,
             s: sym,
@@ -85,25 +78,35 @@ impl Function {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn monadic_call(&self, a: List) -> Status<List> {
-        (self.m)(a, &self.op)
+        (self.f)(a, None, &self.op)
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn dyadic_call(&self, a: List, b: List) -> Status<List> {
-        (self.d)(a, b, &self.op)
+        (self.f)(a, Some(b), &self.op)
+    }
+
+    #[inline(always)]
+    pub fn call_fn(&self, a: List, b: Option<List>) -> Status<List> {
+        (self.f)(a, b, &self.op)
     }
 
     // Applies new rank to monadic function
     #[inline]
     pub fn apply_rm(&mut self, rm: u8) {
         self.s = None;
-        if self.am {
-            self.op.rm = rm;
-        } else {
-            let m = self.m.clone();
-            self.m = Rc::new(move |a, o| apply_loosem(&o.a, a, o.rm, |a| (m)(a, &o)));
+        self.op.rm = rm;
+        if !self.am {
+            let m = self.f.clone();
+            self.f = Rc::new(move |a, b, o| {
+                if b.is_some() {
+                    (m)(a, b, &o)
+                } else {
+                    apply_loosem(&o.a, a, o.rm, |a| (m)(a, None, &o))
+                }
+            });
             self.am = true;
         }
     }
@@ -112,11 +115,16 @@ impl Function {
     #[inline]
     pub fn apply_rd(&mut self, rd: [u8; 2]) {
         self.s = None;
-        if self.ad {
-            self.op.rd = rd;
-        } else {
-            let d = self.d.clone();
-            self.d = Rc::new(move |a, b, o| apply_loosed(&o.a, a, b, o.rd, |a, b| (d)(a, b, &o)));
+        self.op.rd = rd;
+        if !self.ad {
+            let d = self.f.clone();
+            self.f = Rc::new(move |a, b, o| {
+                if let Some(b) = b {
+                    apply_loosed(&o.a, a, b, o.rd, |a, b| (d)(a, Some(b), &o))
+                } else {
+                    (d)(a, None, &o)
+                }
+            });
             self.ad = true;
         }
     }
@@ -139,10 +147,9 @@ pub struct Opts {
 }
 
 macro_rules! function {
-    ($monad:expr; $dyad:expr; $arena:expr, $scope:expr) => {
+    ($f:expr; $arena:expr, $scope:expr) => {
         crate::function::Function::new(
-            ::std::rc::Rc::new($monad),
-            ::std::rc::Rc::new($dyad),
+            ::std::rc::Rc::new($f),
             99,
             [99, 99],
             $arena,
@@ -151,14 +158,26 @@ macro_rules! function {
         )
     };
 
-    ($rm:literal, $am:ident, $monad:expr; $rd:expr, $ad:ident, $dyad:expr; $a:ident, $s:ident) => {{
-        crate::function::function!($rm, $am, $monad; $rd, $ad, $dyad; $a, $s, None)
+    ($rm:literal, $rd:expr, $am:ident, $ad:ident, $f:expr; $a:ident, $s:ident) => {{
+        crate::function::Function::new_applied(
+            ::std::rc::Rc::new($f),
+            $rm,
+            $rd,
+            $am,
+            $ad,
+            $a,
+            $s,
+            None,
+        )
     }};
 
     ($rm:literal, $am:ident, $monad:expr; $rd:expr, $ad:ident, $dyad:expr; $a:ident, $s:ident, $sym:expr) => {{
         crate::function::Function::new_applied(
-            ::std::rc::Rc::new($monad),
-            ::std::rc::Rc::new($dyad),
+            ::std::rc::Rc::new(|a, b, o| {
+                if let Some(b) = b {
+                    $dyad(a, b, o)
+                } else { $monad(a, o) }
+            }),
             $rm,
             $rd,
             $am,

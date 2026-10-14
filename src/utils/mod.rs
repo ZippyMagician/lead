@@ -14,7 +14,7 @@ use super::list::List;
 use super::parse::Node;
 use super::scalar::Scalar::{self as S};
 use super::scope::Scope;
-use function::{apply_loosed, apply_loosem};
+use function::apply_loose;
 
 use typed_arena;
 
@@ -62,22 +62,15 @@ pub fn is_instant(node: &Node<'_>, scope: &Scope) -> bool {
 
 // Shorthand for this ridiculous code block
 macro_rules! run_block {
-    ($a:ident, $o:ident, $n:ident) => {{
+    ($a:ident, $b:expr, $o:ident, $n:ident) => {{
         let sc = $o.s.clone();
         let mut s = sc.borrow_mut();
-        s.set_instant("y", $a);
-        // s.set_function("v", generate_block($n.clone(), $o.s.clone(), $o.a.clone()));
-        drop(s);
-        let mut e = Exec::new_imm($o.a.clone(), $o.s.clone());
-        e.exec($n.clone())?;
-        Ok(e.right.unwrap_or(List::empty()))
-    }};
-
-    ($a:ident, $b:ident, $o:ident, $n:ident) => {{
-        let sc = $o.s.clone();
-        let mut s = sc.borrow_mut();
-        s.set_instant("x", $a);
-        s.set_instant("y", $b);
+        if let Some(b) = &$b {
+            s.set_instant("x", $a);
+            s.set_instant("y", b.clone());
+        } else {
+            s.set_instant("y", $a);
+        }
         // s.set_function("v", generate_block($n.clone(), $o.s.clone(), $o.a.clone()));
         drop(s);
         let mut e = Exec::new_imm($o.a.clone(), $o.s.clone());
@@ -89,27 +82,24 @@ macro_rules! run_block {
 #[inline]
 pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Function {
     // SAFETY: All inputs are leaked by the Lexer, and all Nodes take slices from that input.
-    let n1: Vec<Node<'static>> = unsafe { std::mem::transmute(nodes) };
-    let n2 = n1.clone();
+    let n: Vec<Node<'static>> = unsafe { std::mem::transmute(nodes) };
 
     crate::function::function!(
-        99, true, move |a, o| {
-            if o.rm as usize >= a.dims() {
-                run_block!(a, o, n1)
+        99, [99, 99], true, true, move |a, b, o| {
+            let cond = if let Some(b) = &b {
+                o.rd[0] as usize >= a.dims() && o.rd[1] as usize >= b.dims()
             } else {
-                apply_loosem(&o.a, a, o.rm, |v| run_block!(v, o, n1))
-            }
-        };
-        [99, 99], true, move |a, b, o| {
-            if o.rd[0] as usize >= a.dims() && o.rd[1] as usize >= b.dims() {
-                run_block!(a, b, o, n2)
+                o.rm as usize >= a.dims()
+            };
+
+            if cond {
+                run_block!(a, b, o, n)
             } else {
-                apply_loosed(&o.a, a, b, o.rd, |l, r| run_block!(l, r, o, n2))
+                apply_loose(&o, a, b, |a, b| run_block!(a, b, o, n))
             }
         };
         arena,
-        scope,
-        None
+        scope
     )
 }
 
