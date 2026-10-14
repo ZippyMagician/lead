@@ -30,9 +30,9 @@ mean: +/%#     -- Define literal
 mean ~25       -- Mean 1..=25
 'hello world'  -- String
 map: [:]{ a: 'first'; b: 'second' }
-[]map.a        -- 'first'
-[]map.('b')    -- 'second'
-I.             -- STDIN
+map.a        -- 'first'
+map.('b')    -- 'second'
+[]I          -- STDIN?
 ```
 
 ### TODO
@@ -41,7 +41,9 @@ I.             -- STDIN
 - [x] Proper `@` rank support
 - [x] Recursive blocks via `v`
 - [ ] Port symbols + operators
-- [ ] Maps
-- [ ] Accessors
+- [ ] Support maps in some functions?
+- [x] Maps
+- [ ] Support variadic accessors?
+- [x] Accessors
 - [ ] Redesign/remove Internals
 - [ ] Tables?

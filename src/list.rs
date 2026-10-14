@@ -103,40 +103,6 @@ impl List {
         }
     }
 
-    #[inline]
-    pub fn range(start: Scalar, end: Scalar) -> Status<Self> {
-        if start.is_char() && end.is_char() {
-            let _start = unsafe { start.to_char_unchecked() };
-            let _end = unsafe { end.to_char_unchecked() };
-
-            return err!(Internal, "TODO: Alphabetical range @ <list.rs> range");
-        } else {
-            let start = start.to_num()?;
-            let end = end.to_num()?;
-            if end < start || end < 0 || start < 0 {
-                return err!(Domain);
-            }
-
-            let count: usize = (end - start + 1) as usize;
-            let layout = Layout::array::<Scalar>(count).unwrap();
-            // SAFETY: Pointer is checked for NULL. Size of allocation is known,
-            // slice is transmuted and boxed immediately
-            unsafe {
-                let ptr = alloc(layout) as *mut Scalar;
-                if ptr.is_null() {
-                    return err!(MemoryFault, "Could not allocate space.");
-                }
-
-                for (j, i) in (start..).zip(0..count) {
-                    ptr.add(i).write(Scalar::Number(j));
-                }
-
-                let raw: *mut [Scalar] = slice_from_raw_parts_mut(ptr, count);
-                Ok(Self::new(Box::from_raw(raw), count, 1, smallvec![count]))
-            }
-        }
-    }
-
     #[inline(always)]
     pub fn list(&self) -> &[Scalar] {
         &self.dt
@@ -170,6 +136,40 @@ impl List {
     #[inline(always)]
     pub fn is_scalar(&self) -> bool {
         self.ct == 1
+    }
+
+    #[inline]
+    pub fn range(start: Scalar, end: Scalar) -> Status<Self> {
+        if start.is_char() && end.is_char() {
+            let _start = unsafe { start.to_char_unchecked() };
+            let _end = unsafe { end.to_char_unchecked() };
+
+            return err!(Internal, "TODO: Alphabetical range @ <list.rs> range");
+        } else {
+            let start = start.to_num()?;
+            let end = end.to_num()?;
+            if end < start || end < 0 || start < 0 {
+                return err!(Domain);
+            }
+
+            let count: usize = (end - start + 1) as usize;
+            let layout = Layout::array::<Scalar>(count).unwrap();
+            // SAFETY: Pointer is checked for NULL. Size of allocation is known,
+            // slice is transmuted and boxed immediately
+            unsafe {
+                let ptr = alloc(layout) as *mut Scalar;
+                if ptr.is_null() {
+                    return err!(MemoryFault, "Could not allocate space.");
+                }
+
+                for (j, i) in (start..).zip(0..count) {
+                    ptr.add(i).write(Scalar::Number(j));
+                }
+
+                let raw: *mut [Scalar] = slice_from_raw_parts_mut(ptr, count);
+                Ok(Self::new(Box::from_raw(raw), count, 1, smallvec![count]))
+            }
+        }
     }
 
     // Swaps out rank. It is in place if possible

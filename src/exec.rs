@@ -18,6 +18,7 @@ pub struct Exec {
     scope: Scope,
     arena: Arena,
 
+    pub silent: bool,
     pub(crate) block: bool,
     pub(crate) reference: Option<Vec<Node<'static>>>,
     pub(crate) right: Option<Value>,
@@ -80,6 +81,7 @@ impl Exec {
         Self {
             scope,
             arena: arena,
+            silent: false,
             block: false,
             reference: None,
             right: None,
@@ -91,6 +93,7 @@ impl Exec {
         Self {
             scope,
             arena: arena,
+            silent: false,
             block: true,
             reference: None,
             right: None,
@@ -109,6 +112,7 @@ impl Exec {
             if matches!(node, Node::Line) {
                 self.exec_line(take(&mut current))?;
                 if !self.block
+                    && !self.silent
                     && let Some(v) = self.right.take()
                 {
                     println!("{v}");
