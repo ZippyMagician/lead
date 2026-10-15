@@ -52,6 +52,14 @@ impl Value {
     }
 
     #[inline]
+    pub unsafe fn to_list_unchecked(self) -> List {
+        match self {
+            Self::List(l) => l,
+            _ => unsafe { std::hint::unreachable_unchecked() },
+        }
+    }
+
+    #[inline]
     pub fn to_map(self) -> Status<Map> {
         match self {
             Self::List(_) => err!(ValueS, "Cannot treat primitive list as map."),
@@ -544,11 +552,11 @@ impl Exec {
             (TokenTag::Symbol, "~") => self.right = None,
             // Get type
             (TokenTag::Symbol, "?") => {
-                let right = self.right.take().ok_or(Error::Value)?;
+                let right = self.right.take().ok_or(Error::Argument)?;
                 if right.is_map() {
                     self.right = Some(Value::List(List::string("`:")));
                 } else {
-                    let right = right.to_list().unwrap();
+                    let right = unsafe { right.to_list_unchecked() };
                     if right.is_empty() {
                         self.right = Some(Value::List(List::string("()")));
                         return Ok(());
@@ -560,6 +568,14 @@ impl Exec {
                         Scalar::Box(_) => List::string("`X"),
                     }))
                 }
+            }
+            (TokenTag::Symbol, ">") => {
+                let right = self.right.take().ok_or(Error::Argument)?;
+                if right.is_empty() || right.is_map() {
+                    return err!(Value);
+                }
+                let right = unsafe { right.to_list_unchecked() };
+                self.right = Some(unsafe { right.list()[0].steal_box() });
             }
             (TokenTag::String, s) if s.len() == 1 => {
                 let mut right = self.right.take().ok_or(Error::Value)?.to_list()?;
@@ -588,7 +604,7 @@ impl Exec {
         } else if let Node::Group(g) = node {
             Ok(MaybeInstant::Function(self.exec_train(g)?))
         } else {
-            unreachable!("Internal error @ src/exec.rs:maybe_instant");
+            err!(Syntax, "Unsupported node provided to operator")
         }
     }
 }
@@ -604,6 +620,13 @@ impl From<List> for Value {
     #[inline(always)]
     fn from(l: List) -> Self {
         Self::List(l)
+    }
+}
+
+impl Default for Value {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::List(List::default())
     }
 }
 

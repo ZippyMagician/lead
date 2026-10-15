@@ -437,7 +437,7 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
             List::mat(values, a.dims() - 1, rank)
         } else {
             let index = unsafe { index.unbox_unchecked() }
-                .to_list()?
+                .expect_list()?
                 .list()
                 .iter()
                 .map(|n| n.to_num().map(|n| n as usize))

@@ -20,7 +20,7 @@ pub enum Scalar {
     Float(OrderedFloat<f64>),
     Boolean(bool),
     Char(char),
-    Box(*const Value),
+    Box(*mut Value),
 }
 
 impl Scalar {
@@ -29,20 +29,20 @@ impl Scalar {
         let arena = a.borrow_mut();
         let l = Value::List(l);
         let r = arena.alloc(l);
-        Ok(Box(r as *const Value))
+        Ok(Box(r))
     }
 
     #[inline]
     pub fn boxed_l(a: &Arena, l: Value) -> Status<Self> {
         let arena = a.borrow_mut();
         let r = arena.alloc(l);
-        Ok(Box(r as *const Value))
+        Ok(Box(r))
     }
 
     #[inline]
     pub fn boxed_custom(a: &mut typed_arena::Arena<Value>, l: Value) -> Status<Self> {
         let r = a.alloc(l);
-        Ok(Box(r as *const Value))
+        Ok(Box(r))
     }
 
     #[inline]
@@ -168,6 +168,14 @@ impl Scalar {
             Self::Box(p) => unsafe { &**p },
             _ => unsafe { unreachable_unchecked() },
         }
+    }
+
+    #[inline]
+    pub(crate) unsafe fn steal_box(&self) -> Value {
+        let Self::Box(p) = &self else {
+            unsafe { unreachable_unchecked() }
+        };
+        std::mem::take(unsafe { &mut **p })
     }
 
     #[inline]
