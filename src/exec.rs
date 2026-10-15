@@ -41,6 +41,17 @@ impl Value {
     }
 
     #[inline]
+    pub fn expect_list(self) -> Status<List> {
+        match self {
+            Self::List(l) => Ok(l),
+            Self::Map(_) => {
+                std::hint::cold_path();
+                err!(Value)
+            }
+        }
+    }
+
+    #[inline]
     pub fn to_map(self) -> Status<Map> {
         match self {
             Self::List(_) => err!(ValueS, "Cannot treat primitive list as map."),
@@ -291,10 +302,9 @@ impl Exec {
                 );
                 // TODO: Check for maps, support alternate calls for blocks
                 if let Some(left) = left {
-                    f.dyadic_call(left.to_list()?, right.to_list()?)
-                        .map(Value::List)
+                    f.dyadic_call(left, right)
                 } else {
-                    f.monadic_call(right.to_list()?).map(Value::List)
+                    f.monadic_call(right)
                 }
             }
         } else {
@@ -330,10 +340,9 @@ impl Exec {
         if *i > 0 && utils::is_instant(&line[*i - 1], &self.scope) {
             let left = self.exec_instant(take(&mut line[*i - 1]))?;
             *i -= 1;
-            f.dyadic_call(left.to_list()?, right.to_list()?)
-                .map(Value::List)
+            f.dyadic_call(left, right)
         } else {
-            f.monadic_call(right.to_list()?).map(Value::List)
+            f.monadic_call(right)
         }
     }
 
@@ -375,7 +384,7 @@ impl Exec {
             // I don't have to check for operators since these are only stored for now
             if utils::is_instant(&n, &self.scope) {
                 let top = build.pop().unwrap();
-                let left = self.exec_instant(n)?.to_list()?;
+                let left = self.exec_instant(n)?;
                 if build.is_empty() {
                     build.push(function!(
                         move |a, b, _| top.dyadic_call(left.clone(), b.unwrap_or(a));
@@ -581,6 +590,20 @@ impl Exec {
         } else {
             unreachable!("Internal error @ src/exec.rs:maybe_instant");
         }
+    }
+}
+
+impl From<Map> for Value {
+    #[inline(always)]
+    fn from(m: Map) -> Self {
+        Self::Map(m)
+    }
+}
+
+impl From<List> for Value {
+    #[inline(always)]
+    fn from(l: List) -> Self {
+        Self::List(l)
     }
 }
 

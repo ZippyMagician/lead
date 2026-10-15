@@ -4,9 +4,9 @@
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 use std::cell::RefCell;
-use std::time::Instant;
 use std::io::{self, Write};
 use std::rc::Rc;
+use std::time::Instant;
 
 use seqr::exec::Exec;
 use seqr::lex::Lexer;
@@ -14,8 +14,8 @@ use seqr::parse::Parser;
 use seqr::scope::new_scope;
 
 use seqr::builtins::symbols::Symbol;
-use seqr::list::List;
 use seqr::function::Function;
+use seqr::list::List;
 use seqr::scalar::Scalar;
 
 use typed_arena::Arena;
@@ -29,42 +29,52 @@ fn main() -> io::Result<()> {
     let scope = new_scope();
 
     let s = scope.clone();
-    s.borrow_mut().set_function("time", Function::new(Rc::new(|a, mut b, o| {
-        let mut iterations = 1;
-        if b.is_some() {
-            if !a.is_empty() {
-                iterations = a.list()[0].to_num()? as usize;
-            }
-        } else {
-            b = Some(a);
-        }
-        let b = b.take().unwrap();
+    s.borrow_mut().set_function(
+        "time",
+        Function::new(
+            Rc::new(|a, mut b, o| {
+                let mut iterations = 1;
+                if b.is_some() {
+                    if !a.is_empty() {
+                        iterations = a.expect_list()?.list()[0].to_num()? as usize;
+                    }
+                } else {
+                    b = Some(a);
+                }
+                let b = b.take().unwrap();
 
-        let arena = Rc::new(RefCell::new(Arena::new()));
-        let line = format!("{b}");
-        let mut times = Vec::with_capacity(iterations);
-        let mut exec = Exec::new(arena.clone(), o.s.clone());
-        exec.silent = true;
-        let mut l = Lexer::new(&line);
-        l.tokenize()?;
+                let arena = Rc::new(RefCell::new(Arena::new()));
+                let line = format!("{b}");
+                let mut times = Vec::with_capacity(iterations);
+                let mut exec = Exec::new(arena.clone(), o.s.clone());
+                exec.silent = true;
+                let mut l = Lexer::new(&line);
+                l.tokenize()?;
 
-        for _ in 0..iterations {
-            let t0 = Instant::now();
-            let mut p = Parser::new(arena.clone(), o.s.clone(), l.tokens());
-            p.parse()?;
-            exec.exec(p.nodes())?;
-            let t1 = Instant::now();
-            times.push(t1 - t0);
-        }
+                for _ in 0..iterations {
+                    let t0 = Instant::now();
+                    let mut p = Parser::new(arena.clone(), o.s.clone(), l.tokens());
+                    p.parse()?;
+                    exec.exec(p.nodes())?;
+                    let t1 = Instant::now();
+                    times.push(t1 - t0);
+                }
 
-        drop(arena);
-        let mut acc = times[0];
-        for i in 1..iterations {
-            acc += times[i];
-        }
-        acc /= iterations as u32;
-        Ok(List::string(&format!("{acc:?}")))
-    }), 99, [99, 99], arena.clone(), scope.clone(), None));
+                drop(arena);
+                let mut acc = times[0];
+                for i in 1..iterations {
+                    acc += times[i];
+                }
+                acc /= iterations as u32;
+                Ok(List::string(&format!("{acc:?}")).into())
+            }),
+            99,
+            [99, 99],
+            arena.clone(),
+            scope.clone(),
+            None,
+        ),
+    );
 
     let mut exec = Exec::new(arena.clone(), scope.clone());
 
@@ -188,9 +198,8 @@ fn speedtest(arena: Rc<RefCell<Arena<seqr::exec::Value>>>, scope: seqr::scope::S
     let plus_symbol = Symbol::get_symbol("+").unwrap().getfn(arena, scope);
 
     let t1 = Instant::now();
-    let result = plus_symbol.dyadic_call(list, one);
+    let result = plus_symbol.dyadic_call(list.into(), one.into());
     let t2 = Instant::now();
     println!("{}: {:?}", result.is_ok(), t2 - t1);
     // --- END --- \\\
 }
-

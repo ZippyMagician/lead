@@ -40,6 +40,11 @@ impl MaybeInstant {
     }
 
     #[inline]
+    pub fn is_value(&self) -> bool {
+        matches!(self, Self::Instant(_) | Self::Map(_))
+    }
+
+    #[inline]
     pub fn to_instant(self) -> Status<List> {
         match self {
             Self::Instant(l) => Ok(l),
@@ -53,6 +58,7 @@ impl MaybeInstant {
             Self::Function(f) => Ok(f),
             Self::Instant(l) => {
                 hint::cold_path();
+                let l = Value::List(l);
                 Ok(function!(
                     move |_, _, _| Ok(l.clone());
                     arena, scope

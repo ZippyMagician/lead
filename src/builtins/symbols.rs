@@ -3,6 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::ops::*;
 
+use crate::exec::Value;
 use crate::function::Opts;
 use crate::list::List;
 use crate::scalar;
@@ -237,8 +238,8 @@ pub(super) fn bitor(mut a: List, mut b: List, _: &Opts) -> Status<List> {
 }
 
 // leftarrowm | < | 99 | Box
-pub(crate) fn boxed(a: List, o: &Opts) -> Status<List> {
-    Ok(List::scalar(Scalar::boxed(&o.a, a)?))
+pub(crate) fn boxed(a: Value, o: &Opts) -> Status<Value> {
+    Ok(List::scalar(Scalar::boxed_l(&o.a, a)?).into())
 }
 
 // leftarrowd | < | 0, 0 | Less than
@@ -252,19 +253,20 @@ pub(crate) fn lt(mut a: List, mut b: List, _: &Opts) -> Status<List> {
 }
 
 // rightarrowm | > | 99 | Unbox / First
-pub(crate) fn unbox(a: List, o: &Opts) -> Status<List> {
+pub(crate) fn unbox(a: Value, o: &Opts) -> Status<Value> {
+    let a = a.expect_list()?;
     if a.is_scalar() {
         let f = &a.list()[0];
         if f.is_box() {
-            unsafe { f.unbox_unchecked() }.to_list()
+            Ok(unsafe { f.unbox_unchecked() })
         } else {
-            Ok(a)
+            Ok(a.into())
         }
     } else if a.is_empty() {
         std::hint::cold_path();
-        Ok(a)
+        Ok(a.into())
     } else {
-        Ok(List::scalar(a.list()[0]))
+        Ok(List::scalar(a.list()[0]).into())
     }
 }
 
@@ -307,19 +309,19 @@ pub(crate) fn reshape(a: List, b: List, o: &Opts) -> Status<List> {
 }
 
 // lbracketm / rbracketm | [ / ] | 99 | Identity
-pub(super) const fn identity(a: List, _: &Opts) -> Status<List> {
+pub(super) const fn identity(a: Value, _: &Opts) -> Status<Value> {
     Ok(a)
 }
 
 // lbracketd | [ | 99, 99 | Left
 #[inline(always)]
-pub(super) fn left(a: List, b: List, _: &Opts) -> Status<List> {
+pub(super) fn left(a: Value, b: Value, _: &Opts) -> Status<Value> {
     Ok(a)
 }
 
 // rbracketd | ] | 99, 99 | Right
 #[inline(always)]
-pub(super) fn right(a: List, b: List, _: &Opts) -> Status<List> {
+pub(super) fn right(a: Value, b: Value, _: &Opts) -> Status<Value> {
     Ok(b)
 }
 

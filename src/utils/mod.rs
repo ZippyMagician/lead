@@ -77,7 +77,7 @@ macro_rules! run_block {
         drop(s);
         let mut e = Exec::new_imm($o.a.clone(), $o.s.clone());
         e.exec($n.clone())?;
-        e.right.unwrap_or(Value::List(List::empty())).to_list()
+        e.right.unwrap_or(Value::List(List::empty())).expect_list()
     }};
 }
 
@@ -86,8 +86,11 @@ pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Funct
     // SAFETY: All inputs are leaked by the Lexer, and all Nodes take slices from that input.
     let n: Vec<Node<'static>> = unsafe { std::mem::transmute(nodes) };
 
+    // TODO: Blocks can support map
     crate::function::function!(
         99, [99, 99], true, true, move |a, b, o| {
+            let a = a.expect_list()?;
+            let b = b.map(|b| b.expect_list()).transpose()?;
             let cond = if let Some(b) = &b {
                 o.rd[0] as usize >= a.dims() && o.rd[1] as usize >= b.dims()
             } else {
@@ -95,9 +98,9 @@ pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Funct
             };
 
             if cond {
-                run_block!(a, b, o, n)
+                run_block!(a, b, o, n).map(Value::List)
             } else {
-                apply_loose(&o, a, b, |a, b| run_block!(a, b, o, n))
+                apply_loose(&o, a, b, |a, b| run_block!(a, b, o, n)).map(Value::List)
             }
         };
         arena,

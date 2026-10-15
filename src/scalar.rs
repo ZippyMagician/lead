@@ -33,6 +33,13 @@ impl Scalar {
     }
 
     #[inline]
+    pub fn boxed_l(a: &Arena, l: Value) -> Status<Self> {
+        let arena = a.borrow_mut();
+        let r = arena.alloc(l);
+        Ok(Box(r as *const Value))
+    }
+
+    #[inline]
     pub fn boxed_custom(a: &mut typed_arena::Arena<Value>, l: Value) -> Status<Self> {
         let r = a.alloc(l);
         Ok(Box(r as *const Value))
