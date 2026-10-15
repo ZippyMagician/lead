@@ -400,7 +400,7 @@ impl<'a> Parser<'a> {
         {
             let node = self.consume_node(tok);
             Self::unpack_node(&mut self.nodes, node)?;
-            if check(unsafe { self.nodes.get_unchecked(self.nodes.len() - 1) }) {
+            if self.nodes.is_empty() || check(unsafe { self.nodes.get_unchecked(self.nodes.len() - 1) }) {
                 self.nodes.pop();
                 break;
             }
