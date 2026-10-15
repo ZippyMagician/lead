@@ -254,7 +254,11 @@ impl Exec {
             Map(m) => {
                 let mut map = map::Map::new();
                 for (key, value) in m {
-                    map.insert(key.to_string(), self.exec_instant(Node::Group(value))?);
+                    map.insert(
+                        key.to_string(),
+                        self.exec_instant(Node::Group(value))?,
+                        &self.arena,
+                    )?;
                 }
                 Ok(Value::Map(map))
             }

@@ -45,8 +45,12 @@ pub enum Symbol {
     RightBracket,
     /// `?`
     Question,
+    /// `=`
+    Equal,
     /// `~`
     Tilde,
+    /// `,`
+    Comma,
 }
 
 // plusm | + | 0 | Absolute value / Cast to int
@@ -401,6 +405,81 @@ pub(super) fn group(a: List, b: List, o: &Opts) -> Status<List> {
     List::unranked(&o.a, dims, &rank, build)
 }
 
+// equalm | = | 2 / 99 | Transpose / Keys
+pub(super) fn transpose_keys(a: Value, o: &Opts) -> Status<Value> {
+    if a.is_empty() {
+        return Ok(a);
+    }
+
+    if let Value::Map(a) = a {
+        return a.keys(&o.a).map(Value::List);
+    }
+
+    let a = unsafe { a.to_list_unchecked() };
+    let dims = a.dims();
+    let leading = usize::min(dims, o.rm as usize);
+    if leading < 1 {
+        return err!(Domain);
+    }
+
+    let rank = a.rank().to_vec();
+    if dims == 1 {
+        return a.with_rank(&[1, rank[0]]).map(Value::List);
+    } else if leading == 1 {
+        return List::unranked(
+            &o.a,
+            dims,
+            &[],
+            a.ranked(leading)?
+                .into_iter()
+                .map(|v| v.with_rank(&[1, rank[0]]))
+                .collect::<Status<Vec<List>>>()?,
+        )
+        .map(Value::List);
+    } else if leading == 0 {
+        return Ok(Value::List(a));
+    }
+
+    apply_loosem(&o.a, a, leading as u8, |a| {
+        assert!(a.dims() >= 2, "INTERNAL: Something went wrong.");
+        let leading = a.dims();
+        let mut rank = SmallVec::from(a.rank());
+        rank.swap(leading - 2, leading - 1);
+        if (rank[leading - 2] == 1) != (rank[leading - 1] == 1) {
+            return a.with_rank(&rank);
+        }
+
+        let trailing = a.ranked(leading - 1)?;
+        List::mat(
+            trailing[0]
+                .list()
+                .iter()
+                .zip(0..)
+                .flat_map(|(_, i)| trailing.iter().map(move |v| v.list()[i]))
+                .collect::<Vec<Scalar>>(),
+            leading,
+            rank.into(),
+        )
+    })
+    .map(Value::List)
+}
+
+// equald | = | 0 | Equals
+#[inline(always)]
+pub(super) fn equal(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+    if o.rd[0] == 0 && o.rd[1] == 0 {
+        scalar_op! {
+            a, b, [l, r] =
+            { Scalar::Boolean(*l == *r) };
+            { Scalar::Boolean(l == *r)  };
+            { Scalar::Boolean(*l == r)  };
+        }
+    } else {
+        std::hint::cold_path();
+        err!(Internal, "TODO: Non rank [0, 0] for dyadic '='.")
+    }
+}
+
 // tildem | ~ | 0 | 1-range / Rising alphabet
 pub(super) fn range(mut a: List, o: &Opts) -> Status<List> {
     if a.is_scalar() {
@@ -466,3 +545,27 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
         }
     })
 }
+
+// commam | , | 99 | Ravel / Values
+pub(crate) fn ravel(a: Value, o: &Opts) -> Status<Value> {
+    if a.is_empty() {
+        return Ok(a);
+    }
+    if let Value::Map(m) = a {
+        return m.values().map(Value::List);
+    }
+
+    let mut a = unsafe { a.to_list_unchecked() };
+    if a.is_scalar() {
+        return Ok(Value::List(a));
+    }
+    a.ds = 1;
+    a.rk = smallvec![a.len()];
+    Ok(Value::List(a))
+}
+
+// commad | , | 1, 1 | Concatenate
+pub(crate) fn concat(_a: List, _b: List, _: &Opts) -> Status<List> {
+    err!(Internal, "TODO: Dyadic ','.")
+}
+

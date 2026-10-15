@@ -20,8 +20,8 @@ const INLINE_SIZE: usize = 4;
 pub struct List {
     dt: Box<[Scalar]>,
     ct: usize,
-    ds: usize,
-    rk: SmallVec<[usize; INLINE_SIZE]>,
+    pub(crate) ds: usize,
+    pub(crate) rk: SmallVec<[usize; INLINE_SIZE]>,
 }
 
 impl List {

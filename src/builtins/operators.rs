@@ -113,7 +113,6 @@ pub(crate) fn over_rank(
 
     if r.is_instant() {
         let mut l = l.to_function(arena.clone(), scope.clone())?;
-        println!("{:?}", l.s);
         let r = r.to_instant()?;
 
         if r.is_empty() || r.len() > 2 {

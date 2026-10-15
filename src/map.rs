@@ -4,6 +4,8 @@ use std::fmt::{self, Display};
 use crate::exec::Value;
 use crate::list::List;
 use crate::scalar::Scalar;
+use crate::utils;
+use crate::utils::error::Status;
 
 use smallvec::smallvec;
 use typed_arena::Arena;
@@ -11,7 +13,7 @@ use typed_arena::Arena;
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Map {
-    pub internal: HashMap<String, Value>,
+    pub internal: HashMap<String, *mut Value>,
 }
 
 impl Map {
@@ -23,13 +25,17 @@ impl Map {
     }
 
     #[inline]
-    pub fn insert(&mut self, key: String, value: Value) -> Option<Value> {
-        self.internal.insert(key.to_string(), value)
+    pub fn insert(&mut self, key: String, value: Value, a: &utils::Arena) -> Status {
+        let Scalar::Box(p) = Scalar::boxed_l(a, value)? else {
+            unsafe { std::hint::unreachable_unchecked() }
+        };
+        self.internal.insert(key.to_string(), p);
+        Ok(())
     }
 
     #[inline]
     pub fn get(&self, key: &str) -> Option<&Value> {
-        self.internal.get(key)
+        self.internal.get(key).map(|n| unsafe { &**n })
     }
 
     #[inline]
@@ -46,9 +52,35 @@ impl Map {
         let mut arena = Arena::new();
         for (key, value) in &self.internal {
             pairs.push(Scalar::boxed_custom(&mut arena, Value::List(List::string(key))).unwrap());
-            pairs.push(Scalar::boxed_custom(&mut arena, value.clone()).unwrap());
+            pairs.push(Scalar::Box(*value));
         }
         List::mat(pairs, 2, smallvec![2, self.internal.len()]).unwrap()
+    }
+
+    #[inline]
+    pub(crate) fn keys(&self, a: &utils::Arena) -> Status<List> {
+        if self.is_empty() {
+            return Ok(List::empty());
+        }
+
+        let mut keys = Vec::with_capacity(self.internal.len());
+        for key in self.internal.keys() {
+            keys.push(Scalar::boxed(a, List::string(key))?);
+        }
+        List::from_vec(keys)
+    }
+
+    #[inline]
+    pub(crate) fn values(&self) -> Status<List> {
+        if self.is_empty() {
+            return Ok(List::empty());
+        }
+
+        let mut values = Vec::with_capacity(self.internal.len());
+        for value in self.internal.values() {
+            values.push(Scalar::Box(*value));
+        }
+        List::from_vec(values)
     }
 }
 
@@ -93,7 +125,7 @@ impl Display for Map {
         }
         for (key, value) in &self.internal {
             pairs.push(Scalar::boxed_custom(&mut arena, Value::List(List::string(key))).unwrap());
-            pairs.push(Scalar::boxed_custom(&mut arena, value.clone()).unwrap());
+            pairs.push(Scalar::Box(*value));
         }
 
         let list = List::mat(pairs, 2, smallvec![2, self.internal.len()]).unwrap();
