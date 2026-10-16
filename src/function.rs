@@ -114,9 +114,9 @@ impl Function {
                 } else if vm && a.is_map() {
                     (m)(a, None, &o)
                 } else {
-                    let a = a.expect_list()?;
+                    let a = a.to_list()?;
                     Ok(apply_loosem(&o.a, a, o.rm, |a| {
-                        (m)(Value::List(a), None, &o)?.expect_list()
+                        (m)(Value::List(a), None, &o)?.to_list()
                     })?
                     .into())
                 }
@@ -141,10 +141,10 @@ impl Function {
                         } else {
                             Ok(apply_loosed(
                                 &o.a,
-                                a.expect_list()?,
-                                b.expect_list()?,
+                                a.to_list()?,
+                                b.to_list()?,
                                 o.rd,
-                                |a, b| (d)(Value::List(a), Some(Value::List(b)), &o)?.expect_list(),
+                                |a, b| (d)(Value::List(a), Some(Value::List(b)), &o)?.to_list(),
                             )?
                             .into())
                         }
@@ -194,7 +194,7 @@ macro_rules! function {
     }};
 
     (@emit dyad false; $dyad:expr, $a:ident, $b:ident, $o:ident) => {{
-        $dyad($a.expect_list()?, $b.expect_list()?, $o).map(crate::exec::Value::List)
+        $dyad($a.to_list()?, $b.to_list()?, $o).map(crate::exec::Value::List)
     }};
 
     (@emit dyad true; $dyad:expr, $a:ident, $b:ident, $o:ident) => {{
@@ -202,7 +202,7 @@ macro_rules! function {
     }};
 
     (@emit monad false; $monad:expr, $a:ident, $o:ident) => {{
-        $monad($a.expect_list()?, $o).map(crate::exec::Value::List)
+        $monad($a.to_list()?, $o).map(crate::exec::Value::List)
     }};
 
     (@emit monad true; $monad:expr, $a:ident, $o:ident) => {{

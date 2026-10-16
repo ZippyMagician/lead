@@ -13,6 +13,13 @@ use crate::utils::error::{Error, Status, err};
 use crate::utils::number::*;
 use crate::utils::{Arena, generate_block};
 
+#[derive(Clone)]
+pub enum Assignment<'a> {
+    Literal(&'a str),
+    Accessor(&'a str, Vec<&'a str>),
+    Internal(&'a str),
+}
+
 #[derive(Clone, Default)]
 pub enum Node<'a> {
     /// Primitive list of numerics
@@ -44,8 +51,7 @@ pub enum Node<'a> {
     Colon,
     /// Assignment
     Assign {
-        head: &'a str,
-        is_internal: bool,
+        head: Assignment<'a>,
         body: Vec<Node<'a>>,
     },
     /// If conditional
@@ -188,6 +194,9 @@ impl<'a> Parser<'a> {
             Node::Tag(_) | Node::Function(_) | Node::If { .. } | Node::Line | Node::Colon => {
                 err!(Syntax, "Invalid use of colon")
             }
+            Node::Accessor(head, body) => {
+                self.consume_assign_accessor(Assignment::Accessor(head, body))
+            }
             _ => self.consume_if(top),
         }
     }
@@ -254,10 +263,18 @@ impl<'a> Parser<'a> {
     fn consume_assign(&mut self, head: &'a str, is_internal: bool) -> Status<Node<'a>> {
         let body = self.consume_upto_tag(TokenTag::Newline)?;
         Ok(Node::Assign {
-            head,
-            is_internal,
+            head: if is_internal {
+                Assignment::Internal(head)
+            } else {
+                Assignment::Literal(head)
+            },
             body,
         })
+    }
+
+    fn consume_assign_accessor(&mut self, head: Assignment<'a>) -> Status<Node<'a>> {
+        let body = self.consume_upto_tag(TokenTag::Newline)?;
+        Ok(Node::Assign { head, body })
     }
 
     fn consume_if(&mut self, mut cond: Node<'a>) -> Status<Node<'a>> {
@@ -400,7 +417,9 @@ impl<'a> Parser<'a> {
         {
             let node = self.consume_node(tok);
             Self::unpack_node(&mut self.nodes, node)?;
-            if self.nodes.is_empty() || check(unsafe { self.nodes.get_unchecked(self.nodes.len() - 1) }) {
+            if self.nodes.is_empty()
+                || check(unsafe { self.nodes.get_unchecked(self.nodes.len() - 1) })
+            {
                 self.nodes.pop();
                 break;
             }
@@ -468,6 +487,22 @@ impl<'a> Parser<'a> {
     }
 }
 
+impl<'a> fmt::Display for Assignment<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Literal(l) => write!(f, "{l}"),
+            Self::Internal(l) => write!(f, "[]{l}"),
+            Self::Accessor(h, b) => {
+                write!(f, "{h}")?;
+                for i in b {
+                    write!(f, ".{i}")?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 impl<'a> Debug for Node<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -490,16 +525,8 @@ impl<'a> Debug for Node<'a> {
             } => {
                 write!(f, "IF({cond:?}){{{{{body:?}}}}}ELSE{{{{{otherwise:?}}}}}")
             }
-            Node::Assign {
-                head,
-                is_internal,
-                body,
-            } => {
-                write!(
-                    f,
-                    "{head}{} : {body:?}",
-                    if *is_internal { "." } else { "" }
-                )
+            Node::Assign { head, body } => {
+                write!(f, "{head} : {body:?}",)
             }
             Node::Map(keys) => write!(f, "Map({keys:?})"),
             Node::Accessor(head, body) => {

@@ -5,7 +5,7 @@ use crate::exec::Value;
 use crate::function::{Function, Opts, function};
 use crate::list::List;
 use crate::scalar::Scalar;
-use crate::scope::{MaybeInstant, Scope};
+use crate::scope::{Type, Scope};
 use crate::utils::Arena;
 use crate::utils::error::{Status, err};
 use crate::utils::function::*;
@@ -27,8 +27,8 @@ pub enum Operator {
 
 #[inline]
 pub(crate) fn atop_bind(
-    l: MaybeInstant,
-    r: MaybeInstant,
+    l: Type,
+    r: Type,
     arena: Arena,
     scope: Scope,
 ) -> Status<Function> {
@@ -62,8 +62,8 @@ pub(crate) fn atop_bind(
 
 #[inline]
 pub(crate) fn hook_default(
-    l: MaybeInstant,
-    r: MaybeInstant,
+    l: Type,
+    r: Type,
     arena: Arena,
     scope: Scope,
 ) -> Status<Function> {
@@ -102,8 +102,8 @@ pub(crate) fn hook_default(
 
 #[inline]
 pub(crate) fn over_rank(
-    l: MaybeInstant,
-    r: MaybeInstant,
+    l: Type,
+    r: Type,
     arena: Arena,
     scope: Scope,
 ) -> Status<Function> {
@@ -150,11 +150,11 @@ pub(crate) fn over_rank(
 }
 
 #[inline]
-pub fn fold(f: MaybeInstant, a: Arena, s: Scope) -> Status<Function> {
+pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
     let f = f.to_function(a.clone(), s.clone())?;
     let fr = f.clone();
     let monad = move |a: Value, o: &Opts| {
-        let a = a.expect_list()?;
+        let a = a.to_list()?;
         if a.is_empty() {
             std::hint::cold_path();
             return Ok(a.into());
@@ -237,7 +237,7 @@ pub fn fold(f: MaybeInstant, a: Arena, s: Scope) -> Status<Function> {
                 for item in items.iter().skip(1) {
                     acc = f.dyadic_call(acc, Value::List(List::scalar(*item)))?;
                 }
-                return acc.expect_list();
+                return acc.to_list();
             }
 
             let d = a.dims();
@@ -246,15 +246,15 @@ pub fn fold(f: MaybeInstant, a: Arena, s: Scope) -> Status<Function> {
             for item in items {
                 acc = f.dyadic_call(acc, Value::List(item))?;
             }
-            acc.expect_list()
+            acc.to_list()
         })
         .map(Value::List)
     };
     let f = fr;
 
     let dyad = move |a: Value, b: Value, o: &Opts| {
-        let a = a.expect_list()?;
-        let b = b.expect_list()?;
+        let a = a.to_list()?;
+        let b = b.to_list()?;
         if b.is_scalar() {
             return Ok(b);
         }
@@ -283,7 +283,7 @@ pub fn fold(f: MaybeInstant, a: Arena, s: Scope) -> Status<Function> {
                 let previous = std::mem::take(&mut cells[i]);
                 cells[i] = f
                     .dyadic_call(Value::List(previous), Value::List(arr[k].clone()))?
-                    .expect_list()?;
+                    .to_list()?;
             }
             j += jump;
         }

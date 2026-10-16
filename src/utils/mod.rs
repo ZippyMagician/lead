@@ -13,12 +13,12 @@ use super::function::Function;
 use super::list::List;
 use super::parse::Node;
 use super::scalar::Scalar::{self as S};
-use super::scope::Scope;
+use super::scope::{Scope, Type};
 use function::apply_loose;
 
 use typed_arena;
 
-pub(crate) type Arena = Rc<RefCell<typed_arena::Arena<Value>>>;
+pub(crate) type Arena = Rc<RefCell<typed_arena::Arena<Type>>>;
 
 // Check to ensure lists contain matching scalar values
 #[inline]
@@ -55,7 +55,13 @@ pub fn is_instant(node: &Node<'_>, scope: &Scope) -> bool {
         Literal(s) => scope.borrow().get(s).is_some_and(|m| m.is_instant()),
         LiteralInternal(_) => todo!("Literal internal"),
         Group(body) if body.last().is_none_or(|n| is_instant(n, scope)) => true,
-        Accessor(_, _) => true,
+        // lmao
+        Accessor(head, body) => scope.borrow().get(head).is_some_and(|n| {
+            n.as_map().ok().is_some_and(|n| {
+                n.get_into(&body[0], &body[1..])
+                    .is_some_and(|n| n.is_value())
+            })
+        }),
         If { .. } => true, // Statements (almost) always yield something
         Map(_) => true,
         _ => false,
@@ -77,7 +83,7 @@ macro_rules! run_block {
         drop(s);
         let mut e = Exec::new_imm($o.a.clone(), $o.s.clone());
         e.exec($n.clone())?;
-        e.right.unwrap_or(Value::List(List::empty())).expect_list()
+        e.right.unwrap_or(Value::List(List::empty())).to_list()
     }};
 }
 
@@ -89,8 +95,8 @@ pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Funct
     // TODO: Blocks can support map
     crate::function::function!(
         99, [99, 99], true, true, move |a, b, o| {
-            let a = a.expect_list()?;
-            let b = b.map(|b| b.expect_list()).transpose()?;
+            let a = a.to_list()?;
+            let b = b.map(|b| b.to_list()).transpose()?;
             let cond = if let Some(b) = &b {
                 o.rd[0] as usize >= a.dims() && o.rd[1] as usize >= b.dims()
             } else {

@@ -2,8 +2,10 @@ use std::collections::HashMap;
 use std::fmt::{self, Display};
 
 use crate::exec::Value;
+use crate::function::Function;
 use crate::list::List;
 use crate::scalar::Scalar;
+use crate::scope::Type;
 use crate::utils;
 use crate::utils::error::Status;
 
@@ -13,7 +15,7 @@ use typed_arena::Arena;
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Map {
-    pub internal: HashMap<String, *mut Value>,
+    pub internal: HashMap<String, *mut Type>,
 }
 
 impl Map {
@@ -34,8 +36,42 @@ impl Map {
     }
 
     #[inline]
-    pub fn get(&self, key: &str) -> Option<&Value> {
+    pub fn insert_function(&mut self, key: String, value: Function, a: &utils::Arena) -> Status {
+        let Scalar::Box(p) = Scalar::boxed_t(a, Type::Function(value))? else {
+            unsafe { std::hint::unreachable_unchecked() }
+        };
+        self.internal.insert(key.to_string(), p);
+        Ok(())
+    }
+
+    #[inline]
+    pub fn get(&self, key: &str) -> Option<&Type> {
         self.internal.get(key).map(|n| unsafe { &**n })
+    }
+
+    #[inline]
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut Type> {
+        self.internal.get_mut(key).map(|n| unsafe { &mut **n })
+    }
+
+    #[inline]
+    pub fn get_into(&self, key: &str, rest: &[&str]) -> Option<&Type> {
+        if rest.is_empty() {
+            self.get(key)
+        } else {
+            self.get(key)
+                .map(|m| m.as_map().ok()?.get_into(&rest[0], &rest[1..]))?
+        }
+    }
+
+    #[inline]
+    pub fn get_into_mut(&mut self, key: &str, rest: &[&str]) -> Option<&mut Type> {
+        if rest.is_empty() {
+            self.get_mut(key)
+        } else {
+            self.get_mut(key)
+                .map(|m| m.as_map_mut().ok()?.get_into_mut(&rest[0], &rest[1..]))?
+        }
     }
 
     #[inline]
@@ -51,7 +87,9 @@ impl Map {
         let mut pairs = Vec::new();
         let mut arena = Arena::new();
         for (key, value) in &self.internal {
-            pairs.push(Scalar::boxed_custom(&mut arena, Value::List(List::string(key))).unwrap());
+            pairs.push(
+                Scalar::boxed_custom(&mut arena, Value::List(List::string(key)).into()).unwrap(),
+            );
             pairs.push(Scalar::Box(*value));
         }
         List::mat(pairs, 2, smallvec![2, self.internal.len()]).unwrap()
@@ -87,7 +125,7 @@ impl Map {
 #[macro_export]
 macro_rules! map {
     ($($key:expr => $value:expr),*,) => {{
-        seqr::map::Map {
+        $crate::map::Map {
             internal: ::std::collections::HashMap::from([
                 $(($key.to_string(), $value)),*,
             ]),
@@ -117,14 +155,20 @@ impl Display for Map {
         let mut pairs = Vec::new();
         let mut arena = Arena::new();
         if self.internal.is_empty() {
-            return write!(
-                f,
+            let mut formatted = format!(
                 "{}",
-                Scalar::boxed_custom(&mut arena, Value::List(List::empty())).unwrap()
+                Scalar::boxed_custom(&mut arena, Default::default()).unwrap()
             );
+            let Some(first) = formatted.chars().next() else {
+                unsafe { std::hint::unreachable_unchecked() }
+            };
+            formatted.replace_range(..first.len_utf8(), ":");
+            return write!(f, "{formatted}");
         }
         for (key, value) in &self.internal {
-            pairs.push(Scalar::boxed_custom(&mut arena, Value::List(List::string(key))).unwrap());
+            pairs.push(
+                Scalar::boxed_custom(&mut arena, Value::List(List::string(key)).into()).unwrap(),
+            );
             pairs.push(Scalar::Box(*value));
         }
 

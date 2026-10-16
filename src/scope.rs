@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt::{self, Display};
 use std::hint;
 use std::rc::Rc;
 
@@ -17,16 +18,15 @@ pub fn new_scope() -> Scope {
 }
 
 #[derive(Clone, Debug)]
-pub enum MaybeInstant {
-    Instant(List),
+pub enum Type {
     Function(Function),
-    Map(Map),
+    Value(Value),
 }
 
-impl MaybeInstant {
+impl Type {
     #[inline]
     pub fn is_instant(&self) -> bool {
-        matches!(self, Self::Instant(_))
+        matches!(self, Self::Value(Value::List(_)))
     }
 
     #[inline]
@@ -36,19 +36,22 @@ impl MaybeInstant {
 
     #[inline]
     pub fn is_map(&self) -> bool {
-        matches!(self, Self::Map(_))
+        matches!(self, Self::Value(Value::Map(_)))
     }
 
     #[inline]
     pub fn is_value(&self) -> bool {
-        matches!(self, Self::Instant(_) | Self::Map(_))
+        matches!(self, Self::Value(_))
     }
 
     #[inline]
     pub fn to_instant(self) -> Status<List> {
         match self {
-            Self::Instant(l) => Ok(l),
-            _ => err!(Value),
+            Self::Value(l) => l.to_list(),
+            _ => {
+                hint::cold_path();
+                err!(Value)
+            }
         }
     }
 
@@ -56,22 +59,32 @@ impl MaybeInstant {
     pub fn to_function(self, arena: Arena, scope: Scope) -> Status<Function> {
         match self {
             Self::Function(f) => Ok(f),
-            Self::Instant(l) => {
+            Self::Value(l @ Value::List(_)) => {
                 hint::cold_path();
-                let l = Value::List(l);
                 Ok(function!(
                     move |_, _, _| Ok(l.clone());
                     arena, scope
                 ))
             }
-            Self::Map(_) => err!(Domain),
+            _ => {
+                hint::cold_path();
+                err!(Domain)
+            }
+        }
+    }
+
+    #[inline]
+    pub unsafe fn as_function_unchecked(&self) -> &Function {
+        match &self {
+            Self::Function(f) => f,
+            _ => unsafe { hint::unreachable_unchecked() },
         }
     }
 
     #[inline]
     pub fn to_map(self) -> Status<Map> {
         match self {
-            Self::Map(m) => Ok(m),
+            Self::Value(Value::Map(m)) => Ok(m),
             _ => err!(ValueS, "Cannot treat as map"),
         }
     }
@@ -79,17 +92,49 @@ impl MaybeInstant {
     #[inline]
     pub fn as_map(&self) -> Status<&Map> {
         match &self {
-            Self::Map(m) => Ok(m),
+            Self::Value(v) => v.as_map(),
             _ => err!(ValueS, "Cannot treat as map"),
+        }
+    }
+
+    #[inline]
+    pub fn as_map_mut(&mut self) -> Status<&mut Map> {
+        match self {
+            Self::Value(Value::Map(m)) => Ok(m),
+            _ => {
+                std::hint::cold_path();
+                err!(ValueS, "Cannot treat primitive list as map.")
+            }
         }
     }
 
     #[inline]
     pub fn to_value(self) -> Status<Value> {
         match self {
-            Self::Function(_) => err!(Value),
-            Self::Instant(l) => Ok(Value::List(l)),
-            Self::Map(m) => Ok(Value::Map(m)),
+            Self::Function(_) => {
+                hint::cold_path();
+                err!(Value)
+            }
+            Self::Value(v) => Ok(v),
+        }
+    }
+
+    #[inline]
+    pub fn as_value(&self) -> Status<&Value> {
+        match &self {
+            Self::Function(_) => {
+                hint::cold_path();
+                err!(Value)
+            }
+            Self::Value(v) => Ok(v),
+        }
+    }
+
+    #[inline]
+    pub unsafe fn as_value_unchecked(&self) -> &Value {
+        match &self {
+            Self::Value(v) => v,
+            _ => unsafe { hint::unreachable_unchecked() },
         }
     }
 }
@@ -97,7 +142,7 @@ impl MaybeInstant {
 #[derive(Clone)]
 pub struct ScopeInternal {
     parent: Option<Scope>,
-    env: HashMap<String, MaybeInstant>,
+    env: HashMap<String, Type>,
 }
 
 impl ScopeInternal {
@@ -123,39 +168,92 @@ impl ScopeInternal {
                 .is_some_and(|s| s.borrow().env.contains_key(name))
     }
 
-    pub fn get(&self, name: &str) -> Option<MaybeInstant> {
+    pub fn get(&self, name: &str) -> Option<Type> {
         self.env
             .get(name)
             .cloned()
             .or_else(|| self.parent.as_ref()?.borrow().get(name))
     }
 
+    pub fn get_mut(&mut self, name: &str) -> Option<&mut Type> {
+        self.env.get_mut(name)
+    }
+
     pub fn set_instant(&mut self, name: &str, l: List) {
-        self.env.insert(name.to_string(), MaybeInstant::Instant(l));
+        self.env
+            .insert(name.to_string(), Type::Value(Value::List(l)));
     }
 
     pub fn set_value(&mut self, name: &str, l: Value) {
-        self.env.insert(
-            name.to_string(),
-            match l {
-                Value::List(l) => MaybeInstant::Instant(l),
-                Value::Map(m) => MaybeInstant::Map(m),
-            },
-        );
+        self.env.insert(name.to_string(), Type::Value(l));
     }
 
     pub fn set_function(&mut self, name: &str, f: Function) {
-        self.env.insert(name.to_string(), MaybeInstant::Function(f));
+        self.env.insert(name.to_string(), Type::Function(f));
     }
 }
 
-impl From<Value> for MaybeInstant {
+impl PartialOrd for Type {
     #[inline]
-    fn from(v: Value) -> Self {
-        match v {
-            Value::List(l) => Self::Instant(l),
-            Value::Map(m) => Self::Map(m),
+    fn partial_cmp(&self, o: &Type) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(&o))
+    }
+}
+
+impl PartialEq for Type {
+    #[inline]
+    fn eq(&self, o: &Type) -> bool {
+        match (&self, &o) {
+            (Self::Function(_), _) => false,
+            (_, Self::Function(_)) => false,
+            (Self::Value(v), Self::Value(o)) => v == o,
         }
     }
 }
 
+impl Ord for Type {
+    #[inline]
+    fn cmp(&self, o: &Type) -> std::cmp::Ordering {
+        if self.is_function() && !o.is_function() {
+            hint::cold_path();
+            std::cmp::Ordering::Less
+        } else if !self.is_function() && o.is_function() {
+            hint::cold_path();
+            std::cmp::Ordering::Greater
+        } else if self.is_function() {
+            hint::cold_path();
+            std::cmp::Ordering::Equal
+        } else {
+            unsafe { self.as_value_unchecked().cmp(o.as_value_unchecked()) }
+        }
+    }
+}
+
+impl Eq for Type {}
+
+impl From<Value> for Type {
+    #[inline]
+    fn from(v: Value) -> Self {
+        Self::Value(v)
+    }
+}
+
+impl Default for Type {
+    #[inline]
+    fn default() -> Self {
+        Self::Value(Default::default())
+    }
+}
+
+impl Display for Type {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
+            Self::Function(fnc) if let Some(s) = fnc.s => {
+                write!(f, "{}", str::from_utf8(s.get_name()).unwrap())
+            }
+            Self::Function(_) => write!(f, "{{{{ .. }}}}"),
+            Self::Value(v) => write!(f, "{v}"),
+        }
+    }
+}

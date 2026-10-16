@@ -15,6 +15,7 @@ macro_rules! _len {
 macro_rules! define_syms {
     ($($rep:ident => ($tok:literal, $rm:literal, $am:ident, $vm:ident, $monad:expr; $rd:expr, $ad:ident, $vd:ident, $dyad:expr));*;) => {
         impl Symbol {
+            #[inline]
             pub fn get_symbol(s: &str) -> Option<Self> {
                 match s.as_bytes() {
                     $($tok => Some(Self::$rep)),*,
@@ -22,11 +23,19 @@ macro_rules! define_syms {
                 }
             }
 
-            pub fn getfn(&self, a: crate::utils::Arena, s: crate::scope::Scope) -> crate::function::Function {
+            #[inline]
+            pub fn get_name(&self) -> &'static [u8] {
+                match &self {
+                    $(Self::$rep => $tok),*,
+                }
+            }
+
+            #[inline(always)]
+            pub fn getfn(&self, a: $crate::utils::Arena, s: $crate::scope::Scope) -> $crate::function::Function {
                 match self {
                     $(Self::$rep => {
                         function!(
-                            $rm, $am, $vm, $monad; $rd, $ad, $vd, $dyad; a, s, Some(crate::builtins::symbols::Symbol::$rep)
+                            $rm, $am, $vm, $monad; $rd, $ad, $vd, $dyad; a, s, Some($crate::builtins::symbols::Symbol::$rep)
                         )
                     }),*
                 }
@@ -68,8 +77,8 @@ macro_rules! define_op {
 
             pub fn getop(
                 &self,
-                l: crate::scope::MaybeInstant,
-                r: Option<crate::scope::MaybeInstant>,
+                l: crate::scope::Type,
+                r: Option<crate::scope::Type>,
                 a: crate::utils::Arena,
                 s: crate::scope::Scope,
             ) -> crate::utils::error::Status<crate::function::Function> {

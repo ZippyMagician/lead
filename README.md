@@ -41,7 +41,7 @@ map.('b')    -- 'second'
 - [x] Proper `@` rank support
 - [x] Recursive blocks via `v`
 - [ ] Port symbols + operators
-- [ ] Support maps in some functions?
+- [x] Support maps in some functions?
 - [x] Maps
 - [ ] Support variadic accessors?
 - [x] Accessors

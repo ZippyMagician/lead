@@ -6,9 +6,9 @@ use crate::builtins::operators::Operator;
 use crate::function::{Function, function};
 use crate::list::List;
 use crate::map::{self, Map};
-use crate::parse::Node;
+use crate::parse::{Assignment, Node};
 use crate::scalar::Scalar;
-use crate::scope::{MaybeInstant, Scope};
+use crate::scope::{Scope, Type};
 use crate::utils::error::{Error, Status, err};
 use crate::utils::{self, Arena};
 
@@ -36,17 +36,9 @@ impl Value {
     pub fn to_list(self) -> Status<List> {
         match self {
             Self::List(l) => Ok(l),
-            Self::Map(_) => err!(ValueS, "Cannot treat map as primitive list."),
-        }
-    }
-
-    #[inline]
-    pub fn expect_list(self) -> Status<List> {
-        match self {
-            Self::List(l) => Ok(l),
             Self::Map(_) => {
                 std::hint::cold_path();
-                err!(Value)
+                err!(ValueS, "Cannot treat map as primitive list.")
             }
         }
     }
@@ -62,7 +54,10 @@ impl Value {
     #[inline]
     pub fn to_map(self) -> Status<Map> {
         match self {
-            Self::List(_) => err!(ValueS, "Cannot treat primitive list as map."),
+            Self::List(_) => {
+                std::hint::cold_path();
+                err!(ValueS, "Cannot treat primitive list as map.")
+            }
             Self::Map(m) => Ok(m),
         }
     }
@@ -70,7 +65,10 @@ impl Value {
     #[inline]
     pub fn as_map(&self) -> Status<&Map> {
         match &self {
-            Self::List(_) => err!(ValueS, "Cannot treat primitive list as map."),
+            Self::List(_) => {
+                std::hint::cold_path();
+                err!(ValueS, "Cannot treat primitive list as map.")
+            }
             Self::Map(m) => Ok(m),
         }
     }
@@ -158,20 +156,15 @@ impl Exec {
                 PrimitiveBoxes(list) => self.right = Some(Value::List(list)),
                 Literal(l) => self.right = Some(self.exec_literal(l, &mut line, &mut i)?),
                 LiteralInternal(l) => self.right = Some(self.exec_internal(l)?),
-                Tag(t) => self.exec_tag(t)?,
-                Function(f) => self.right = Some(self.exec_function(f, &mut line, &mut i)?),
+                Tag(t) => self.exec_tag(t, &mut line, &mut i)?,
+                Function(f) => self.right = Some(self.exec_function(&f, &mut line, &mut i)?),
                 Op(o, l, r) => {
                     let op = self.exec_operator(o, *l, *r)?;
-                    self.right = Some(self.exec_function(op, &mut line, &mut i)?);
+                    self.right = Some(self.exec_function(&op, &mut line, &mut i)?);
                 }
-                Assign {
-                    head,
-                    is_internal,
-                    body,
-                } => self.exec_assignment(
+                Assign { head, body } => self.exec_assignment(
                     head,
                     body,
-                    is_internal,
                     i > 0 && !utils::is_instant(&line[i - 1], &self.scope),
                 )?,
                 If {
@@ -184,9 +177,22 @@ impl Exec {
                 }
                 Group(g) => {
                     let train = self.exec_train(g)?;
-                    self.right = Some(self.exec_function(train, &mut line, &mut i)?);
+                    self.right = Some(self.exec_function(&train, &mut line, &mut i)?);
                 }
-                n @ (Map(_) | Accessor(_, _)) => self.right = Some(self.exec_instant(n)?),
+                n @ Map(_) => self.right = Some(self.exec_instant(n)?),
+                n @ Accessor(_, _) if utils::is_instant(&n, &self.scope) => {
+                    self.right = Some(self.exec_instant(n)?)
+                }
+                Accessor(head, body) => {
+                    let sc = self.scope.clone();
+                    let s = sc.borrow();
+                    let map = s.get(head).ok_or(Error::Scope)?.to_map()?;
+                    let f = map
+                        .get_into(&body[0], &body[1..])
+                        .map(|n| unsafe { n.as_function_unchecked() })
+                        .ok_or(Error::Domain)?;
+                    self.right = Some(self.exec_function(f, &mut line, &mut i)?);
+                }
                 Line => {
                     if !self.block {
                         return err!(Internal, "Unexpected node in line");
@@ -216,16 +222,31 @@ impl Exec {
             Literal(l) => self.scope.borrow().get(l).unwrap().to_value(),
             LiteralInternal(_) => err!(Internal, "TODO: Internals @ <exec.rs> exec_instant"),
             Assign {
-                head,
-                is_internal,
+                head: Assignment::Literal(head),
                 body,
             } => {
-                if is_internal {
-                    return err!(Internal, "Internals @ <exec.rs> exec_instant");
-                }
                 let s = self.scope.clone();
                 let list = self.exec_instant(Node::Group(body))?;
                 s.borrow_mut().set_value(head, list.clone());
+                Ok(list)
+            }
+            Assign {
+                head: Assignment::Accessor(head, tail),
+                body,
+            } => {
+                let s = self.scope.clone();
+                let mut sc = s.borrow_mut();
+                let m = sc.get_mut(head).ok_or(Error::Scope)?;
+                let last = if tail.len() == 1 {
+                    m.as_map_mut()?
+                } else {
+                    m.as_map_mut()?
+                        .get_into_mut(&tail[0], &tail[1..tail.len() - 1])
+                        .ok_or(Error::Domain)?
+                        .as_map_mut()?
+                };
+                let list = self.exec_instant(Node::Group(body))?;
+                last.insert(tail.last().unwrap().to_string(), list.clone(), &self.arena)?;
                 Ok(list)
             }
             Group(body) => {
@@ -253,26 +274,33 @@ impl Exec {
             }
             Map(m) => {
                 let mut map = map::Map::new();
-                for (key, value) in m {
-                    map.insert(
-                        key.to_string(),
-                        self.exec_instant(Node::Group(value))?,
-                        &self.arena,
-                    )?;
+                for (key, mut value) in m {
+                    let value = if value.len() == 1 {
+                        std::mem::take(&mut value[0])
+                    } else {
+                        Node::Group(value)
+                    };
+                    if utils::is_instant(&value, &self.scope) {
+                        map.insert(key.to_string(), self.exec_instant(value)?, &self.arena)?;
+                    } else {
+                        map.insert_function(
+                            key.to_string(),
+                            self.exec_train(vec![value])?,
+                            &self.arena,
+                        )?;
+                    }
                 }
                 Ok(Value::Map(map))
             }
             Accessor(head, body) => {
                 let s = self.scope.borrow();
-                let map = s.get(head).ok_or(Error::Scope)?.to_map()?;
-                drop(s);
-                let mut acc = &map;
-                if body.len() > 1 {
-                    for k in 0..=body.len() - 2 {
-                        acc = acc.get(&body[k]).ok_or(Error::Domain)?.as_map()?;
-                    }
-                }
-                acc.get(&body.last().unwrap()).cloned().ok_or(Error::Domain)
+                s.get(head)
+                    .ok_or(Error::Scope)?
+                    .as_map()?
+                    .get_into(&body[0], &body[1..])
+                    .cloned()
+                    .map(|n| n.to_value())
+                    .ok_or(Error::Domain)?
             }
             _ => unreachable!(),
         }
@@ -325,7 +353,7 @@ impl Exec {
                 let f = value
                     .to_function(self.arena.clone(), self.scope.clone())
                     .unwrap();
-                self.exec_function(f, list, i)
+                self.exec_function(&f, list, i)
             } else {
                 value.to_value()
             }
@@ -340,7 +368,7 @@ impl Exec {
     #[inline]
     fn exec_function<'a>(
         &mut self,
-        f: Function,
+        f: &Function,
         line: &mut [Node<'a>],
         i: &mut usize,
     ) -> Status<Value> {
@@ -489,12 +517,11 @@ impl Exec {
     #[inline]
     fn exec_assignment<'a>(
         &mut self,
-        head: &'a str,
+        head: Assignment<'a>,
         body: Vec<Node<'a>>,
-        is_internal: bool,
         preserve_instant: bool,
     ) -> Status {
-        if is_internal {
+        if matches!(head, Assignment::Internal(_)) {
             return err!(Internal, "TODO: Internals @ <exec.rs> exec_assignment");
         }
         let group = Node::Group(body);
@@ -505,21 +532,53 @@ impl Exec {
                 // Preserves when used
                 self.right = Some(list.clone());
             }
-            s.borrow_mut().set_value(head, list);
+
+            if let Assignment::Literal(head) = head {
+                s.borrow_mut().set_value(head, list);
+            } else if let Assignment::Accessor(head, body) = head {
+                let mut sc = s.borrow_mut();
+                let m = sc.get_mut(head).ok_or(Error::Scope)?.as_map_mut()?;
+                let last = if body.len() == 1 {
+                    m
+                } else {
+                    m.get_into_mut(&body[0], &body[1..body.len() - 1])
+                        .ok_or(Error::Domain)?
+                        .as_map_mut()?
+                };
+                last.insert(body.last().unwrap().to_string(), list, &self.arena)?;
+            } else if let Assignment::Internal(_) = head {
+                unreachable!()
+            }
         } else {
             // SAFETY: This is set as a `Node::Group` a few lines ago
             let Node::Group(mut body) = group else {
                 unsafe { unreachable_unchecked() }
             };
+            let res;
             if body.len() == 1
                 && let Node::Function(f) = std::mem::take(&mut body[0])
             {
-                let s = self.scope.clone();
-                s.borrow_mut().set_function(head, f);
+                res = f;
             } else {
-                let f = self.exec_train(body)?;
+                res = self.exec_train(body)?;
+            }
+
+            if let Assignment::Literal(head) = head {
+                self.scope.borrow_mut().set_function(head, res);
+            } else if let Assignment::Accessor(head, body) = head {
                 let s = self.scope.clone();
-                s.borrow_mut().set_function(head, f);
+                let mut sc = s.borrow_mut();
+                let m = sc.get_mut(head).ok_or(Error::Scope)?.as_map_mut()?;
+                let last = if body.len() == 1 {
+                    m
+                } else {
+                    m.get_into_mut(&body[0], &body[1..body.len() - 1])
+                        .ok_or(Error::Domain)?
+                        .as_map_mut()?
+                };
+                last.insert_function(body.last().unwrap().to_string(), res, &self.arena)?;
+            } else if let Assignment::Internal(_) = head {
+                unreachable!()
             }
         }
 
@@ -548,7 +607,12 @@ impl Exec {
     }
 
     #[inline]
-    fn exec_tag<'a>(&mut self, tag: crate::lex::Token<'a>) -> Status {
+    fn exec_tag<'a>(
+        &mut self,
+        tag: crate::lex::Token<'a>,
+        line: &mut [Node<'a>],
+        i: &mut usize,
+    ) -> Status {
         use crate::lex::TokenTag;
 
         match tag {
@@ -579,7 +643,17 @@ impl Exec {
                     return err!(Value);
                 }
                 let right = unsafe { right.to_list_unchecked() };
-                self.right = Some(unsafe { right.list()[0].steal_box() });
+                let obj = unsafe { right.list()[0].steal_box() };
+                // Can treat a stolen function as an actual function
+                if obj.is_function() {
+                    self.right = Some(self.exec_function(
+                        unsafe { obj.as_function_unchecked() },
+                        line,
+                        i,
+                    )?);
+                } else {
+                    self.right = Some(obj.to_value()?);
+                }
             }
             (TokenTag::String, s) if s.len() == 1 => {
                 let mut right = self.right.take().ok_or(Error::Value)?.to_list()?;
@@ -598,15 +672,15 @@ impl Exec {
     }
 
     #[inline]
-    fn maybe_instant<'a>(&mut self, node: Node<'a>) -> Status<MaybeInstant> {
+    fn maybe_instant<'a>(&mut self, node: Node<'a>) -> Status<Type> {
         if utils::is_instant(&node, &self.scope) {
-            Ok(MaybeInstant::from(self.exec_instant(node)?))
+            Ok(Type::from(self.exec_instant(node)?))
         } else if let Node::Function(f) = node {
-            Ok(MaybeInstant::Function(f))
+            Ok(Type::Function(f))
         } else if let Node::Op(o, l, r) = node {
-            Ok(MaybeInstant::Function(self.exec_operator(o, *l, *r)?))
+            Ok(Type::Function(self.exec_operator(o, *l, *r)?))
         } else if let Node::Group(g) = node {
-            Ok(MaybeInstant::Function(self.exec_train(g)?))
+            Ok(Type::Function(self.exec_train(g)?))
         } else {
             err!(Syntax, "Unsupported node provided to operator")
         }

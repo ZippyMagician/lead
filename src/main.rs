@@ -36,7 +36,7 @@ fn main() -> io::Result<()> {
                 let mut iterations = 1;
                 if b.is_some() {
                     if !a.is_empty() {
-                        iterations = a.expect_list()?.list()[0].to_num()? as usize;
+                        iterations = a.to_list()?.list()[0].to_num()? as usize;
                     }
                 } else {
                     b = Some(a);
@@ -187,7 +187,7 @@ fn main() -> Result<(), seqr::utils::error::Error> {
     Ok(())
 }*/
 
-fn speedtest(arena: Rc<RefCell<Arena<seqr::exec::Value>>>, scope: seqr::scope::Scope) {
+fn speedtest(arena: Rc<RefCell<Arena<seqr::scope::Type>>>, scope: seqr::scope::Scope) {
     // --- SPEED TEST --- \\
     let mut build = Vec::with_capacity(10_000_000);
     for i in 0..10_000_000 {

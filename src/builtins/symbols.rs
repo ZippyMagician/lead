@@ -258,11 +258,11 @@ pub(crate) fn lt(mut a: List, mut b: List, _: &Opts) -> Status<List> {
 
 // rightarrowm | > | 99 | Unbox / First
 pub(crate) fn unbox(a: Value, o: &Opts) -> Status<Value> {
-    let a = a.expect_list()?;
+    let a = a.to_list()?;
     if a.is_scalar() {
         let f = &a.list()[0];
         if f.is_box() {
-            Ok(unsafe { f.unbox_unchecked() })
+            unsafe { f.unbox_unchecked() }.to_value()
         } else {
             Ok(a.into())
         }
@@ -516,7 +516,7 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
             List::mat(values, a.dims() - 1, rank)
         } else {
             let index = unsafe { index.unbox_unchecked() }
-                .expect_list()?
+                .to_instant()?
                 .list()
                 .iter()
                 .map(|n| n.to_num().map(|n| n as usize))
