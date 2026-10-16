@@ -255,42 +255,45 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
     let dyad = move |a: Value, b: Value, o: &Opts| {
         let a = a.to_list()?;
         let b = b.to_list()?;
-        if b.is_scalar() {
-            return Ok(b);
-        }
-        if !a.is_scalar() {
-            return err!(Domain);
-        }
-        let window = a.list()[0].to_num()?;
-        let mut unique = false;
-        let window = if window < 0 {
-            unique = true;
-            (-window) as usize
-        } else {
-            window as usize
-        };
-
-        let dims = b.dims();
-        let mut arr = b.ranked(dims - 1)?;
-        let jump = if unique { window } else { 1 };
-
-        let mut cells = vec![List::empty(); 1 + (arr.len() - window) / jump];
-        let mut j = 0;
-        while j <= arr.len() - window {
-            let i = j / jump;
-            cells[i] = std::mem::take(&mut arr[j]);
-            for k in j + 1..j + window {
-                let previous = std::mem::take(&mut cells[i]);
-                cells[i] = f
-                    .dyadic_call(Value::List(previous), Value::List(arr[k].clone()))?
-                    .to_list()?;
+        apply_loosed(&o.a, a, b, o.rd, |a, b| {
+            if b.is_scalar() {
+                return Ok(b);
             }
-            j += jump;
-        }
-        List::unranked(&o.a, dims, &[], cells)
+            if !a.is_scalar() {
+                return err!(Domain);
+            }
+
+            let window = a.list()[0].to_num()?;
+            let mut unique = false;
+            let window = if window < 0 {
+                unique = true;
+                (-window) as usize
+            } else {
+                window as usize
+            };
+
+            let dims = b.dims();
+            let mut arr = b.ranked(dims - 1)?;
+            let jump = if unique { window } else { 1 };
+
+            let mut cells = vec![List::empty(); 1 + (arr.len() - window) / jump];
+            let mut j = 0;
+            while j <= arr.len() - window {
+                let i = j / jump;
+                cells[i] = std::mem::take(&mut arr[j]);
+                for k in j + 1..j + window {
+                    let previous = std::mem::take(&mut cells[i]);
+                    cells[i] = f
+                        .dyadic_call(Value::List(previous), Value::List(arr[k].clone()))?
+                        .to_list()?;
+                }
+                j += jump;
+            }
+            List::unranked(&o.a, dims, &[], cells)
+        })
     };
 
-    Ok(function!(1, [0, 99], true, false, move |a, b, o| {
+    Ok(function!(1, [0, 99], true, true, move |a, b, o| {
         if let Some(b) = b { dyad(a, b, o).map(Value::List) } else { monad(a, o) }
     }; a, s))
 }
