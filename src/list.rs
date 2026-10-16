@@ -368,10 +368,17 @@ impl Display for List {
                         &mut formatted,
                         format!("{}", unsafe { num.as_unboxed_unchecked() }),
                     );
-                    x = usize::max(x, fm.find('\n').unwrap_or(fm.len()));
+                    // Oh rust strs, how you fuck with me
+                    x = usize::max(
+                        x,
+                        fm.chars()
+                            .zip(0..)
+                            .find(|(c, _)| *c == '\n')
+                            .map_or_else(|| fm.chars().count(), |(_, i)| i),
+                    );
                 } else {
                     fm = push_and_get(&mut formatted, format!("{num}"));
-                    x = usize::max(x, fm.len());
+                    x = usize::max(x, fm.chars().count());
                 }
                 strings.push(fm.trim_end_matches('\n').split('\n').collect());
             }
