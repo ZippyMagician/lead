@@ -32,49 +32,79 @@ fn main() -> io::Result<()> {
 
     let s = scope.clone();
     s.borrow_mut().set_function(
-        "time",
-        Function::new(
-            Rc::new(|a, mut b, o| {
-                let mut iterations = 1;
+        "time", Function::new( Rc::new(|a, mut b, o| {
+            let mut iterations = 1;
+            if b.is_some() {
+                if !a.is_empty() {
+                    iterations = a.to_list()?.list()[0].to_num()? as usize;
+                }
+            } else {
+                b = Some(a);
+            }
+            let b = b.take().unwrap();
+
+            let arena = Rc::new(RefCell::new(Arena::new()));
+            let line = format!("{b}");
+            let mut times = Vec::with_capacity(iterations);
+            let mut exec = Exec::new(arena.clone(), o.s.clone());
+            exec.silent = true;
+            let mut l = Lexer::new(&line);
+            l.tokenize()?;
+
+            for _ in 0..iterations {
+                let t0 = Instant::now();
+                let mut p = Parser::new(arena.clone(), o.s.clone(), l.tokens());
+                p.parse()?;
+                exec.exec(p.nodes())?;
+                let t1 = Instant::now();
+                times.push(t1 - t0);
+            }
+
+            drop(arena);
+            let mut acc = times[0];
+            for i in 1..iterations {
+                acc += times[i];
+            }
+            acc /= iterations as u32;
+            Ok(List::string(&format!("{acc:?}")).into())
+        }), 99, [99, 99], arena.clone(), scope.clone(), None,
+    ));
+
+    #[cfg(feature = "ffi")]
+    s.borrow_mut().set_function(
+        "extern", Function::new(
+            Rc::new(|a, b, _| {
                 if b.is_some() {
-                    if !a.is_empty() {
-                        iterations = a.to_list()?.list()[0].to_num()? as usize;
-                    }
-                } else {
-                    b = Some(a);
+                    return lead_core::err!(Domain);
                 }
-                let b = b.take().unwrap();
-
-                let arena = Rc::new(RefCell::new(Arena::new()));
-                let line = format!("{b}");
-                let mut times = Vec::with_capacity(iterations);
-                let mut exec = Exec::new(arena.clone(), o.s.clone());
-                exec.silent = true;
-                let mut l = Lexer::new(&line);
-                l.tokenize()?;
-
-                for _ in 0..iterations {
-                    let t0 = Instant::now();
-                    let mut p = Parser::new(arena.clone(), o.s.clone(), l.tokens());
-                    p.parse()?;
-                    exec.exec(p.nodes())?;
-                    let t1 = Instant::now();
-                    times.push(t1 - t0);
+                let name = format!("{a}");
+                let path = absolute(Path::new(&name)).unwrap();
+                lead_core::ffi::internal::load_library(&path)?;
+                Ok(a)
+            }), 99, [99, 99], arena.clone(), scope.clone(), None,
+        ),
+    );
+    #[cfg(feature = "ffi")]
+    s.borrow_mut().set_function(
+        "link", Function::new(
+            Rc::new(|a, b, o| {
+                if b.is_some() {
+                    return lead_core::err!(Domain);
                 }
-
-                drop(arena);
-                let mut acc = times[0];
-                for i in 1..iterations {
-                    acc += times[i];
-                }
-                acc /= iterations as u32;
-                Ok(List::string(&format!("{acc:?}")).into())
-            }),
-            99,
-            [99, 99],
-            arena.clone(),
-            scope.clone(),
-            None,
+                let name = format!("{a}");
+                let sym = lead_core::ffi::internal::link_symbol(&name)?;
+                let s = o.s.clone();
+                let ar = o.a.clone();
+                s.borrow_mut().set_function(
+                    &name, Function::new(Rc::new(move |a, b, _|
+                        lead_core::ffi::internal::call_symbol(
+                            sym.clone(), &ar, a.to_list()?,
+                            b.map(|n| n.to_list()).transpose()?,
+                        ).map(lead_core::exec::Value::from)), 
+                        99, [99, 99], o.a.clone(), o.s.clone(), None),
+                );
+                Ok(List::scalar(Scalar::Boolean(true)).into())
+            }), 99, [99, 99], arena.clone(), scope.clone(), None,
         ),
     );
 
@@ -93,18 +123,6 @@ fn main() -> io::Result<()> {
         let line = buf.trim_end_matches('\r');
         if line == "test speed\n" {
             speedtest(arena.clone(), scope.clone());
-            continue;
-        }
-
-        #[cfg(feature = "ffi")]
-        if line.starts_with("extern") {
-            let name = line.split(' ').nth(1).unwrap_or("");
-            let path = absolute(Path::new(name)).unwrap();
-            if let Err(e) =
-                lead_core::ffi::internal::load_library(&path)
-            {
-                println!("{e}");
-            }
             continue;
         }
 

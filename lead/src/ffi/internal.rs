@@ -1,17 +1,22 @@
 extern crate libloading;
 
-use super::Window;
-use crate::utils::error::{Error, Status};
+use super::{ScalarExtern, Window};
+use crate::list::List;
+use crate::utils::Arena;
+use crate::utils::error::{Error, Status, err};
 
 use std::path::Path;
 use std::sync::RwLock;
 
-use libloading::{Library, Symbol};
+use libloading::Library;
+
+type InnerLink = unsafe extern "C" fn(*mut Window, *mut Window) -> *mut Window;
+#[cfg(unix)]
+pub type LinkedFunction = libloading::os::unix::Symbol<InnerLink>;
+#[cfg(windows)]
+pub type LinkedFunction = libloading::os::windows::Symbol<InnerLink>;
 
 pub static CTX_LIBS: RwLock<Vec<Library>> = RwLock::new(Vec::new());
-pub static DYN_SYMBOLS: RwLock<
-    Vec<Symbol<unsafe extern "C" fn(*mut Window, *mut Window) -> *mut Window>>,
-> = RwLock::new(Vec::new());
 
 pub fn load_library(lib: &Path) -> Status {
     let mut lock = CTX_LIBS
@@ -24,6 +29,78 @@ pub fn load_library(lib: &Path) -> Status {
     }
     drop(lock);
     Ok(())
+}
+
+pub fn link_symbol(name: &str) -> Status<LinkedFunction> {
+    let lock = CTX_LIBS
+        .read()
+        .ok()
+        .ok_or(Error::Internal("Failed to acquire shared libraries".into()))?;
+    let mut res = Err(Error::Scope);
+    'inner: for lib in lock.iter() {
+        unsafe {
+            if let Ok(sym) = lib.get::<InnerLink>(name.as_bytes()) {
+                res = Ok(sym.into_raw());
+                break 'inner;
+            }
+        }
+    }
+
+    drop(lock);
+    res
+}
+
+pub fn call_symbol(
+    symbol: LinkedFunction,
+    arena: &Arena,
+    a: List,
+    b: Option<List>,
+) -> Status<List> {
+    // TODO: Monadic/dyadic
+    let b = b.unwrap();
+    let mut l1 = Vec::with_capacity(a.len());
+    let mut l2 = Vec::with_capacity(b.len());
+    for s in a.list() {
+        l1.push(ScalarExtern::from_scalar(*s)?);
+    }
+    for s in b.list() {
+        l2.push(ScalarExtern::from_scalar(*s)?);
+    }
+
+    let mut window1 = Window {
+        i: l1.into_raw_parts().0,
+        c: a.len(),
+        d: a.dims(),
+        r: a.rank().as_ptr() as *mut usize,
+    };
+
+    let mut window2 = Window {
+        i: l2.into_raw_parts().0,
+        c: b.len(),
+        d: b.dims(),
+        r: b.rank().as_ptr() as *mut usize,
+    };
+
+    unsafe {
+        let res = symbol(&mut window1, &mut window2);
+        if !res.is_null() {
+            let window = &mut *res; // SAFETY: Checked for null. Other assumptions up to external
+            // function.
+            let mut v = Vec::with_capacity(window.c);
+            for i in 0..window.c {
+                v.push((*window.i.add(i)).to_scalar(arena)?);
+            }
+            let list = List::new(
+                v.into(),
+                window.c,
+                window.d,
+                std::slice::from_raw_parts(window.r, window.d).into(),
+            );
+            Ok(list)
+        } else {
+            err!(MemoryFault, "Got null pointer from C FFI")
+        }
+    }
 }
 
 impl From<libloading::Error> for Error {

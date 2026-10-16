@@ -5,13 +5,15 @@ use crate::scalar::Scalar;
 use crate::utils::Arena;
 use crate::utils::error::{Error, Status, err};
 
-use smallvec::SmallVec;
-
 #[repr(C)]
 pub struct Window {
+    // list
     pub i: *mut ScalarExtern,
+    // count
     pub c: usize,
+    // dimensions
     pub d: usize,
+    // rank
     pub r: *mut usize,
 }
 
@@ -85,7 +87,12 @@ impl ScalarExtern {
                 for i in 0..w.c {
                     v.push((*w.i.add(i)).to_scalar(arena)?);
                 }
-                let list = List::new(v.into(), w.c, w.d, SmallVec::from_raw_parts(w.r, w.d, 4));
+                let list = List::new(
+                    v.into(),
+                    w.c,
+                    w.d,
+                    std::slice::from_raw_parts(w.r, w.d).into(),
+                );
                 drop(Box::from_raw(w)); // SAFETY: Assume allocation wasn't recreated by C
                 Ok(Scalar::boxed(arena, list)?)
             },

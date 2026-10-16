@@ -9,9 +9,10 @@ WIP general documentation + specs for lead and it's differences with `ayr`.
 * [Symbols](#symbols)
 * [Binders](#binders)
 * [Library builtins](#library-builtins)
+* [FFI](#ffi)
 
 ## Array Model
-`lead` uses the based array model, similar to [BQN](https://github.com/mlochbaum/BQN/blob/master/doc/based.md) or [J](https://jsoftware.com), with some differences.
+`lead` uses the boxed array model, similar to [J](https://jsoftware.com), although there are a few implementation specific differences.
 
 A **Value** can be either a **Primitive** (i.e. a **List**), or a **Map**. Primitive Lists can contain *Numerics*, *Booleans*, *Chars*, or *Boxes*. Boxes are treated internally
 as pointers to a **Type**, which is either a **Value** or **Function**. A Numeric list contains *Integers* and/or *Floats* interchangeably. A *Char* List is treated as a String.
@@ -203,3 +204,53 @@ TODO. Old(er):
 
     DS. Binary Encode+ (from ayr.js)
     ENC::(0&#,>&[)"&:(-`"&:(max/)#&>")@1#:
+
+## FFI
+lead supports a rudimentary FFI interop with C. Link C files with the provided `ffi/liblead.h`. Functions are defined as
+```rs
+fn(*mut Window, *mut Window) -> *mut Window
+```
+to be compatible with lead. Currently, one would import, for example:
+```c
+// liblinkingtest.so
+#include "liblead.h"
+#include <stdlib.h>
+
+// If monadic b is NULL
+Lead_List* do_things(Lead_List* a, Lead_List* b) {
+    if (a->c == 0) return a;
+    switch (a->i->t) {
+    CHAR: 
+    BOX: 
+        break;
+    NUMBER:
+        a->i->v.c = abs(a->i->v.n);
+        break;
+    FLOAT:
+        a->i->v.c = abs(a->i->v.f | 0);
+        break;
+    BOOLEAN:
+        a->i->v.c = 0;
+        break;
+    }
+    }
+    a->i->t = CHAR;
+    return a;
+}
+```
+And then in lead
+```
+    extern 'liblinkingtest.so'
+    link 'do_things'
+    do_things 65
+A
+```
+Future syntax would include internals to make this nicer. For example:
+    
+    []extern'liblinkingtest.so'
+    test:[:]{
+        do_things: []link'do_things'
+    }
+
+    test.do_things 65
+would most likely be the recommended usage.
