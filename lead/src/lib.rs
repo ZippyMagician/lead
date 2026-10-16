@@ -4,6 +4,8 @@ pub mod function;
 pub mod lex;
 pub mod list;
 pub mod map;
+#[cfg(feature = "ffi")]
+pub mod ffi;
 pub mod parse;
 pub mod scalar;
 pub mod scope;

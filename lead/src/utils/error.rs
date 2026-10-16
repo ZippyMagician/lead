@@ -19,21 +19,22 @@ pub enum Error {
     // TODO: whatever else I need
 }
 
+#[macro_export]
 macro_rules! err {
     ($type:ident, $msg:expr) => {
-        Err(crate::utils::error::Error::$type($msg.into()))
+        Err($crate::utils::error::Error::$type($msg.into()))
     };
 
     ($type:ident, $msg:expr; !) => {
-        crate::utils::error::print_error(crate::utils::error::Error::$type($msg.into()))
+        $crate::utils::error::print_error($crate::utils::error::Error::$type($msg.into()))
     };
 
     ($type:ident) => {
-        Err(crate::utils::error::Error::$type)
+        Err($crate::utils::error::Error::$type)
     };
 
     ($type:ident; !) => {
-        crate::utils::error::print_error(crate::utils::error::Error::$type)
+        $crate::utils::error::print_error($crate::utils::error::Error::$type)
     };
 }
 

@@ -24,7 +24,7 @@ pub struct Exec {
     pub(crate) right: Option<Value>,
 }
 
-#[repr(u8)]
+#[repr(C, u8)]
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
 pub enum Value {
     List(List),

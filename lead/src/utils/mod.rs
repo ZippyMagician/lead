@@ -18,7 +18,7 @@ use function::apply_loose;
 
 use typed_arena;
 
-pub(crate) type Arena = Rc<RefCell<typed_arena::Arena<Type>>>;
+pub type Arena = Rc<RefCell<typed_arena::Arena<Type>>>;
 
 // Check to ensure lists contain matching scalar values
 #[inline]

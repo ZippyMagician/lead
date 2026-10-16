@@ -18,6 +18,7 @@ pub fn new_scope() -> Scope {
 }
 
 #[derive(Clone, Debug)]
+#[repr(C, u8)]
 pub enum Type {
     Function(Function),
     Value(Value),

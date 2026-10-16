@@ -15,7 +15,7 @@ use ordered_float::OrderedFloat;
 use typed_arena;
 
 #[derive(Clone, Copy, Debug, Hash)]
-#[repr(u8)]
+#[repr(C, u8)]
 pub enum Scalar {
     Number(i64),
     Float(OrderedFloat<f64>),

@@ -26,7 +26,7 @@ pub struct List {
 
 impl List {
     #[inline(always)]
-    fn new(dt: Box<[Scalar]>, ct: usize, ds: usize, rk: SmallVec<[usize; INLINE_SIZE]>) -> Self {
+    pub fn new(dt: Box<[Scalar]>, ct: usize, ds: usize, rk: SmallVec<[usize; INLINE_SIZE]>) -> Self {
         Self { dt, ct, ds, rk }
     }
 

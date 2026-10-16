@@ -1,14 +1,16 @@
 [workspace]
 resolver = "3"
 members = ["lead", "lead-cli"]
+default-members = ["lead", "lead-cli"]
+exclude = ["vendor"]
 
 [profile.release]
 lto = true
 codegen-units = 1
 
 [workspace.dependencies]
-mimalloc = "0.1.52"
-num-traits = "0.2.19"
-ordered-float = "5.5.0"
-smallvec = "1.16.2"
-typed-arena = "2.0.2"
+#mimalloc = "0.1.52"
+#num-traits = "0.2.19"
+#ordered-float = "5.5.0"
+#smallvec = "1.16.2"
+#typed-arena = "2.0.2"

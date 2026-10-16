@@ -5,18 +5,20 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 use std::cell::RefCell;
 use std::io::{self, Write};
+#[cfg(feature = "ffi")]
+use std::path::{Path, absolute};
 use std::rc::Rc;
 use std::time::Instant;
 
-use lead::exec::Exec;
-use lead::lex::Lexer;
-use lead::parse::Parser;
-use lead::scope::new_scope;
+use lead_core::exec::Exec;
+use lead_core::lex::Lexer;
+use lead_core::parse::Parser;
+use lead_core::scope::new_scope;
 
-use lead::builtins::symbols::Symbol;
-use lead::function::Function;
-use lead::list::List;
-use lead::scalar::Scalar;
+use lead_core::builtins::symbols::Symbol;
+use lead_core::function::Function;
+use lead_core::list::List;
+use lead_core::scalar::Scalar;
 
 use typed_arena::Arena;
 
@@ -78,7 +80,7 @@ fn main() -> io::Result<()> {
 
     let mut exec = Exec::new(arena.clone(), scope.clone());
 
-    println!("lead (ayr-deriv) v0.0.1:");
+    println!("lead_core (ayr-deriv) v0.0.1:");
     loop {
         print!("    ");
         stdout.flush()?;
@@ -91,6 +93,18 @@ fn main() -> io::Result<()> {
         let line = buf.trim_end_matches('\r');
         if line == "test speed\n" {
             speedtest(arena.clone(), scope.clone());
+            continue;
+        }
+
+        #[cfg(feature = "ffi")]
+        if line.starts_with("extern") {
+            let name = line.split(' ').nth(1).unwrap_or("");
+            let path = absolute(Path::new(name)).unwrap();
+            if let Err(e) =
+                lead_core::ffi::internal::load_library(&path)
+            {
+                println!("{e}");
+            }
             continue;
         }
 
@@ -120,7 +134,7 @@ fn main() -> io::Result<()> {
 }
 
 /*
-fn main() -> Result<(), lead::utils::error::Error> {
+fn main() -> Result<(), lead_core::utils::error::Error> {
     /// --- LEXING --- \\\
     let mut lexer = lex::Lexer::new("1 2 3 +* x 4 5 6\n'hello world'4");
     lexer.tokenize()?;
@@ -192,7 +206,7 @@ fn main() -> Result<(), lead::utils::error::Error> {
     Ok(())
 }*/
 
-fn speedtest(arena: Rc<RefCell<Arena<lead::scope::Type>>>, scope: lead::scope::Scope) {
+fn speedtest(arena: Rc<RefCell<Arena<lead_core::scope::Type>>>, scope: lead_core::scope::Scope) {
     // --- SPEED TEST --- \\
     let mut build = Vec::with_capacity(10_000_000);
     for i in 0..10_000_000 {
