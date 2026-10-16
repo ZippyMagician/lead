@@ -5,7 +5,8 @@ Cargo.lock
 
 *.vim
 
-/test
+/test/*.o
+/test/*.so
 
 # Offline
 /vendor
