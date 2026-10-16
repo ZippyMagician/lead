@@ -233,7 +233,6 @@ Lead_List* do_things(Lead_List* a, Lead_List* b) {
         a->i->v.c = 0;
         break;
     }
-    }
     a->i->t = CHAR;
     return a;
 }

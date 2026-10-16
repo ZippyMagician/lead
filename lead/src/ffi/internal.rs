@@ -24,7 +24,6 @@ pub fn load_library(lib: &Path) -> Status {
         .ok()
         .ok_or(Error::Internal("Failed to acquire shared libraries".into()))?;
     unsafe {
-        // why tf is there a trailing newline rust?
         lock.push(Library::new(lib.to_str().unwrap().trim())?);
     }
     drop(lock);
@@ -56,15 +55,28 @@ pub fn call_symbol(
     a: List,
     b: Option<List>,
 ) -> Status<List> {
-    // TODO: Monadic/dyadic
-    let b = b.unwrap();
     let mut l1 = Vec::with_capacity(a.len());
-    let mut l2 = Vec::with_capacity(b.len());
     for s in a.list() {
         l1.push(ScalarExtern::from_scalar(*s)?);
     }
-    for s in b.list() {
-        l2.push(ScalarExtern::from_scalar(*s)?);
+
+    let mut window2 = Window {
+        i: std::ptr::null_mut(),
+        c: 0,
+        d: 0,
+        r: std::ptr::null_mut(),
+    };
+    if let Some(b) = &b {
+        let mut l2 = Vec::with_capacity(b.len());
+        for s in b.list() {
+            l2.push(ScalarExtern::from_scalar(*s)?);
+        }
+        window2 = Window {
+            i: l2.into_raw_parts().0,
+            c: b.len(),
+            d: b.dims(),
+            r: b.rank().as_ptr() as *mut usize,
+        };
     }
 
     let mut window1 = Window {
@@ -74,15 +86,15 @@ pub fn call_symbol(
         r: a.rank().as_ptr() as *mut usize,
     };
 
-    let mut window2 = Window {
-        i: l2.into_raw_parts().0,
-        c: b.len(),
-        d: b.dims(),
-        r: b.rank().as_ptr() as *mut usize,
-    };
-
     unsafe {
-        let res = symbol(&mut window1, &mut window2);
+        let res = symbol(
+            &mut window1,
+            if b.is_some() {
+                &mut window2
+            } else {
+                std::ptr::null_mut()
+            },
+        );
         if !res.is_null() {
             let window = &mut *res; // SAFETY: Checked for null. Other assumptions up to external
             // function.
