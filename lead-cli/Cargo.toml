@@ -1,0 +1,10 @@
+[package]
+name = "lead-cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mimalloc = "0.1.52"
+ordered-float = "5.5.0"
+typed-arena = "2.0.2"
+lead = { path = "../lead" }

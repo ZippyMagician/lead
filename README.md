@@ -1,6 +1,5 @@
-# seqr
-
-Current WIP repository.
+# lead
+Redesign + rewrite of `ayr`
 
 ### Notes
 Based off some of my ideas when rewriting `ayr` in typescript.

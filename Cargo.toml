@@ -1,13 +1,12 @@
-[package]
-name = "seqr"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+resolver = "3"
+members = ["lead", "lead-cli"]
 
 [profile.release]
 lto = true
 codegen-units = 1
 
-[dependencies]
+[workspace.dependencies]
 mimalloc = "0.1.52"
 num-traits = "0.2.19"
 ordered-float = "5.5.0"

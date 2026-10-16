@@ -8,15 +8,15 @@ use std::io::{self, Write};
 use std::rc::Rc;
 use std::time::Instant;
 
-use seqr::exec::Exec;
-use seqr::lex::Lexer;
-use seqr::parse::Parser;
-use seqr::scope::new_scope;
+use lead::exec::Exec;
+use lead::lex::Lexer;
+use lead::parse::Parser;
+use lead::scope::new_scope;
 
-use seqr::builtins::symbols::Symbol;
-use seqr::function::Function;
-use seqr::list::List;
-use seqr::scalar::Scalar;
+use lead::builtins::symbols::Symbol;
+use lead::function::Function;
+use lead::list::List;
+use lead::scalar::Scalar;
 
 use typed_arena::Arena;
 
@@ -78,7 +78,7 @@ fn main() -> io::Result<()> {
 
     let mut exec = Exec::new(arena.clone(), scope.clone());
 
-    println!("seqr (ayr-deriv) v0.0.1:");
+    println!("lead (ayr-deriv) v0.0.1:");
     loop {
         print!("    ");
         stdout.flush()?;
@@ -115,7 +115,7 @@ fn main() -> io::Result<()> {
 }
 
 /*
-fn main() -> Result<(), seqr::utils::error::Error> {
+fn main() -> Result<(), lead::utils::error::Error> {
     /// --- LEXING --- \\\
     let mut lexer = lex::Lexer::new("1 2 3 +* x 4 5 6\n'hello world'4");
     lexer.tokenize()?;
@@ -187,7 +187,7 @@ fn main() -> Result<(), seqr::utils::error::Error> {
     Ok(())
 }*/
 
-fn speedtest(arena: Rc<RefCell<Arena<seqr::scope::Type>>>, scope: seqr::scope::Scope) {
+fn speedtest(arena: Rc<RefCell<Arena<lead::scope::Type>>>, scope: lead::scope::Scope) {
     // --- SPEED TEST --- \\
     let mut build = Vec::with_capacity(10_000_000);
     for i in 0..10_000_000 {
