@@ -463,6 +463,8 @@ impl Exec {
                         .ok_or(Error::Scope)?
                         .to_function(self.arena.clone(), self.scope.clone())?;
                 }
+            } else if let Node::LiteralInternal(_) = n {
+                return err!(Internal, "TODO: Internals in trains");
             } else if let Node::Group(g) = n {
                 f = self.exec_train(g)?;
             } else {
@@ -522,7 +524,7 @@ impl Exec {
         preserve_instant: bool,
     ) -> Status {
         if matches!(head, Assignment::Internal(_)) {
-            return err!(Internal, "TODO: Internals @ <exec.rs> exec_assignment");
+            return err!(Internal, "TODO: Internals in assignments");
         }
         let group = Node::Group(body);
         if utils::is_instant(&group, &self.scope) {
@@ -551,17 +553,10 @@ impl Exec {
             }
         } else {
             // SAFETY: This is set as a `Node::Group` a few lines ago
-            let Node::Group(mut body) = group else {
+            let Node::Group(body) = group else {
                 unsafe { unreachable_unchecked() }
             };
-            let res;
-            if body.len() == 1
-                && let Node::Function(f) = std::mem::take(&mut body[0])
-            {
-                res = f;
-            } else {
-                res = self.exec_train(body)?;
-            }
+            let res = self.exec_train(body)?;
 
             if let Assignment::Literal(head) = head {
                 self.scope.borrow_mut().set_function(head, res);
@@ -681,6 +676,11 @@ impl Exec {
             Ok(Type::Function(self.exec_operator(o, *l, *r)?))
         } else if let Node::Group(g) = node {
             Ok(Type::Function(self.exec_train(g)?))
+        } else if let Node::Literal(name) = node {
+            let t = self.scope.borrow_mut().get(name).ok_or(Error::Scope)?;
+            Ok(t)
+        } else if let Node::LiteralInternal(_) = node {
+            err!(Internal, "TODO: Internals in operators")
         } else {
             err!(Syntax, "Unsupported node provided to operator")
         }

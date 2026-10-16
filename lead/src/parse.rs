@@ -126,6 +126,11 @@ impl<'a> Parser<'a> {
         self.nodes
     }
 
+    #[inline(always)]
+    pub fn borrow_nodes(&self) -> &[Node<'a>] {
+        &self.nodes
+    }
+
     pub fn consume_node(&mut self, t: &'a Token<'a>) -> Status<Node<'a>> {
         use TokenTag::*;
 

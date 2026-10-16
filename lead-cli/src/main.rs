@@ -94,16 +94,21 @@ fn main() -> io::Result<()> {
             continue;
         }
 
+        const DEBUG: bool = false;
         let mut lexer = Lexer::new(&line);
         if let Err(e) = lexer.tokenize() {
             println!("{e}");
             continue;
+        } else if DEBUG {
+            println!("{:?}", lexer.tokens());
         }
 
         let mut parser = Parser::new(arena.clone(), scope.clone(), lexer.tokens());
         if let Err(e) = parser.parse() {
             println!("{e}");
             continue;
+        } else if DEBUG {
+            println!("{:?}", &parser.borrow_nodes());
         }
 
         if let Err(e) = exec.exec(parser.nodes()) {
