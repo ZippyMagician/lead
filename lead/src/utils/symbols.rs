@@ -29,6 +29,7 @@ macro_rules! for_1 {
 
             let lists = $a.list();
             let size = $a.rank()[0];
+            unsafe { ::std::hint::assert_unchecked(lists.len() % size == 0) };
             for i in 0..lists.len() / size {
                 let $v = &lists[i * size..i * size + size];
                 let $r = size;
@@ -40,8 +41,80 @@ macro_rules! for_1 {
     };
 }
 
+macro_rules! for_n2 {
+    ($n1:expr, $a:ident, $n2:expr, $b:ident; [($l:ident, $lr:ident), ($r:ident, $rr:ident)] $bl:expr) => {
+        '_for_n2: {
+            if $a.is_empty() || $b.is_empty() {
+                break '_for_n2;
+            }
+
+            let size_a = $a.rank()[0..$n1].iter().product();
+            let tail_a = $a.rank()[$n1..].iter().product();
+            let size_b = $b.rank()[0..$n2].iter().product();
+            let tail_b = $b.rank()[$n2..].iter().product();
+
+            if tail_a == tail_b {
+                let $lr = &$a.rank()[0..$n1];
+                let $rr = &$b.rank()[0..$n2];
+                for i in 0..tail_a {
+                    let $l = &$a.list()[i * size_a..i * size_a + size_a];
+                    let $r = &$b.list()[i * size_b..i * size_b + size_b];
+                    {
+                        $bl
+                    };
+                }
+            } else if tail_a == 0 {
+                let $l = $a.list();
+                let $lr = $a.rank();
+                let $rr = &$b.rank()[0..$n2];
+                for i in 0..tail_b {
+                    let $r = &$b.list()[i * size_b..i * size_b + size_b];
+                    {
+                        $bl
+                    };
+                }
+            } else if tail_b == 0 {
+                let $r = $b.list();
+                let $lr = &$a.rank()[0..$n1];
+                let $rr = $b.rank();
+                for i in 0..tail_a {
+                    let $l = &$a.list()[i * size_a..i * size_a + size_a];
+                    {
+                        $bl
+                    };
+                }
+            } else if tail_a % tail_b == 0 {
+                let mut bucket = $b.list().chunks(size_b).cycle();
+                let $lr = &$a.rank()[0..$n1];
+                let $rr = &$b.rank()[0..$n2];
+                for i in 0..tail_a {
+                    let $l = &$a.list()[i * size_a..i * size_a + size_a];
+                    let $r = bucket.next().unwrap();
+                    {
+                        $bl
+                    };
+                }
+            } else if tail_b % tail_a == 0 {
+                let mut bucket = $a.list().chunks(size_a).cycle();
+                let $lr = &$a.rank()[0..$n1];
+                let $rr = &$b.rank()[0..$n2];
+                for i in 0..tail_b {
+                    let $r = &$b.list()[i * size_b..i * size_b + size_b];
+                    let $l = bucket.next().unwrap();
+                    {
+                        $bl
+                    };
+                }
+            } else {
+                return $crate::err!(Domain);
+            }
+        }
+    };
+}
+
 pub(crate) use for_0;
 pub(crate) use for_1;
+pub(crate) use for_n2;
 
 macro_rules! scalar_op {
     ($a:ident, $b:ident, $d:ident) => {

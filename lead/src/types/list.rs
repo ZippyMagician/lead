@@ -87,6 +87,8 @@ impl List {
 
     #[inline(always)]
     pub fn dims(&self) -> usize {
+        //println!("{self:?}");
+        unsafe { std::hint::assert_unchecked(self.rk.len() == self.ds) };
         self.ds
     }
 
@@ -97,17 +99,18 @@ impl List {
 
     #[inline(always)]
     pub fn len(&self) -> usize {
+        unsafe { std::hint::assert_unchecked(self.dt.len() == self.ct) };
         self.ct
     }
 
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
-        self.ct == 0
+        self.len() == 0
     }
 
     #[inline(always)]
     pub fn is_scalar(&self) -> bool {
-        self.ct == 1
+        self.len() == 1
     }
 
     #[inline]

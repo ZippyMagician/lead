@@ -9,7 +9,7 @@ use crate::types::list::List;
 use crate::types::scalar;
 use crate::utils::error::{Error, Status, err};
 use crate::utils::function::*;
-use crate::utils::symbols::{for_0, for_1, scalar_op};
+use crate::utils::symbols::{for_0, for_1, for_n2, scalar_op};
 use scalar::Scalar::{self, Boolean, Char, Float, Number};
 
 use num_traits::AsPrimitive;
@@ -578,6 +578,7 @@ pub(crate) fn concat(mut a: List, mut b: List, o: &Opts) -> Status<List> {
     if box_b {
         for_0!(b; [l] = Scalar::boxed(&o.a, List::scalar(*l))?);
     }
+
     if o.rd[0] == 1 && o.rd[1] == 1 {
         if a.dims() < 2 && b.dims() < 2 {
             let mut v = Vec::with_capacity(a.len() + b.len());
@@ -585,24 +586,111 @@ pub(crate) fn concat(mut a: List, mut b: List, o: &Opts) -> Status<List> {
             v.extend(b.list());
             return List::from_vec(v);
         } else if b.dims() < 2 {
-            let rank = [a.rank()[0] + b.len(), a.rank()[1]];
-            let mut build = Vec::with_capacity(rank[0] * rank[1]);
+            let mut rank = SmallVec::from(a.rank());
+            rank[0] += b.len();
+            let mut build = Vec::with_capacity(rank.iter().product());
             for_1!(a; [l, rk] {
                 build.extend(l);
                 build.extend(b.list());
             });
-            return List::mat(build, a.dims(), smallvec![rank[0], rank[1]]);
+            return List::mat(build, a.dims(), rank);
         } else if a.dims() < 2 {
-            let rank = [b.rank()[0] + a.len(), b.rank()[1]];
-            let mut build = Vec::with_capacity(rank[0] * rank[1]);
+            let mut rank = SmallVec::from(b.rank());
+            rank[0] += a.len();
+            let mut build = Vec::with_capacity(rank.iter().product());
             for_1!(b; [r, rk] {
                 build.extend(a.list());
                 build.extend(r);
             });
-            return List::mat(build, a.dims(), smallvec![rank[0], rank[1]]);
+            return List::mat(build, b.dims(), rank);
+        }
+    } else if a.dims() == b.dims() {
+        if a.dims() <= o.rd[0] as usize && b.dims() <= o.rd[1] as usize {
+            let mut r = SmallVec::from(a.rank());
+            let last = r.len() - 1;
+            if r[0..last].iter().zip(&b.rank()[0..last]).any(|(a, b)| a != b) {
+                return err!(Domain);
+            }
+            r[last] += b.rank()[last];
+
+            let mut v = Vec::with_capacity(a.len() + b.len());
+            v.extend(a.list());
+            v.extend(b.list());
+            return List::mat(v, r.len(), r);
+        } else if b.dims() <= o.rd[1] as usize {
+            let mut r = SmallVec::from(a.rank());
+            let last = b.dims() - 1;
+            if r[0..last].iter().zip(&b.rank()[0..last]).any(|(a, b)| a != b) {
+                return err!(Domain);
+            }
+            r[last] += b.rank()[last];
+
+            let mut v = Vec::with_capacity(r.iter().product());
+            for_1!(a; [l, rk] {
+                v.extend(l);
+                v.extend(b.list());
+            });
+            return List::mat(v, a.dims(), r);
+        } else if a.dims() <= o.rd[0] as usize {
+            let mut r = SmallVec::from(b.rank());
+            let last = a.dims() - 1;
+            if r[0..last].iter().zip(&a.rank()[0..last]).any(|(a, b)| a != b) {
+                return err!(Domain);
+            }
+            r[last] += a.rank()[last];
+
+            let mut v = Vec::with_capacity(r.iter().product());
+            for_1!(b; [r, rk] {
+                v.extend(a.list());
+                v.extend(r);
+            });
+            return List::mat(v, b.dims(), r);
         }
     }
 
-    let opts = Opts { rm: 99, rd: [1, 1], a: o.a.clone(), s: o.s.clone() };
-    apply_loosed(&o.a, a, b, o.rd, |a, b| concat(a, b, &opts))
+    let ad = usize::min(a.dims(), o.rd[0] as usize);
+    let bd = usize::min(b.dims(), o.rd[1] as usize);
+    let counter = usize::max(
+        a.rank()[ad..].iter().chain(&[1]).product(),
+        b.rank()[bd..].iter().chain(&[1]).product(),
+    );
+    let size_a: usize = a.rank()[0..ad].iter().chain(&[1]).product();
+    let size_b: usize = b.rank()[0..bd].iter().chain(&[1]).product();
+    // Sanity check
+    if ad != bd
+        && (ad > bd && (ad - bd > 1 || b.rank()[0..bd].iter().zip(a.rank()).any(|(a, b)| *a != *b))
+            || bd > ad
+                && (bd - ad > 1 || a.rank()[0..ad].iter().zip(b.rank()).any(|(a, b)| *a != *b)))
+    {
+        std::hint::cold_path();
+        return err!(Domain);
+    }
+
+    let mut v: Vec<Scalar> = Vec::with_capacity(counter * (size_a + size_b));
+    for_n2!(ad, a, bd, b; [(l, lk), (r, rk)] {
+        if lk.is_empty() && rk.len() > 1 || rk.is_empty() && lk.len() > 1 {
+            std::hint::cold_path();
+            return err!(Domain);
+        }
+        v.extend(l);
+        v.extend(r);
+    });
+
+    let ldim = usize::max(ad, bd);
+    let r = if a.dims() < b.dims() { b.rank() } else { a.rank() };
+    let mut rank: SmallVec<[usize; 4]> = smallvec![];
+    if ad == 0 && bd == 0 {
+        rank.push(2);
+        rank.extend(r.iter().cloned());
+    } else {
+        for i in 0..usize::max(ldim, r.len()) {
+            if i + 1 == ldim {
+                rank.push(a.rank().get(i).unwrap_or(&1) + b.rank().get(i).unwrap_or(&1));
+            } else {
+                rank.push(*r.get(i).unwrap_or(&1));
+            }
+        }
+    }
+
+    List::mat(v, rank.len(), rank)
 }
