@@ -107,7 +107,7 @@ define_syms! {
     Question => (b"?", 99, true, false, symbols::dedup_sieve; [99, 1], true, false, symbols::group);
     Equal => (b"=", 2, true, true, symbols::transpose_keys; [0, 0], true, false, symbols::equal);
     Tilde => (b"~", 0, false, false, symbols::range; [99, 0], true, false, symbols::index);
-    Comma => (b",", 99, true, true, symbols::ravel; [1, 1], false, false, symbols::concat);
+    Comma => (b",", 99, true, true, symbols::ravel; [1, 1], true, false, symbols::concat);
 }
 
 define_op! {

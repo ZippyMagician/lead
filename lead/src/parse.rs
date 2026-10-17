@@ -153,7 +153,7 @@ impl<'a> Parser<'a> {
                 }
             }
             Literal => self.maybe_accessor(t),
-            Newline | CloseParen => Ok(Node::Line),
+            Newline | CloseParen | Tab => Ok(Node::Line),
             OpenBracket => self.maybe_tag(),
             OpenParen => self.consume_group(),
             OpenCurly => self.consume_block(TokenTag::CloseCurly),

@@ -179,16 +179,7 @@ macro_rules! function {
     ($rm:literal, $rd:expr, $am:ident, $ad:ident, $f:expr; $a:ident, $s:ident) => {{
         $crate::function::Function::new_applied(
             ::std::rc::Rc::new($f),
-            $rm,
-            $rd,
-            $am,
-            $ad,
-            true,
-            true,
-            $a,
-            $s,
-            None,
-        )
+            $rm, $rd, $am, $ad, true, true, $a, $s, None,)
     }};
 
     (@emit dyad false; $dyad:expr, $a:ident, $b:ident, $o:ident) => {{
@@ -215,16 +206,7 @@ macro_rules! function {
                 } else {
                     function!(@emit monad $vm; $monad, a, o)
                 }
-            }),
-            $rm,
-            $rd,
-            $am,
-            $ad,
-            $vm,
-            $vd,
-            $a,
-            $s,
-            $sym,
+            }), $rm, $rd, $am, $ad, $vm, $vd, $a, $s, $sym,
         )
     }};
 }

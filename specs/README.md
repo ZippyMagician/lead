@@ -253,3 +253,9 @@ Future syntax would include internals to make this nicer. For example:
 
     test.do_things 65
 would most likely be the recommended usage.
+## Quick examples
+As I think of them
+
+    -- equiv. to J's dyadic `;`.
+    -- First separator between if/else is literal tab, since it is within a group.
+    laminate:{{((`X=[?]x):x <x),(`Y=[?]y):y)<y}}

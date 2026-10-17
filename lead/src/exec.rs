@@ -557,10 +557,10 @@ impl Exec {
                         return Ok(());
                     }
                     self.right = Some(Value::List(match right.list()[0] {
-                        Scalar::Number(_) | Scalar::Float(_) => List::string("`N"),
-                        Scalar::Boolean(_) => List::string("`B"),
-                        Scalar::Char(_) => List::string("`C"),
-                        Scalar::Box(_) => List::string("`X"),
+                        Scalar::Number(_) | Scalar::Float(_) => List::string("N"),
+                        Scalar::Boolean(_) => List::string("B"),
+                        Scalar::Char(_) => List::string("C"),
+                        Scalar::Box(_) => List::string("X"),
                     }))
                 }
             }

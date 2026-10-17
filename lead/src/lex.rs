@@ -40,6 +40,8 @@ pub enum TokenTag {
     Colon,
     /// `.`
     Dot,
+    /// Literal tab
+    Tab,
 }
 
 pub type Token<'a> = (TokenTag, &'a str);
@@ -100,6 +102,7 @@ impl<'a> Lexer<'a> {
         match chr {
             '_' | 'e' | '.' | '0'..='9' => self.maybe_number(chr, start),
             'a'..='z' | 'A'..='Z' => self.consume_lit(start),
+            '\t' => Ok((TokenTag::Tab, &self.input[start..start + 1])),
             c if c.is_whitespace() => self.consume_whitespace(c, start),
             c if c.is_ascii_punctuation() => self.maybe_builtin(c, start),
             _ => err!(Syntax, "Unrecognized token."),

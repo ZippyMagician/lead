@@ -565,6 +565,53 @@ pub(crate) fn ravel(a: Value, o: &Opts) -> Status<Value> {
 }
 
 // commad | , | 1, 1 | Concatenate
-pub(crate) fn concat(_a: List, _b: List, _: &Opts) -> Status<List> {
-    err!(Internal, "TODO: Dyadic ','.")
+pub(crate) fn concat(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+    if a.is_empty() {
+        return Ok(b);
+    } else if b.is_empty() {
+        return Ok(a);
+    }
+
+    let boxit = a.list()[0].repr() != b.list()[0].repr();
+    let box_a = boxit && b.list()[0].repr() == 3 && a.list()[0].repr() != 3;
+    let box_b = boxit && a.list()[0].repr() == 3 && b.list()[0].repr() != 3;
+
+    if box_a {
+        for_0!(a; [l] = Scalar::boxed(&o.a, List::scalar(*l))?);
+    }
+    if box_b {
+        for_0!(b; [l] = Scalar::boxed(&o.a, List::scalar(*l))?);
+    }
+    if o.rd[0] == 1 && o.rd[1] == 1 {
+        if a.dims() < 2 && b.dims() < 2 {
+            let mut v = Vec::with_capacity(a.len() + b.len());
+            v.extend(a.list());
+            v.extend(b.list());
+            return List::from_vec(v);
+        } else if b.dims() < 2 {
+            let rank = [a.rank()[0] + b.len(), a.rank()[1]];
+            let mut build = Vec::with_capacity(rank[0] * rank[1]);
+            for_1!(a; [l, rk] {
+                build.extend(l);
+                build.extend(b.list());
+            });
+            return List::mat(build, a.dims(), smallvec![rank[0], rank[1]]);
+        } else if a.dims() < 2 {
+            let rank = [b.rank()[0] + a.len(), b.rank()[1]];
+            let mut build = Vec::with_capacity(rank[0] * rank[1]);
+            for_1!(b; [r, rk] {
+                build.extend(a.list());
+                build.extend(r);
+            });
+            return List::mat(build, a.dims(), smallvec![rank[0], rank[1]]);
+        }
+    }
+
+    let opts = Opts {
+        rm: 99,
+        rd: [1, 1],
+        a: o.a.clone(),
+        s: o.s.clone(),
+    };
+    apply_loosed(&o.a, a, b, o.rd, |a, b| concat(a, b, &opts))
 }
