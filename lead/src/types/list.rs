@@ -208,7 +208,7 @@ impl List {
 
     #[inline]
     pub fn unranked(
-        arena: &Arena, original: usize, trailing_rank: &[usize], mut lists: Vec<List>,
+        arena: &Arena, _original: usize, trailing_rank: &[usize], mut lists: Vec<List>,
     ) -> Status<Self> {
         if lists.is_empty() {
             return Ok(List::empty());
@@ -218,7 +218,7 @@ impl List {
 
         let mut box_it = false;
         let rank = lists[0].rank();
-        for list in lists.iter() {
+        for list in lists.iter().skip(1) {
             if !eq_rank(rank, list.rank()) {
                 box_it = true;
                 break;
@@ -236,12 +236,11 @@ impl List {
             )
         } else {
             let mut build: Vec<Scalar> =
-                Vec::with_capacity(rank.iter().copied().product::<usize>() * lists.len());
+                Vec::with_capacity(rank.iter().product::<usize>() * lists.len());
             for list in lists.iter() {
                 build.extend(list.list());
             }
 
-            let dims = usize::max(rank.len() + trailing_rank.len(), original);
             let mut rank: SmallVec<[usize; 4]> =
                 if eq_rank(rank, &[1]) { smallvec![] } else { rank.into() };
             rank.extend(trailing_rank.iter().copied());
@@ -250,7 +249,7 @@ impl List {
             if diff != 1 {
                 rank.push(diff);
             }
-            List::mat(build, dims, rank)
+            List::mat(build, rank.len(), rank)
         }
     }
 }

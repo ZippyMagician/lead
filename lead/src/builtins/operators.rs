@@ -274,7 +274,7 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
                 }
                 j += jump;
             }
-            List::unranked(&o.a, dims, &[], cells)
+            List::unranked(&o.a, cells[0].dims() + 1, &[], cells)
         })
     };
 

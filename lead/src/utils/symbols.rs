@@ -1,3 +1,8 @@
+use super::error::Status;
+use crate::types::scalar::Scalar;
+
+use smallvec::{SmallVec, smallvec};
+
 macro_rules! for_0 {
     // NOTE: For some reason beyond my understanding, there are cases where
     // this is slower than writing it out manually. One such instance is when
@@ -177,3 +182,34 @@ macro_rules! scalar_op {
 }
 
 pub(crate) use scalar_op;
+
+pub(crate) fn pad_rank((v, vr): (&[Scalar], &[usize]), r: &[usize]) -> Status<Vec<Scalar>> {
+    if vr == r {
+        return Ok(v.to_vec());
+    }
+
+    let rank: SmallVec<[usize; 4]> =
+        r.iter().enumerate().map(|(i, r)| usize::max(*r, *vr.get(i).unwrap_or(&1))).collect();
+
+    // Could probably do this with scan, but can't be bothered refactoring
+    // took me long enough to get this working when I wrote the typescript
+    // interepreter anyways
+    let mut off: SmallVec<[usize; 4]> = smallvec![1; rank.len()];
+    let mut noff: SmallVec<[usize; 4]> = smallvec![1; rank.len()];
+    for i in 1..rank.len() {
+        off[i] = off[i - 1] * vr.get(i - 1).unwrap_or(&1);
+        noff[i] = noff[i - 1] * rank[i - 1];
+    }
+
+    let nlen: usize = r.iter().product();
+    let mut b = vec![v[0].get_fill()?; nlen];
+    for i in 0..v.len() {
+        let mut j = 0;
+        for k in 0..rank.len() {
+            j += i / off[k] % vr.get(k).unwrap_or(&1) * noff[k];
+        }
+        b[j] = v[i];
+    }
+
+    Ok(b)
+}

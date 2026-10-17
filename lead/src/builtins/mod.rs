@@ -108,6 +108,7 @@ define_syms! {
     Equal => (b"=", 2, true, true, symbols::transpose_keys; [0, 0], true, false, symbols::equal);
     Tilde => (b"~", 0, false, false, symbols::range; [99, 0], true, false, symbols::index);
     Comma => (b",", 99, true, true, symbols::ravel; [1, 1], true, false, symbols::concat);
+    Semicolon => (b";", 1, false, false, symbols::mold; [99, 99], false, false, symbols::table);
 }
 
 define_op! {

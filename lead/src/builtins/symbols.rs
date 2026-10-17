@@ -9,7 +9,7 @@ use crate::types::list::List;
 use crate::types::scalar;
 use crate::utils::error::{Error, Status, err};
 use crate::utils::function::*;
-use crate::utils::symbols::{for_0, for_1, for_n2, scalar_op};
+use crate::utils::symbols::{for_0, for_1, for_n2, pad_rank, scalar_op};
 use scalar::Scalar::{self, Boolean, Char, Float, Number};
 
 use num_traits::AsPrimitive;
@@ -51,6 +51,8 @@ pub enum Symbol {
     Tilde,
     /// `,`
     Comma,
+    /// `;`
+    Semicolon,
 }
 
 // plusm | + | 0 | Absolute value / Cast to int
@@ -692,5 +694,71 @@ pub(crate) fn concat(mut a: List, mut b: List, o: &Opts) -> Status<List> {
         }
     }
 
+    List::mat(v, rank.len(), rank)
+}
+
+// semicolonm | ; | 1 | Mold
+pub(crate) fn mold(a: List, _: &Opts) -> Status<List> {
+    if a.is_empty() {
+        return Ok(a);
+    } else if !a.list()[0].is_box() {
+        return Ok(a);
+    }
+
+    let lists = a
+        .list()
+        .iter()
+        .map(|b| unsafe { b.as_unboxed_unchecked() }.as_list())
+        .collect::<Status<Vec<&List>>>()?;
+
+    let mut rank: SmallVec<[usize; 4]> = SmallVec::new();
+    for list in &lists {
+        for i in 0..list.dims() {
+            if i == rank.len() {
+                rank.push(1);
+            }
+            rank[i] = usize::max(rank[i], list.rank()[i]);
+        }
+    }
+
+    if lists.iter().any(|v| v.list()[0].is_box()) {
+        return err!(ValueS, "No fill character exists for boxes");
+    }
+    let flattened: Vec<Scalar> =
+        lists.iter().map(|v| pad_rank((v.list(), v.rank()), &rank).unwrap()).flatten().collect();
+    rank.push(flattened.len());
+    List::mat(flattened, rank.len(), rank)
+}
+
+// semicolond | ; | 99, 99 | Table
+pub(crate) fn table(a: List, b: List, o: &Opts) -> Status<List> {
+    if a.is_empty() {
+        return Ok(b);
+    } else if b.is_empty() {
+        return Ok(a);
+    }
+
+    if a.list()[0].repr() != b.list()[0].repr() {
+        return List::from_vec(vec![Scalar::boxed(&o.a, a)?, Scalar::boxed(&o.a, b)?]);
+    } else if a.rank() == b.rank() {
+        let mut v = Vec::with_capacity(a.len() + b.len());
+        v.extend(a.list());
+        v.extend(b.list());
+        let mut r = SmallVec::from(a.rank());
+        r.push(2);
+        return List::mat(v, a.dims() + 1, r);
+    }
+
+    let dims = usize::max(a.dims(), b.dims());
+    let mut rank = SmallVec::with_capacity(dims);
+    for i in 0..dims {
+        rank.push(usize::max(*a.rank().get(i).unwrap_or(&1), *b.rank().get(i).unwrap_or(&1)));
+    }
+
+    let size: usize = rank.iter().product();
+    let mut v = Vec::with_capacity(size * 2);
+    v.extend(pad_rank((a.list(), a.rank()), &rank).unwrap());
+    v.extend(pad_rank((b.list(), b.rank()), &rank).unwrap());
+    rank.push(2);
     List::mat(v, rank.len(), rank)
 }

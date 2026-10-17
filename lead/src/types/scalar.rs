@@ -114,7 +114,10 @@ impl Scalar {
                 Self::Boolean(_) => self,
                 _ => Self::Boolean(self.to_bool().unwrap()),
             },
-            _ => return err!(Value),
+            _ => {
+                std::hint::cold_path();
+                return err!(Value)
+            }
         };
         Ok(res)
     }
@@ -126,7 +129,10 @@ impl Scalar {
             Self::Float(f) => Ok(f.as_()),
             Self::Char(c) => Ok(*c as i64),
             Self::Boolean(b) => Ok(*b as i64),
-            _ => err!(NaN),
+            _ => {
+                std::hint::cold_path();
+                err!(NaN)
+            }
         }
     }
 
@@ -137,7 +143,10 @@ impl Scalar {
             Self::Float(f) => Ok(*f),
             Self::Char(c) => Ok(OrderedFloat(*c as u32 as f64)),
             Self::Boolean(b) => Ok(OrderedFloat(*b as u8 as f64)),
-            _ => err!(NaN),
+            _ => {
+                std::hint::cold_path();
+                err!(NaN)
+            }
         }
     }
 
@@ -145,7 +154,10 @@ impl Scalar {
     pub fn to_char(&self) -> Status<char> {
         match self {
             Self::Char(c) => Ok(*c),
-            _ => err!(Value),
+            _ => {
+                std::hint::cold_path();
+                err!(Value)
+            }
         }
     }
 
@@ -156,7 +168,10 @@ impl Scalar {
             Self::Number(0) => Ok(false),
             Self::Float(f) if f.is_zero() => Ok(false),
             Self::Boolean(b) => Ok(*b),
-            Self::Box(_) => err!(Value),
+            Self::Box(_) => {
+                std::hint::cold_path();
+                err!(Value)
+            }
             _ => Ok(true),
         }
     }
@@ -168,6 +183,19 @@ impl Scalar {
             Self::Char(_) => 1,
             Self::Boolean(_) => 2,
             Self::Box(_) => 3,
+        }
+    }
+
+    #[inline]
+    pub fn get_fill(&self) -> Status<Scalar> {
+        match self {
+            Self::Number(_) | Self::Float(_) => Ok(Self::Number(0)),
+            Self::Char(_) => Ok(Self::Char(' ')),
+            Self::Boolean(_) => Ok(Self::Boolean(false)),
+            Self::Box(_) => {
+                std::hint::cold_path();
+                err!(ValueS, "No valid fill type for boxes.")
+            }
         }
     }
 

@@ -79,6 +79,22 @@ impl Type {
     }
 
     #[inline]
+    pub fn to_list(self) -> Status<List> {
+        match self {
+            Self::Value(Value::List(l)) => Ok(l),
+            _ => err!(ValueS, "Cannot treat as list"),
+        }
+    }
+
+    #[inline]
+    pub fn as_list(&self) -> Status<&List> {
+        match self {
+            Self::Value(Value::List(l)) => Ok(l),
+            _ => err!(ValueS, "Cannot treat as list"),
+        }
+    }
+
+    #[inline]
     pub fn to_map(self) -> Status<Map> {
         match self {
             Self::Value(Value::Map(m)) => Ok(m),
