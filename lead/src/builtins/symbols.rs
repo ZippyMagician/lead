@@ -1,6 +1,7 @@
 #![allow(unused_variables)]
 
 use std::collections::{HashMap, HashSet};
+use std::hint::cold_path;
 use std::ops::*;
 
 use crate::function::Opts;
@@ -53,6 +54,8 @@ pub enum Symbol {
     Comma,
     /// `;`
     Semicolon,
+    /// `#`
+    Hashtag,
 }
 
 // plusm | + | 0 | Absolute value / Cast to int
@@ -70,9 +73,11 @@ pub(super) fn abs(mut a: List, _: &Opts) -> Status<List> {
 // plusd | + | 0, 0 | Addition
 pub(super) fn add(mut a: List, mut b: List, _: &Opts) -> Status<List> {
     if a.is_empty() {
-        return Ok(b);
+        cold_path();
+        Ok(b)
     } else if b.is_empty() {
-        return Ok(a);
+        cold_path();
+        Ok(a)
     } else if matches!(a.list()[0], Scalar::Char(_)) || matches!(b.list()[0], Scalar::Char(_)) {
         scalar_op!(a, b,
             [l, r] = { Scalar::Char(char::from_u32(
@@ -106,9 +111,11 @@ pub(super) fn negate(mut a: List, _: &Opts) -> Status<List> {
 // dashd | - | 0, 0 | Subtraction
 pub(super) fn sub(mut a: List, mut b: List, _: &Opts) -> Status<List> {
     if a.is_empty() {
-        return Ok(b);
+        cold_path();
+        Ok(b)
     } else if b.is_empty() {
-        return Ok(a);
+        cold_path();
+        Ok(a)
     } else if matches!(a.list()[0], Scalar::Char(_)) || matches!(b.list()[0], Scalar::Char(_)) {
         scalar_op!(a, b,
             [l, r] = { Scalar::Char(char::from_u32(
@@ -144,8 +151,10 @@ pub(super) fn signum(mut a: List, _: &Opts) -> Status<List> {
 // stard | * | 0, 0 | Multiplication / Boolean And
 pub(super) fn mul(mut a: List, mut b: List, _: &Opts) -> Status<List> {
     if a.is_empty() {
+        cold_path();
         return Ok(b);
     } else if b.is_empty() {
+        cold_path();
         return Ok(a);
     } else if matches!(a.list()[0], Scalar::Boolean(_)) && matches!(b.list()[0], Scalar::Boolean(_))
     {
@@ -202,9 +211,11 @@ pub(super) fn not(mut a: List, _: &Opts) -> Status<List> {
 // piped | | | 0, 0 | Residue (Modulus) / Boolean Or
 pub(super) fn residue(mut a: List, mut b: List, _: &Opts) -> Status<List> {
     if a.is_empty() {
-        return Ok(b);
+        cold_path();
+        Ok(b)
     } else if b.is_empty() {
-        return Ok(a);
+        cold_path();
+        Ok(a)
     } else if matches!(a.list()[0], Scalar::Boolean(_)) && matches!(b.list()[0], Scalar::Boolean(_))
     {
         scalar_op!(a, b,
@@ -265,7 +276,7 @@ pub(crate) fn unbox(a: Value, o: &Opts) -> Status<Value> {
         let f = &a.list()[0];
         if f.is_box() { unsafe { f.unbox_unchecked() }.to_value() } else { Ok(a.into()) }
     } else if a.is_empty() {
-        std::hint::cold_path();
+        cold_path();
         Ok(a.into())
     } else {
         Ok(List::scalar(a.list()[0]).into())
@@ -406,7 +417,7 @@ pub(super) fn group(a: List, b: List, o: &Opts) -> Status<List> {
 // equalm | = | 2 / 99 | Transpose / Keys
 pub(super) fn transpose_keys(a: Value, o: &Opts) -> Status<Value> {
     if a.is_empty() {
-        return Ok(a);
+        return Ok(List::empty().into());
     }
 
     if let Value::Map(a) = a {
@@ -547,7 +558,7 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
 // commam | , | 99 | Ravel / Values
 pub(crate) fn ravel(a: Value, o: &Opts) -> Status<Value> {
     if a.is_empty() {
-        return Ok(a);
+        return Ok(List::empty().into());
     }
     if let Value::Map(m) = a {
         return m.values().map(Value::List);
@@ -761,4 +772,67 @@ pub(crate) fn table(a: List, b: List, o: &Opts) -> Status<List> {
     v.extend(pad_rank((b.list(), b.rank()), &rank).unwrap());
     rank.push(2);
     List::mat(v, rank.len(), rank)
+}
+
+// hashtagm | # | 99 | Tally
+pub(crate) fn tally(a: Value, o: &Opts) -> Status<Value> {
+    if a.is_empty() {
+        cold_path();
+        return Ok(List::scalar(Scalar::Number(0)).into());
+    }
+
+    if let Value::Map(m) = a {
+        return Ok(List::scalar(Scalar::Number(m.internal.len() as i64)).into());
+    }
+
+    let mut a = unsafe { a.to_list_unchecked() };
+    if o.rm as usize >= a.dims() {
+        Ok(List::scalar(Scalar::Number(unsafe { *a.rank().last().unwrap_unchecked() } as i64))
+            .into())
+    } else {
+        let (windows, r) = applym(&mut a, o.rm);
+        let v = vec![Scalar::Number(*r.last().unwrap_or(&1) as i64); windows.len()];
+        List::from_vec(v).map(Value::from)
+    }
+}
+
+// hashtagd | # | 99, 1 | Replicate
+pub(crate) fn replicate(a: List, b: List, _: &Opts) -> Status<List> {
+    if a.is_empty() {
+        return Ok(a);
+    }
+    let mut counts = b
+        .list()
+        .iter()
+        .map(|n| n.to_num().and_then(|x| if x >= 0 { Ok(x) } else { err!(Domain) }))
+        .collect::<Status<Vec<i64>>>()?;
+    let size: usize = a.rank()[0..a.dims() - 1].iter().chain(&[1]).product();
+
+    let iters = a.len() / size;
+    if counts.len() != iters {
+        if iters % counts.len() != 0 {
+            cold_path();
+            return err!(Domain);
+        } else {
+            let mut i = 0;
+            counts.reserve(iters - counts.len());
+            while counts.len() != iters {
+                counts.push(counts[i]);
+                i += 1;
+            }
+        }
+    }
+
+    let total = counts.iter().sum::<i64>() as usize;
+    let mut v: Vec<Scalar> = Vec::with_capacity(total * size);
+    let mut tallies = counts.into_iter();
+    for window in a.list().chunks(size) {
+        for _ in 0..tallies.next().unwrap() {
+            v.extend(window);
+        }
+    }
+
+    let mut r = SmallVec::from(&a.rank()[0..a.dims() - 1]);
+    r.push(total);
+    List::mat(v, r.len(), r)
 }

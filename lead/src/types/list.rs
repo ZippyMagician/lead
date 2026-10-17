@@ -87,7 +87,6 @@ impl List {
 
     #[inline(always)]
     pub fn dims(&self) -> usize {
-        //println!("{self:?}");
         unsafe { std::hint::assert_unchecked(self.rk.len() == self.ds) };
         self.ds
     }

@@ -173,8 +173,10 @@ Partial trains, of course, support constants within them too.
 |  ```]``` |  Identity  |  99  |     Right    | 99 99 |       |
 |  ```?``` | Dedup Sieve|  99  |     Group    | 99 1  |Keys on right repr. indices of corresponding buckets. Leading axis|
 |  ```=``` | Transpose/Keys|2  |   Equality   |  0 0  |Yields list of keys of map|
-|  ```~``` |  One-Range |   0  |     Index    | 99 0  |Str(m): alphabet upto arg|
+|  ```~``` |  One-Range |   0  |     Index    | 99 0  |\`C (monad): alphabet upto arg|
 |  ```,``` |Ravel/Values|  99  |  Concatenate |  1 1  |Yields values of map|
+|  ```;``` |    Mold    |   1  |     Table    | 99 99 |       |
+|  ```#``` |   Tally    |  99  |    Replicate | 99 1  |Also tallies maps|
 
 ## Binders
 |  Binder |   Usage   | Monadic | Rank | Dyadic | Rank |        Notes       |

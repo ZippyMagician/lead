@@ -109,6 +109,7 @@ define_syms! {
     Tilde => (b"~", 0, false, false, symbols::range; [99, 0], true, false, symbols::index);
     Comma => (b",", 99, true, true, symbols::ravel; [1, 1], true, false, symbols::concat);
     Semicolon => (b";", 1, false, false, symbols::mold; [99, 99], false, false, symbols::table);
+    Hashtag => (b"#", 99, true, true, symbols::tally; [99, 1], false, false, symbols::replicate);
 }
 
 define_op! {

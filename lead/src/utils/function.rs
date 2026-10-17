@@ -12,7 +12,7 @@ use smallvec::{SmallVec, smallvec};
 // Returns a vector of `ListView`s, i.e. mutable slices pointing to adjacent values of rank `n`.
 // Assumes the result is rank equivalent to the input
 #[inline]
-pub fn applym<'a, T>(l: &'a mut List, r: u8) -> (Vec<&'a mut [Scalar]>, SmallVec<[usize; 4]>) {
+pub fn applym<'a>(l: &'a mut List, r: u8) -> (Vec<&'a mut [Scalar]>, SmallVec<[usize; 4]>) {
     if l.is_empty() {
         hint::cold_path();
         return (vec![], smallvec![0]);
