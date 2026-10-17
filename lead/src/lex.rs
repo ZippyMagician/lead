@@ -63,12 +63,7 @@ impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
         // See utils::generate_block
         let input = Box::leak(input.into());
-        Self {
-            input,
-            chars: input.char_indices().peekable(),
-            line: 0,
-            tokens: Vec::new(),
-        }
+        Self { input, chars: input.char_indices().peekable(), line: 0, tokens: Vec::new() }
     }
 
     #[inline]

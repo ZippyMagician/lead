@@ -20,32 +20,20 @@ pub struct ScopeInternal {
 
 impl ScopeInternal {
     fn new() -> Self {
-        Self {
-            parent: None,
-            env: HashMap::new(),
-        }
+        Self { parent: None, env: HashMap::new() }
     }
 
     pub fn child(parent: Rc<RefCell<Self>>) -> Rc<RefCell<Self>> {
-        Rc::new(RefCell::new(Self {
-            parent: Some(parent),
-            env: HashMap::new(),
-        }))
+        Rc::new(RefCell::new(Self { parent: Some(parent), env: HashMap::new() }))
     }
 
     pub fn has(&self, name: &str) -> bool {
         self.env.contains_key(name)
-            || self
-                .parent
-                .as_ref()
-                .is_some_and(|s| s.borrow().env.contains_key(name))
+            || self.parent.as_ref().is_some_and(|s| s.borrow().env.contains_key(name))
     }
 
     pub fn get(&self, name: &str) -> Option<Type> {
-        self.env
-            .get(name)
-            .cloned()
-            .or_else(|| self.parent.as_ref()?.borrow().get(name))
+        self.env.get(name).cloned().or_else(|| self.parent.as_ref()?.borrow().get(name))
     }
 
     pub fn get_mut(&mut self, name: &str) -> Option<&mut Type> {
@@ -53,8 +41,7 @@ impl ScopeInternal {
     }
 
     pub fn set_instant(&mut self, name: &str, l: List) {
-        self.env
-            .insert(name.to_string(), Type::Value(Value::List(l)));
+        self.env.insert(name.to_string(), Type::Value(Value::List(l)));
     }
 
     pub fn set_value(&mut self, name: &str, l: Value) {

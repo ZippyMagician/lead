@@ -27,22 +27,14 @@ pub struct List {
 impl List {
     #[inline(always)]
     pub fn new(
-        dt: Box<[Scalar]>,
-        ct: usize,
-        ds: usize,
-        rk: SmallVec<[usize; INLINE_SIZE]>,
+        dt: Box<[Scalar]>, ct: usize, ds: usize, rk: SmallVec<[usize; INLINE_SIZE]>,
     ) -> Self {
         Self { dt, ct, ds, rk }
     }
 
     #[inline]
     pub fn empty() -> Self {
-        Self {
-            dt: Box::new([]),
-            ct: 0,
-            ds: 0,
-            rk: smallvec![],
-        }
+        Self { dt: Box::new([]), ct: 0, ds: 0, rk: smallvec![] }
     }
 
     #[inline]
@@ -51,12 +43,7 @@ impl List {
             return err!(Domain);
         }
         let size = data.len();
-        Ok(Self {
-            dt: data.into(),
-            ct: size,
-            ds: 1,
-            rk: smallvec![size],
-        })
+        Ok(Self { dt: data.into(), ct: size, ds: 1, rk: smallvec![size] })
     }
 
     #[inline]
@@ -65,12 +52,7 @@ impl List {
             return err!(Domain);
         }
         let size = data.len();
-        Ok(Self {
-            dt: data.into(),
-            ct: size,
-            ds,
-            rk,
-        })
+        Ok(Self { dt: data.into(), ct: size, ds, rk })
     }
 
     #[inline]
@@ -79,33 +61,18 @@ impl List {
             return err!(Domain);
         }
         let size = data.len();
-        Ok(Self {
-            dt: data.into(),
-            ct: size,
-            ds,
-            rk: rk.into(),
-        })
+        Ok(Self { dt: data.into(), ct: size, ds, rk: rk.into() })
     }
 
     #[inline]
     pub fn scalar(data: Scalar) -> Self {
-        Self {
-            dt: [data].into(),
-            ct: 1,
-            ds: 1,
-            rk: smallvec![1],
-        }
+        Self { dt: [data].into(), ct: 1, ds: 1, rk: smallvec![1] }
     }
 
     #[inline]
     pub fn string(data: &str) -> Self {
         let size = data.len();
-        Self {
-            dt: data.chars().map(Scalar::Char).collect(),
-            ct: size,
-            ds: 1,
-            rk: smallvec![size],
-        }
+        Self { dt: data.chars().map(Scalar::Char).collect(), ct: size, ds: 1, rk: smallvec![size] }
     }
 
     #[inline(always)]
@@ -238,10 +205,7 @@ impl List {
 
     #[inline]
     pub fn unranked(
-        arena: &Arena,
-        original: usize,
-        trailing_rank: &[usize],
-        mut lists: Vec<List>,
+        arena: &Arena, original: usize, trailing_rank: &[usize], mut lists: Vec<List>,
     ) -> Status<Self> {
         if lists.is_empty() {
             return Ok(List::empty());
@@ -275,11 +239,8 @@ impl List {
             }
 
             let dims = usize::max(rank.len() + trailing_rank.len(), original);
-            let mut rank: SmallVec<[usize; 4]> = if eq_rank(rank, &[1]) {
-                smallvec![]
-            } else {
-                rank.into()
-            };
+            let mut rank: SmallVec<[usize; 4]> =
+                if eq_rank(rank, &[1]) { smallvec![] } else { rank.into() };
             rank.extend(trailing_rank.iter().copied());
 
             let diff = build.len() / rank.iter().product::<usize>();
@@ -313,20 +274,17 @@ impl PartialEq for List {
 
 impl Ord for List {
     fn cmp(&self, o: &List) -> std::cmp::Ordering {
-        self.dims()
-            .cmp(&o.dims())
-            .then(self.len().cmp(&o.len()))
-            .then_with(|| {
-                let l = self.list();
-                let o = o.list();
+        self.dims().cmp(&o.dims()).then(self.len().cmp(&o.len())).then_with(|| {
+            let l = self.list();
+            let o = o.list();
 
-                for (l, r) in l.iter().zip(o) {
-                    if l != r {
-                        return l.cmp(&r);
-                    }
+            for (l, r) in l.iter().zip(o) {
+                if l != r {
+                    return l.cmp(&r);
                 }
-                std::cmp::Ordering::Equal
-            })
+            }
+            std::cmp::Ordering::Equal
+        })
     }
 }
 

@@ -74,11 +74,7 @@ where
     let left = a.ranked(r[0] as usize)?;
     let right = b.ranked(r[1] as usize)?;
     let no_swap = left.len() >= right.len();
-    let (mapper, value) = if no_swap {
-        (left, right)
-    } else {
-        (right, left)
-    };
+    let (mapper, value) = if no_swap { (left, right) } else { (right, left) };
 
     if mapper.len() % value.len() != 0 {
         return err!(Domain);

@@ -108,11 +108,9 @@ impl Scalar {
                 _ => Self::Char(self.to_char().unwrap()),
             },
             'B' => match self {
-                Self::Box(_) => Self::Boolean(
-                    !unsafe { self.as_unboxed_unchecked() }
-                        .as_value()?
-                        .is_empty(),
-                ),
+                Self::Box(_) => {
+                    Self::Boolean(!unsafe { self.as_unboxed_unchecked() }.as_value()?.is_empty())
+                }
                 Self::Boolean(_) => self,
                 _ => Self::Boolean(self.to_bool().unwrap()),
             },
@@ -183,9 +181,7 @@ impl Scalar {
 
     #[inline]
     pub(crate) unsafe fn steal_box(&self) -> Type {
-        let Self::Box(p) = &self else {
-            unsafe { unreachable_unchecked() }
-        };
+        let Self::Box(p) = &self else { unsafe { unreachable_unchecked() } };
         std::mem::take(unsafe { &mut **p })
     }
 
@@ -367,11 +363,7 @@ impl Ord for Scalar {
     #[inline]
     fn cmp(&self, o: &Self) -> std::cmp::Ordering {
         if self.is_box() && !o.is_box() || o.is_box() && !self.is_box() {
-            if self.is_box() {
-                std::cmp::Ordering::Less
-            } else {
-                std::cmp::Ordering::Greater
-            }
+            if self.is_box() { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater }
         } else if self.is_float() || o.is_float() {
             self.to_float().unwrap().cmp(&o.to_float().unwrap())
         } else if self.is_box() && o.is_box() {

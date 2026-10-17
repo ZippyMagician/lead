@@ -58,10 +58,9 @@ pub fn is_instant(node: &Node<'_>, scope: &Scope) -> bool {
         Group(body) if body.last().is_none_or(|n| is_instant(n, scope)) => true,
         // lmao
         Accessor(head, body) => scope.borrow().get(head).is_some_and(|n| {
-            n.as_map().ok().is_some_and(|n| {
-                n.get_into(&body[0], &body[1..])
-                    .is_some_and(|n| n.is_value())
-            })
+            n.as_map()
+                .ok()
+                .is_some_and(|n| n.get_into(&body[0], &body[1..]).is_some_and(|n| n.is_value()))
         }),
         If { .. } => true, // Statements (almost) always yield something
         Map(_) => true,
@@ -116,24 +115,17 @@ pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Funct
 }
 
 // const BOXES: &str = "┌┬┐├┼┤└┴┘│─";
-pub const BOXES_TL: [char; 16] = [
-    '┌', '├', '┌', '├', '┌', '├', '┌', '├', '┬', '┼', '┬', '┼', '┬', '┼', '┬', '┼',
-];
-pub const BOXES_TR: [char; 16] = [
-    '┐', '┤', '┬', '┼', '┐', '┤', '┬', '┼', '┐', '┤', '┬', '┼', '┐', '┤', '┬', '┼',
-];
-pub const BOXES_BR: [char; 16] = [
-    '┘', '┘', '┴', '┴', '┤', '┤', '┼', '┼', '┘', '┘', '┴', '┴', '┤', '┤', '┼', '┼',
-];
-pub const BOXES_BL: [char; 16] = [
-    '└', '└', '└', '└', '├', '├', '├', '├', '┴', '┴', '┴', '┴', '┼', '┼', '┼', '┼',
-];
+pub const BOXES_TL: [char; 16] =
+    ['┌', '├', '┌', '├', '┌', '├', '┌', '├', '┬', '┼', '┬', '┼', '┬', '┼', '┬', '┼'];
+pub const BOXES_TR: [char; 16] =
+    ['┐', '┤', '┬', '┼', '┐', '┤', '┬', '┼', '┐', '┤', '┬', '┼', '┐', '┤', '┬', '┼'];
+pub const BOXES_BR: [char; 16] =
+    ['┘', '┘', '┴', '┴', '┤', '┤', '┼', '┼', '┘', '┘', '┴', '┴', '┤', '┤', '┼', '┼'];
+pub const BOXES_BL: [char; 16] =
+    ['└', '└', '└', '└', '├', '├', '├', '├', '┴', '┴', '┴', '┴', '┼', '┼', '┼', '┼'];
 
 pub(crate) fn display_boxed_lines(
-    lines: Vec<&str>,
-    mx: Option<usize>,
-    my: Option<usize>,
-    mask: u8,
+    lines: Vec<&str>, mx: Option<usize>, my: Option<usize>, mask: u8,
 ) -> Result<Vec<String>, std::fmt::Error> {
     //     ╓─╖╙─╜║┌┬┐├┼┤└┴┘│─
     let y = lines.len();
@@ -160,11 +152,7 @@ pub(crate) fn display_boxed_lines(
     let yoff = (my - lines.len()) / 2;
     for i in 0..my {
         let f = &mut collected[1 + i];
-        let line = if yoff > i || lines.len() + yoff <= i {
-            ""
-        } else {
-            &lines[i - yoff]
-        };
+        let line = if yoff > i || lines.len() + yoff <= i { "" } else { &lines[i - yoff] };
         let l = line.chars().count();
         let xoff = (mx - l + 2) / 2;
         if (mx - l) % 2 != 0 {
@@ -180,9 +168,7 @@ pub(crate) fn display_boxed_lines(
 // Display boxed value
 #[inline]
 pub(crate) fn display_boxed<T: AsRef<str>>(
-    inner: T,
-    mx: Option<usize>,
-    my: Option<usize>,
+    inner: T, mx: Option<usize>, my: Option<usize>,
 ) -> Result<String, std::fmt::Error> {
     //     private boxes: string = "╓─╖╙─╜║┌┬┐├┼┤└┴┘│─";
     let inner = inner.as_ref().trim_end();

@@ -39,12 +39,7 @@ pub type Dyad = Rc<dyn Fn(List, List, &Opts) -> Status<List>>;
 
 impl Function {
     pub fn new(f: Func, rm: u8, rd: [u8; 2], a: Arena, s: Scope, sym: Option<Symbol>) -> Self {
-        Self {
-            f,
-            fl: 0,
-            s: sym,
-            op: Opts { rm, rd, a, s },
-        }
+        Self { f, fl: 0, s: sym, op: Opts { rm, rd, a, s } }
     }
 
     pub fn scalar(sc: List, a: Arena, s: Scope) -> Self {
@@ -53,25 +48,12 @@ impl Function {
             f: Rc::new(move |_, _, _| Ok(v.clone())),
             fl: VALUE_MONADIC | VALUE_DYADIC,
             s: None,
-            op: Opts {
-                rm: 99,
-                rd: [99, 99],
-                a,
-                s,
-            },
+            op: Opts { rm: 99, rd: [99, 99], a, s },
         }
     }
 
     pub fn new_applied(
-        f: Func,
-        rm: u8,
-        rd: [u8; 2],
-        am: bool,
-        ad: bool,
-        vm: bool,
-        vd: bool,
-        a: Arena,
-        s: Scope,
+        f: Func, rm: u8, rd: [u8; 2], am: bool, ad: bool, vm: bool, vd: bool, a: Arena, s: Scope,
         sym: Option<Symbol>,
     ) -> Self {
         Self {
@@ -115,10 +97,8 @@ impl Function {
                     (m)(a, None, &o)
                 } else {
                     let a = a.to_list()?;
-                    Ok(
-                        apply_loosem(&o.a, a, o.rm, |a| (m)(Value::List(a), None, &o)?.to_list())?
-                            .into(),
-                    )
+                    Ok(apply_loosem(&o.a, a, o.rm, |a| (m)(Value::List(a), None, &o)?.to_list())?
+                        .into())
                 }
             });
             self.fl |= APPLIED_MONADIC;
@@ -138,12 +118,10 @@ impl Function {
                     if vd && (a.is_map() || b.is_map()) {
                         (d)(a, Some(b), &o)
                     } else {
-                        Ok(
-                            apply_loosed(&o.a, a.to_list()?, b.to_list()?, o.rd, |a, b| {
-                                (d)(Value::List(a), Some(Value::List(b)), &o)?.to_list()
-                            })?
-                            .into(),
-                        )
+                        Ok(apply_loosed(&o.a, a.to_list()?, b.to_list()?, o.rd, |a, b| {
+                            (d)(Value::List(a), Some(Value::List(b)), &o)?.to_list()
+                        })?
+                        .into())
                     }
                 } else {
                     (d)(a, None, &o)

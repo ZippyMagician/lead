@@ -82,13 +82,7 @@ pub struct Parser<'a> {
 impl<'a> Parser<'a> {
     #[inline]
     pub fn new(arena: Arena, scope: Scope, l: &'a [Token<'a>]) -> Self {
-        Self {
-            nodes: vec![],
-            tokens: l.iter().peekable(),
-            upto_store: vec![],
-            arena,
-            scope,
-        }
+        Self { nodes: vec![], tokens: l.iter().peekable(), upto_store: vec![], arena, scope }
     }
 
     #[inline]
@@ -146,11 +140,7 @@ impl<'a> Parser<'a> {
             }
             Operator => {
                 let o = operators::Operator::get_operator(t.1).unwrap();
-                if o.is_monadic() {
-                    Ok(Node::MonadicOp(o))
-                } else {
-                    Ok(Node::DyadicOp(o))
-                }
+                if o.is_monadic() { Ok(Node::MonadicOp(o)) } else { Ok(Node::DyadicOp(o)) }
             }
             Literal => self.maybe_accessor(t),
             Newline | CloseParen | Tab => Ok(Node::Line),
@@ -164,9 +154,8 @@ impl<'a> Parser<'a> {
     }
 
     fn maybe_tag(&mut self) -> Status<Node<'a>> {
-        let sym = symbols::Symbol::get_symbol("[")
-            .unwrap()
-            .getfn(self.arena.clone(), self.scope.clone());
+        let sym =
+            symbols::Symbol::get_symbol("[").unwrap().getfn(self.arena.clone(), self.scope.clone());
 
         if let Some(next) = self.tokens.next() {
             match next {
@@ -177,10 +166,7 @@ impl<'a> Parser<'a> {
                 (t, tag) if self.next_if(TokenTag::CloseBracket).is_some() => {
                     self.consume_tag(*t, tag)
                 }
-                next => Ok(Node::Two(
-                    Node::Function(sym).into(),
-                    self.consume_node(next)?.into(),
-                )),
+                next => Ok(Node::Two(Node::Function(sym).into(), self.consume_node(next)?.into())),
             }
         } else {
             Ok(Node::Function(sym))
@@ -228,9 +214,8 @@ impl<'a> Parser<'a> {
 
     fn consume_primitive(&mut self, s: Scalar) -> Status<Node<'a>> {
         let mut tokens = vec![s];
-        while let Some((tag, s)) = self
-            .tokens
-            .next_if(|(t, _)| *t == TokenTag::Number || *t == TokenTag::Float)
+        while let Some((tag, s)) =
+            self.tokens.next_if(|(t, _)| *t == TokenTag::Number || *t == TokenTag::Float)
         {
             if *tag == TokenTag::Number {
                 tokens.push(Scalar::Number(parse_number(s)?));
@@ -268,11 +253,7 @@ impl<'a> Parser<'a> {
     fn consume_assign(&mut self, head: &'a str, is_internal: bool) -> Status<Node<'a>> {
         let body = self.consume_upto_tag(TokenTag::Newline)?;
         Ok(Node::Assign {
-            head: if is_internal {
-                Assignment::Internal(head)
-            } else {
-                Assignment::Literal(head)
-            },
+            head: if is_internal { Assignment::Internal(head) } else { Assignment::Literal(head) },
             body,
         })
     }
@@ -291,15 +272,7 @@ impl<'a> Parser<'a> {
         {
             cond = std::mem::take(&mut g[0]);
         }
-        Ok(Node::Two(
-            Node::If {
-                cond: cond.into(),
-                body,
-                otherwise,
-            }
-            .into(),
-            Node::Line.into(),
-        ))
+        Ok(Node::Two(Node::If { cond: cond.into(), body, otherwise }.into(), Node::Line.into()))
     }
 
     fn consume_tag(&mut self, ident: TokenTag, tag: &'a str) -> Status<Node<'a>> {
@@ -345,32 +318,20 @@ impl<'a> Parser<'a> {
 
     #[inline]
     fn consume_map(&mut self) -> Status<Node<'a>> {
-        if self
-            .tokens
-            .next_if(|(t, c)| *t == TokenTag::Symbol && *c == "{")
-            .is_none()
-        {
+        if self.tokens.next_if(|(t, c)| *t == TokenTag::Symbol && *c == "{").is_none() {
             return err!(Syntax, "Expected '{'");
         }
 
         let mut body = Vec::new();
-        while let Some(tok) = self
-            .tokens
-            .next_if(|(t, c)| *t != TokenTag::Symbol || *c != "}")
-        {
+        while let Some(tok) = self.tokens.next_if(|(t, c)| *t != TokenTag::Symbol || *c != "}") {
             if let (TokenTag::Literal, name) = tok {
-                if self
-                    .tokens
-                    .next_if(|(t, _)| *t == TokenTag::Colon)
-                    .is_none()
-                {
+                if self.tokens.next_if(|(t, _)| *t == TokenTag::Colon).is_none() {
                     return err!(Syntax, "Expected ':'");
                 }
                 let mut nodes = Vec::new();
                 std::mem::swap(&mut nodes, &mut self.nodes);
-                while let Some(tok) = self
-                    .tokens
-                    .next_if(|(t, c)| *t != TokenTag::Symbol || *c != ";" && *c != "}")
+                while let Some(tok) =
+                    self.tokens.next_if(|(t, c)| *t != TokenTag::Symbol || *c != ";" && *c != "}")
                 {
                     let node = self.consume_node(tok);
                     Self::unpack_node(&mut self.nodes, node)?;
@@ -399,9 +360,7 @@ impl<'a> Parser<'a> {
         self.upto_store.push(tag);
         let mut nodes = Vec::new();
         std::mem::swap(&mut nodes, &mut self.nodes);
-        while let Some(tok) = self
-            .tokens
-            .next_if(|(t, _)| self.upto_store.iter().all(|g| *g != *t))
+        while let Some(tok) = self.tokens.next_if(|(t, _)| self.upto_store.iter().all(|g| *g != *t))
         {
             let node = self.consume_node(tok);
             Self::unpack_node(&mut self.nodes, node)?;
@@ -416,9 +375,8 @@ impl<'a> Parser<'a> {
     fn consume_upto(&mut self, check: impl Fn(&Node<'a>) -> bool) -> Status<Vec<Node<'a>>> {
         let mut nodes = Vec::new();
         std::mem::swap(&mut nodes, &mut self.nodes);
-        while let Some(tok) = self
-            .tokens
-            .next_if(|(t, _)| self.upto_store.last().is_none_or(|g| *g != *t))
+        while let Some(tok) =
+            self.tokens.next_if(|(t, _)| self.upto_store.last().is_none_or(|g| *g != *t))
         {
             let node = self.consume_node(tok);
             Self::unpack_node(&mut self.nodes, node)?;
@@ -523,11 +481,7 @@ impl<'a> Debug for Node<'a> {
             Node::Line => write!(f, "NL"),
             Node::Tag(t) => write!(f, "[{t:?}]"),
             Node::Group(g) => write!(f, "({g:?})"),
-            Node::If {
-                cond,
-                body,
-                otherwise,
-            } => {
+            Node::If { cond, body, otherwise } => {
                 write!(f, "IF({cond:?}){{{{{body:?}}}}}ELSE{{{{{otherwise:?}}}}}")
             }
             Node::Assign { head, body } => {

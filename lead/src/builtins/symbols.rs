@@ -261,11 +261,7 @@ pub(crate) fn unbox(a: Value, o: &Opts) -> Status<Value> {
     let a = a.to_list()?;
     if a.is_scalar() {
         let f = &a.list()[0];
-        if f.is_box() {
-            unsafe { f.unbox_unchecked() }.to_value()
-        } else {
-            Ok(a.into())
-        }
+        if f.is_box() { unsafe { f.unbox_unchecked() }.to_value() } else { Ok(a.into()) }
     } else if a.is_empty() {
         std::hint::cold_path();
         Ok(a.into())
@@ -607,11 +603,6 @@ pub(crate) fn concat(mut a: List, mut b: List, o: &Opts) -> Status<List> {
         }
     }
 
-    let opts = Opts {
-        rm: 99,
-        rd: [1, 1],
-        a: o.a.clone(),
-        s: o.s.clone(),
-    };
+    let opts = Opts { rm: 99, rd: [1, 1], a: o.a.clone(), s: o.s.clone() };
     apply_loosed(&o.a, a, b, o.rd, |a, b| concat(a, b, &opts))
 }

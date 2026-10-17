@@ -27,26 +27,12 @@ pub struct Exec {
 impl Exec {
     #[inline]
     pub fn new(arena: Arena, scope: Scope) -> Self {
-        Self {
-            scope,
-            arena: arena,
-            silent: false,
-            block: false,
-            reference: None,
-            right: None,
-        }
+        Self { scope, arena: arena, silent: false, block: false, reference: None, right: None }
     }
 
     #[inline]
     pub fn new_imm(arena: Arena, scope: Scope) -> Self {
-        Self {
-            scope,
-            arena: arena,
-            silent: false,
-            block: true,
-            reference: None,
-            right: None,
-        }
+        Self { scope, arena: arena, silent: false, block: true, reference: None, right: None }
     }
 
     pub fn exec<'a>(&mut self, mut node_lines: Vec<Node<'a>>) -> Status {
@@ -99,11 +85,9 @@ impl Exec {
                     body,
                     i > 0 && !utils::is_instant(&line[i - 1], &self.scope),
                 )?,
-                If {
-                    cond,
-                    body,
-                    otherwise,
-                } => self.exec_if(cond, body, otherwise, &mut line, &mut i)?,
+                If { cond, body, otherwise } => {
+                    self.exec_if(cond, body, otherwise, &mut line, &mut i)?
+                }
                 n @ Group(_) if utils::is_instant(&n, &self.scope) => {
                     self.right = Some(self.exec_instant(n)?)
                 }
@@ -153,19 +137,13 @@ impl Exec {
             PrimitiveBoxes(l) => Ok(Value::List(l)),
             Literal(l) => self.scope.borrow().get(l).unwrap().to_value(),
             LiteralInternal(_) => err!(Internal, "TODO: Internals @ <exec.rs> exec_instant"),
-            Assign {
-                head: Assignment::Literal(head),
-                body,
-            } => {
+            Assign { head: Assignment::Literal(head), body } => {
                 let s = self.scope.clone();
                 let list = self.exec_instant(Node::Group(body))?;
                 s.borrow_mut().set_value(head, list.clone());
                 Ok(list)
             }
-            Assign {
-                head: Assignment::Accessor(head, tail),
-                body,
-            } => {
+            Assign { head: Assignment::Accessor(head, tail), body } => {
                 let s = self.scope.clone();
                 let mut sc = s.borrow_mut();
                 let m = sc.get_mut(head).ok_or(Error::Scope)?;
@@ -188,11 +166,7 @@ impl Exec {
                 self.right = r;
                 Ok(out.unwrap_or(Value::List(List::empty())))
             }
-            If {
-                cond,
-                body,
-                otherwise,
-            } => {
+            If { cond, body, otherwise } => {
                 let prev = self.right.take();
                 let list = self.exec_instant(*cond)?.to_list()?;
                 if list.is_empty() || list.list()[0].to_bool()? {
@@ -240,10 +214,7 @@ impl Exec {
 
     #[inline]
     fn exec_literal<'a>(
-        &mut self,
-        name: &'a str,
-        list: &mut Vec<Node<'a>>,
-        i: &mut usize,
+        &mut self, name: &'a str, list: &mut Vec<Node<'a>>, i: &mut usize,
     ) -> Status<Value> {
         let s = self.scope.clone();
         if self.block && name == "v" {
@@ -282,9 +253,7 @@ impl Exec {
         } else {
             let value = s.borrow().get(name).ok_or(Error::Scope)?;
             if value.is_function() {
-                let f = value
-                    .to_function(self.arena.clone(), self.scope.clone())
-                    .unwrap();
+                let f = value.to_function(self.arena.clone(), self.scope.clone()).unwrap();
                 self.exec_function(&f, list, i)
             } else {
                 value.to_value()
@@ -299,10 +268,7 @@ impl Exec {
 
     #[inline]
     fn exec_function<'a>(
-        &mut self,
-        f: &Function,
-        line: &mut [Node<'a>],
-        i: &mut usize,
+        &mut self, f: &Function, line: &mut [Node<'a>], i: &mut usize,
     ) -> Status<Value> {
         if self.right.is_none() {
             return err!(Argument);
@@ -320,10 +286,7 @@ impl Exec {
 
     #[inline]
     fn exec_operator<'a>(
-        &mut self,
-        o: Operator,
-        l: Node<'a>,
-        r: Option<Node<'a>>,
+        &mut self, o: Operator, l: Node<'a>, r: Option<Node<'a>>,
     ) -> Status<Function> {
         o.getop(
             self.maybe_instant(l)?,
@@ -336,11 +299,7 @@ impl Exec {
     #[inline]
     fn exec_train<'a>(&mut self, mut g: Vec<Node<'a>>) -> Status<Function> {
         if g.is_empty() {
-            return Ok(Function::scalar(
-                List::empty(),
-                self.arena.clone(),
-                self.scope.clone(),
-            ));
+            return Ok(Function::scalar(List::empty(), self.arena.clone(), self.scope.clone()));
         }
         let mut has_colon = false;
         if matches!(&g[0], Node::Colon) {
@@ -450,10 +409,7 @@ impl Exec {
 
     #[inline]
     fn exec_assignment<'a>(
-        &mut self,
-        head: Assignment<'a>,
-        body: Vec<Node<'a>>,
-        preserve_instant: bool,
+        &mut self, head: Assignment<'a>, body: Vec<Node<'a>>, preserve_instant: bool,
     ) -> Status {
         if matches!(head, Assignment::Internal(_)) {
             return err!(Internal, "TODO: Internals in assignments");
@@ -485,9 +441,7 @@ impl Exec {
             }
         } else {
             // SAFETY: This is set as a `Node::Group` a few lines ago
-            let Node::Group(body) = group else {
-                unsafe { unreachable_unchecked() }
-            };
+            let Node::Group(body) = group else { unsafe { unreachable_unchecked() } };
             let res = self.exec_train(body)?;
 
             if let Assignment::Literal(head) = head {
@@ -514,12 +468,8 @@ impl Exec {
 
     #[inline]
     fn exec_if<'a>(
-        &mut self,
-        cond: Box<Node<'a>>,
-        body: Vec<Node<'a>>,
-        otherwise: Vec<Node<'a>>,
-        line: &mut Vec<Node<'a>>,
-        i: &mut usize,
+        &mut self, cond: Box<Node<'a>>, body: Vec<Node<'a>>, otherwise: Vec<Node<'a>>,
+        line: &mut Vec<Node<'a>>, i: &mut usize,
     ) -> Status {
         let list = self.exec_instant(*cond)?.to_list()?;
         line.drain(*i..);
@@ -535,10 +485,7 @@ impl Exec {
 
     #[inline]
     fn exec_tag<'a>(
-        &mut self,
-        tag: crate::lex::Token<'a>,
-        line: &mut [Node<'a>],
-        i: &mut usize,
+        &mut self, tag: crate::lex::Token<'a>, line: &mut [Node<'a>], i: &mut usize,
     ) -> Status {
         use crate::lex::TokenTag;
 

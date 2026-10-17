@@ -20,9 +20,7 @@ pub struct Map {
 impl Map {
     #[inline]
     pub fn new() -> Self {
-        Self {
-            internal: HashMap::new(),
-        }
+        Self { internal: HashMap::new() }
     }
 
     #[inline]
@@ -58,8 +56,7 @@ impl Map {
         if rest.is_empty() {
             self.get(key)
         } else {
-            self.get(key)
-                .map(|m| m.as_map().ok()?.get_into(&rest[0], &rest[1..]))?
+            self.get(key).map(|m| m.as_map().ok()?.get_into(&rest[0], &rest[1..]))?
         }
     }
 
@@ -68,8 +65,7 @@ impl Map {
         if rest.is_empty() {
             self.get_mut(key)
         } else {
-            self.get_mut(key)
-                .map(|m| m.as_map_mut().ok()?.get_into_mut(&rest[0], &rest[1..]))?
+            self.get_mut(key).map(|m| m.as_map_mut().ok()?.get_into_mut(&rest[0], &rest[1..]))?
         }
     }
 
@@ -154,10 +150,8 @@ impl Display for Map {
         let mut pairs = Vec::new();
         let mut arena = Arena::new();
         if self.internal.is_empty() {
-            let mut formatted = format!(
-                "{}",
-                Scalar::boxed_custom(&mut arena, Default::default()).unwrap()
-            );
+            let mut formatted =
+                format!("{}", Scalar::boxed_custom(&mut arena, Default::default()).unwrap());
             let Some(first) = formatted.chars().next() else {
                 unsafe { std::hint::unreachable_unchecked() }
             };

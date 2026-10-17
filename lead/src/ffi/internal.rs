@@ -31,10 +31,8 @@ pub fn load_library(lib: &Path) -> Status {
 }
 
 pub fn link_symbol(name: &str) -> Status<LinkedFunction> {
-    let lock = CTX_LIBS
-        .read()
-        .ok()
-        .ok_or(Error::Internal("Failed to acquire shared libraries".into()))?;
+    let lock =
+        CTX_LIBS.read().ok().ok_or(Error::Internal("Failed to acquire shared libraries".into()))?;
     let mut res = Err(Error::Scope);
     'inner: for lib in lock.iter() {
         unsafe {
@@ -50,22 +48,14 @@ pub fn link_symbol(name: &str) -> Status<LinkedFunction> {
 }
 
 pub fn call_symbol(
-    symbol: LinkedFunction,
-    arena: &Arena,
-    a: List,
-    b: Option<List>,
+    symbol: LinkedFunction, arena: &Arena, a: List, b: Option<List>,
 ) -> Status<List> {
     let mut l1 = Vec::with_capacity(a.len());
     for s in a.list() {
         l1.push(ScalarExtern::from_scalar(*s)?);
     }
 
-    let mut window2 = Window {
-        i: std::ptr::null_mut(),
-        c: 0,
-        d: 0,
-        r: std::ptr::null_mut(),
-    };
+    let mut window2 = Window { i: std::ptr::null_mut(), c: 0, d: 0, r: std::ptr::null_mut() };
     if let Some(b) = &b {
         let mut l2 = Vec::with_capacity(b.len());
         for s in b.list() {
@@ -87,14 +77,8 @@ pub fn call_symbol(
     };
 
     unsafe {
-        let res = symbol(
-            &mut window1,
-            if b.is_some() {
-                &mut window2
-            } else {
-                std::ptr::null_mut()
-            },
-        );
+        let res =
+            symbol(&mut window1, if b.is_some() { &mut window2 } else { std::ptr::null_mut() });
         if !res.is_null() {
             let window = &mut *res; // SAFETY: Checked for null. Other assumptions up to external
             // function.
