@@ -1,14 +1,14 @@
-use std::fmt::{self, Display};
 use std::hint::unreachable_unchecked;
 use std::mem::take;
 
 use crate::builtins::operators::Operator;
 use crate::function::{Function, function};
-use crate::list::List;
-use crate::map::{self, Map};
 use crate::parse::{Assignment, Node};
-use crate::scalar::Scalar;
-use crate::scope::{Scope, Type};
+use crate::scope::Scope;
+use crate::types::list::List;
+use crate::types::map;
+use crate::types::scalar::Scalar;
+use crate::types::{Type, Value};
 use crate::utils::error::{Error, Status, err};
 use crate::utils::{self, Arena};
 
@@ -22,74 +22,6 @@ pub struct Exec {
     pub(crate) block: bool,
     pub(crate) reference: Option<Vec<Node<'static>>>,
     pub(crate) right: Option<Value>,
-}
-
-#[repr(C, u8)]
-#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
-pub enum Value {
-    List(List),
-    Map(Map),
-}
-
-impl Value {
-    #[inline]
-    pub fn to_list(self) -> Status<List> {
-        match self {
-            Self::List(l) => Ok(l),
-            Self::Map(_) => {
-                std::hint::cold_path();
-                err!(ValueS, "Cannot treat map as primitive list.")
-            }
-        }
-    }
-
-    #[inline]
-    pub unsafe fn to_list_unchecked(self) -> List {
-        match self {
-            Self::List(l) => l,
-            _ => unsafe { std::hint::unreachable_unchecked() },
-        }
-    }
-
-    #[inline]
-    pub fn to_map(self) -> Status<Map> {
-        match self {
-            Self::List(_) => {
-                std::hint::cold_path();
-                err!(ValueS, "Cannot treat primitive list as map.")
-            }
-            Self::Map(m) => Ok(m),
-        }
-    }
-
-    #[inline]
-    pub fn as_map(&self) -> Status<&Map> {
-        match &self {
-            Self::List(_) => {
-                std::hint::cold_path();
-                err!(ValueS, "Cannot treat primitive list as map.")
-            }
-            Self::Map(m) => Ok(m),
-        }
-    }
-
-    #[inline]
-    pub fn is_map(&self) -> bool {
-        matches!(self, Self::Map(_))
-    }
-
-    #[inline]
-    pub fn is_list(&self) -> bool {
-        matches!(self, Self::List(_))
-    }
-
-    #[inline(always)]
-    pub fn is_empty(&self) -> bool {
-        match self {
-            Self::List(l) => l.is_empty(),
-            Self::Map(m) => m.is_empty(),
-        }
-    }
 }
 
 impl Exec {
@@ -683,36 +615,6 @@ impl Exec {
             err!(Internal, "TODO: Internals in operators")
         } else {
             err!(Syntax, "Unsupported node provided to operator")
-        }
-    }
-}
-
-impl From<Map> for Value {
-    #[inline(always)]
-    fn from(m: Map) -> Self {
-        Self::Map(m)
-    }
-}
-
-impl From<List> for Value {
-    #[inline(always)]
-    fn from(l: List) -> Self {
-        Self::List(l)
-    }
-}
-
-impl Default for Value {
-    #[inline(always)]
-    fn default() -> Self {
-        Self::List(List::default())
-    }
-}
-
-impl Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::List(l) => write!(f, "{l}"),
-            Self::Map(m) => write!(f, "{m}"),
         }
     }
 }

@@ -9,7 +9,7 @@ use std::ptr::slice_from_raw_parts_mut;
 
 use smallvec::{SmallVec, smallvec};
 
-use crate::scalar::Scalar;
+use super::scalar::Scalar;
 use crate::utils::Arena;
 use crate::utils::error::{Status, err};
 use crate::utils::{compatible, display_boxed_lines};
@@ -26,7 +26,12 @@ pub struct List {
 
 impl List {
     #[inline(always)]
-    pub fn new(dt: Box<[Scalar]>, ct: usize, ds: usize, rk: SmallVec<[usize; INLINE_SIZE]>) -> Self {
+    pub fn new(
+        dt: Box<[Scalar]>,
+        ct: usize,
+        ds: usize,
+        rk: SmallVec<[usize; INLINE_SIZE]>,
+    ) -> Self {
         Self { dt, ct, ds, rk }
     }
 

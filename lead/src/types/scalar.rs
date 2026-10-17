@@ -4,9 +4,8 @@ use std::fmt::{self, Debug, Display};
 use std::hint::{/*cold_path,*/ unreachable_unchecked};
 use std::ops::*;
 
-use crate::exec::Value;
-use crate::list::List;
-use crate::scope::Type;
+use super::list::List;
+use super::{Type, Value};
 use crate::utils::error::{Error, Status, err};
 use crate::utils::{Arena, display_boxed};
 

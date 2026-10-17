@@ -8,12 +8,13 @@ use std::fmt::Write;
 use std::hint::assert_unchecked;
 use std::rc::Rc;
 
-use super::exec::{Exec, Value};
+use super::exec::Exec;
 use super::function::Function;
-use super::list::List;
 use super::parse::Node;
-use super::scalar::Scalar::{self as S};
-use super::scope::{Scope, Type};
+use super::scope::Scope;
+use super::types::list::List;
+use super::types::scalar::Scalar::{self as S};
+use super::types::{Type, Value};
 use function::apply_loose;
 
 use typed_arena;

@@ -16,9 +16,8 @@ use lead_core::parse::Parser;
 use lead_core::scope::new_scope;
 
 use lead_core::builtins::symbols::Symbol;
-use lead_core::function::Function;
-use lead_core::list::List;
-use lead_core::scalar::Scalar;
+use lead_core::types::list::List;
+use lead_core::types::scalar::Scalar;
 
 use typed_arena::Arena;
 
@@ -32,48 +31,50 @@ fn main() -> io::Result<()> {
 
     let s = scope.clone();
     s.borrow_mut().set_function(
-        "time", Function::new( Rc::new(|a, mut b, o| {
-            let mut iterations = 1;
-            if b.is_some() {
-                if !a.is_empty() {
-                    iterations = a.to_list()?.list()[0].to_num()? as usize;
+        "time",
+        lead_core::function!(|a, b, o| {
+                let iterations = a
+                    .as_list()?
+                    .list()
+                    .get(0)
+                    .map(|n| n.to_num())
+                    .unwrap_or(Ok(1))? as usize;
+
+                let b = b.unwrap_or(a);
+
+                let arena = Rc::new(RefCell::new(Arena::new()));
+                let line = format!("{b}");
+                let mut times = Vec::with_capacity(iterations);
+                let mut exec = Exec::new(arena.clone(), o.s.clone());
+                exec.silent = true;
+                let mut l = Lexer::new(&line);
+                l.tokenize()?;
+
+                for _ in 0..iterations {
+                    let t0 = Instant::now();
+                    let mut p = Parser::new(arena.clone(), o.s.clone(), l.tokens());
+                    p.parse()?;
+                    exec.exec(p.nodes())?;
+                    let t1 = Instant::now();
+                    times.push(t1 - t0);
                 }
-            } else {
-                b = Some(a);
-            }
-            let b = b.take().unwrap();
 
-            let arena = Rc::new(RefCell::new(Arena::new()));
-            let line = format!("{b}");
-            let mut times = Vec::with_capacity(iterations);
-            let mut exec = Exec::new(arena.clone(), o.s.clone());
-            exec.silent = true;
-            let mut l = Lexer::new(&line);
-            l.tokenize()?;
+                drop(arena);
+                let mut acc = times[0];
+                for i in 1..iterations {
+                    acc += times[i];
+                }
+                acc /= iterations as u32;
+                Ok(List::string(&format!("{acc:?}")).into())
+            }; arena.clone(), scope.clone()
+        ),
+    );
 
-            for _ in 0..iterations {
-                let t0 = Instant::now();
-                let mut p = Parser::new(arena.clone(), o.s.clone(), l.tokens());
-                p.parse()?;
-                exec.exec(p.nodes())?;
-                let t1 = Instant::now();
-                times.push(t1 - t0);
-            }
-
-            drop(arena);
-            let mut acc = times[0];
-            for i in 1..iterations {
-                acc += times[i];
-            }
-            acc /= iterations as u32;
-            Ok(List::string(&format!("{acc:?}")).into())
-        }), 99, [99, 99], arena.clone(), scope.clone(), None,
-    ));
-
+    // TODO: Move to internals once those are implemented
     #[cfg(feature = "ffi")]
     s.borrow_mut().set_function(
-        "extern", Function::new(
-            Rc::new(|a, b, _| {
+        "extern",
+        lead_core::function!(|a, b, _| {
                 if b.is_some() {
                     return lead_core::err!(Domain);
                 }
@@ -81,13 +82,13 @@ fn main() -> io::Result<()> {
                 let path = absolute(Path::new(&name)).unwrap();
                 lead_core::ffi::internal::load_library(&path)?;
                 Ok(a)
-            }), 99, [99, 99], arena.clone(), scope.clone(), None,
+            }; arena.clone(), scope.clone()
         ),
     );
     #[cfg(feature = "ffi")]
     s.borrow_mut().set_function(
-        "link", Function::new(
-            Rc::new(|a, b, o| {
+        "link",
+        lead_core::function!(|a, b, o| {
                 if b.is_some() {
                     return lead_core::err!(Domain);
                 }
@@ -96,15 +97,16 @@ fn main() -> io::Result<()> {
                 let s = o.s.clone();
                 let ar = o.a.clone();
                 s.borrow_mut().set_function(
-                    &name, Function::new(Rc::new(move |a, b, _|
+                    &name,
+                    lead_core::function!(move |a, b, _| {
                         lead_core::ffi::internal::call_symbol(
                             sym.clone(), &ar, a.to_list()?,
                             b.map(|n| n.to_list()).transpose()?,
-                        ).map(lead_core::exec::Value::from)), 
-                        99, [99, 99], o.a.clone(), o.s.clone(), None),
-                );
+                        ).map(lead_core::types::Value::from)
+                    }; o.a.clone(), o.s.clone()
+                ));
                 Ok(List::scalar(Scalar::Boolean(true)).into())
-            }), 99, [99, 99], arena.clone(), scope.clone(), None,
+            }; arena.clone(), scope.clone()
         ),
     );
 
@@ -151,80 +153,7 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
-/*
-fn main() -> Result<(), lead_core::utils::error::Error> {
-    /// --- LEXING --- \\\
-    let mut lexer = lex::Lexer::new("1 2 3 +* x 4 5 6\n'hello world'4");
-    lexer.tokenize()?;
-    let tokens = lexer.tokens();
-
-    //println!("-TOKENS-\n{:?}", tokens);
-
-    /// --- LIST --- \\\
-    let l = List::from_vec(vec![
-        Scalar::Number(4),
-        Scalar::Number(-4),
-        Scalar::Number(2),
-        Scalar::Float(1.3),
-    ])
-    .unwrap();
-    let r = List::from_vec(vec![Scalar::Boolean(false), Scalar::Boolean(true)]).unwrap();
-
-    println!("{l}");
-    println!("{}", l.clone().with_rank(&[3, 3])?);
-
-    let string_mat = List::string("helloworld");
-    let string_mat = string_mat.with_rank(&[5, 2])?;
-
-    /// --- SCOPE --- \\\
-    let scope = new_scope();
-    println!("{}", scope.borrow().has("literal"));
-
-    /// --- SYMBOLS --- \\\
-    if let (lex::TokenTag::Symbol, sym) = tokens[3] {
-        let plus_symbol = Symbol::get_symbol(sym).unwrap().getfn(scope.clone());
-        println!("\n-M-\n{}", plus_symbol.monadic_call(l.clone())?);
-        println!("\n-D-\n{}", plus_symbol.dyadic_call(l, r)?);
-
-        /// --- SPEED --- \\\
-        let mut build = Vec::with_capacity(10_000_000);
-        for i in 0..10_000_000 {
-            build.push(Scalar::Number(i));
-        }
-        let list = List::from_vec(build).unwrap();
-        let one = List::scalar(Scalar::Number(1));
-
-        let t1 = std::time::Instant::now();
-        let result = plus_symbol.dyadic_call(list, one);
-        let t2 = std::time::Instant::now();
-        println!("{}: {:?}", result.is_ok(), t2 - t1);
-    }
-
-    /// --- PARSING --- \\\
-    const P: &str = "f: [{] 1 2 3 + y * 2\n f (54)"; //"x: 4 5 6 + ~3\n2 * x";
-    // println!("\n-P-\n\"\"\" {P} \"\"\"");
-    let mut lexer = lex::Lexer::new(P);
-    lexer.tokenize()?;
-
-    let arena = Rc::new(RefCell::new(Arena::<List>::new()));
-    let mut parser = parse::Parser::new(arena.clone(), scope.clone(), lexer.tokens());
-    parser.parse()?;
-
-    // println!("{:?}", parser.nodes());
-    let mut evaluator = exec::Exec::new(arena.clone(), scope);
-    let t1 = std::time::Instant::now();
-    evaluator.exec(parser.nodes())?;
-    let t2 = std::time::Instant::now();
-    println!("{:?}", t2 - t1);
-
-    /// --- PRINTING --- \\\
-    let boxed = List::scalar(Scalar::boxed(arena.clone(), string_mat)?);
-    println!("{}", boxed.with_rank(&[2, 2])?);
-
-    Ok(())
-}*/
-
-fn speedtest(arena: Rc<RefCell<Arena<lead_core::scope::Type>>>, scope: lead_core::scope::Scope) {
+fn speedtest(arena: Rc<RefCell<Arena<lead_core::types::Type>>>, scope: lead_core::scope::Scope) {
     // --- SPEED TEST --- \\
     let mut build = Vec::with_capacity(10_000_000);
     for i in 0..10_000_000 {

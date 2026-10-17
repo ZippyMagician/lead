@@ -2,9 +2,9 @@ use std::fmt::{self, Debug};
 use std::rc::Rc;
 
 use crate::builtins::symbols::Symbol;
-use crate::exec::Value;
-use crate::list::List;
 use crate::scope::Scope;
+use crate::types::Value;
+use crate::types::list::List;
 use crate::utils::Arena;
 use crate::utils::error::Status;
 use crate::utils::function::*;
@@ -115,10 +115,10 @@ impl Function {
                     (m)(a, None, &o)
                 } else {
                     let a = a.to_list()?;
-                    Ok(apply_loosem(&o.a, a, o.rm, |a| {
-                        (m)(Value::List(a), None, &o)?.to_list()
-                    })?
-                    .into())
+                    Ok(
+                        apply_loosem(&o.a, a, o.rm, |a| (m)(Value::List(a), None, &o)?.to_list())?
+                            .into(),
+                    )
                 }
             });
             self.fl |= APPLIED_MONADIC;
@@ -133,25 +133,22 @@ impl Function {
         if !f!(self.fl, APPLIED_DYADIC) {
             let d = self.f.clone();
             let vd = f!(self.fl, VALUE_DYADIC);
-            self.f =
-                Rc::new(move |a, b, o| {
-                    if let Some(b) = b {
-                        if vd && (a.is_map() || b.is_map()) {
-                            (d)(a, Some(b), &o)
-                        } else {
-                            Ok(apply_loosed(
-                                &o.a,
-                                a.to_list()?,
-                                b.to_list()?,
-                                o.rd,
-                                |a, b| (d)(Value::List(a), Some(Value::List(b)), &o)?.to_list(),
-                            )?
-                            .into())
-                        }
+            self.f = Rc::new(move |a, b, o| {
+                if let Some(b) = b {
+                    if vd && (a.is_map() || b.is_map()) {
+                        (d)(a, Some(b), &o)
                     } else {
-                        (d)(a, None, &o)
+                        Ok(
+                            apply_loosed(&o.a, a.to_list()?, b.to_list()?, o.rd, |a, b| {
+                                (d)(Value::List(a), Some(Value::List(b)), &o)?.to_list()
+                            })?
+                            .into(),
+                        )
                     }
-                });
+                } else {
+                    (d)(a, None, &o)
+                }
+            });
             self.fl |= APPLIED_DYADIC;
         }
     }
@@ -173,13 +170,14 @@ pub struct Opts {
     pub s: Scope,
 }
 
+#[macro_export]
 macro_rules! function {
     ($f:expr; $arena:expr, $scope:expr) => {
-        crate::function::Function::new(::std::rc::Rc::new($f), 99, [99, 99], $arena, $scope, None)
+        $crate::function::Function::new(::std::rc::Rc::new($f), 99, [99, 99], $arena, $scope, None)
     };
 
     ($rm:literal, $rd:expr, $am:ident, $ad:ident, $f:expr; $a:ident, $s:ident) => {{
-        crate::function::Function::new_applied(
+        $crate::function::Function::new_applied(
             ::std::rc::Rc::new($f),
             $rm,
             $rd,
@@ -194,7 +192,7 @@ macro_rules! function {
     }};
 
     (@emit dyad false; $dyad:expr, $a:ident, $b:ident, $o:ident) => {{
-        $dyad($a.to_list()?, $b.to_list()?, $o).map(crate::exec::Value::List)
+        $dyad($a.to_list()?, $b.to_list()?, $o).map($crate::types::Value::List)
     }};
 
     (@emit dyad true; $dyad:expr, $a:ident, $b:ident, $o:ident) => {{
@@ -202,7 +200,7 @@ macro_rules! function {
     }};
 
     (@emit monad false; $monad:expr, $a:ident, $o:ident) => {{
-        $monad($a.to_list()?, $o).map(crate::exec::Value::List)
+        $monad($a.to_list()?, $o).map($crate::types::Value::List)
     }};
 
     (@emit monad true; $monad:expr, $a:ident, $o:ident) => {{

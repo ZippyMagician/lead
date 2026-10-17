@@ -1,7 +1,7 @@
 pub mod internal;
 
-use crate::list::List;
-use crate::scalar::Scalar;
+use crate::types::list::List;
+use crate::types::scalar::Scalar;
 use crate::utils::Arena;
 use crate::utils::error::{Error, Status, err};
 

@@ -3,10 +3,10 @@
 use std::collections::{HashMap, HashSet};
 use std::ops::*;
 
-use crate::exec::Value;
 use crate::function::Opts;
-use crate::list::List;
-use crate::scalar;
+use crate::types::Value;
+use crate::types::list::List;
+use crate::types::scalar;
 use crate::utils::error::{Error, Status, err};
 use crate::utils::function::*;
 use crate::utils::symbols::{for_0, for_1, scalar_op};
@@ -568,4 +568,3 @@ pub(crate) fn ravel(a: Value, o: &Opts) -> Status<Value> {
 pub(crate) fn concat(_a: List, _b: List, _: &Opts) -> Status<List> {
     err!(Internal, "TODO: Dyadic ','.")
 }
-

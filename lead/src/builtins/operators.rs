@@ -1,11 +1,11 @@
 use std::ops::*;
 
 use crate::builtins::symbols::Symbol;
-use crate::exec::Value;
 use crate::function::{Function, Opts, function};
-use crate::list::List;
-use crate::scalar::Scalar;
-use crate::scope::{Type, Scope};
+use crate::scope::Scope;
+use crate::types::list::List;
+use crate::types::scalar::Scalar;
+use crate::types::{Type, Value};
 use crate::utils::Arena;
 use crate::utils::error::{Status, err};
 use crate::utils::function::*;
@@ -26,12 +26,7 @@ pub enum Operator {
 }
 
 #[inline]
-pub(crate) fn atop_bind(
-    l: Type,
-    r: Type,
-    arena: Arena,
-    scope: Scope,
-) -> Status<Function> {
+pub(crate) fn atop_bind(l: Type, r: Type, arena: Arena, scope: Scope) -> Status<Function> {
     if l.is_instant() && r.is_instant() {
         return err!(Domain);
     }
@@ -61,12 +56,7 @@ pub(crate) fn atop_bind(
 }
 
 #[inline]
-pub(crate) fn hook_default(
-    l: Type,
-    r: Type,
-    arena: Arena,
-    scope: Scope,
-) -> Status<Function> {
+pub(crate) fn hook_default(l: Type, r: Type, arena: Arena, scope: Scope) -> Status<Function> {
     if l.is_instant() && r.is_instant() {
         return err!(Domain);
     }
@@ -101,12 +91,7 @@ pub(crate) fn hook_default(
 }
 
 #[inline]
-pub(crate) fn over_rank(
-    l: Type,
-    r: Type,
-    arena: Arena,
-    scope: Scope,
-) -> Status<Function> {
+pub(crate) fn over_rank(l: Type, r: Type, arena: Arena, scope: Scope) -> Status<Function> {
     if l.is_instant() {
         return err!(Domain);
     }

@@ -1,8 +1,8 @@
 use std::hint;
 
 use crate::function::Opts;
-use crate::list::List;
-use crate::scalar::Scalar;
+use crate::types::list::List;
+use crate::types::scalar::Scalar;
 
 use super::Arena;
 use super::error::{Status, err};

@@ -1,7 +1,7 @@
 extern crate libloading;
 
 use super::{ScalarExtern, Window};
-use crate::list::List;
+use crate::types::list::List;
 use crate::utils::Arena;
 use crate::utils::error::{Error, Status, err};
 

@@ -77,11 +77,11 @@ macro_rules! define_op {
 
             pub fn getop(
                 &self,
-                l: crate::scope::Type,
-                r: Option<crate::scope::Type>,
-                a: crate::utils::Arena,
-                s: crate::scope::Scope,
-            ) -> crate::utils::error::Status<crate::function::Function> {
+                l: $crate::types::Type,
+                r: Option<$crate::types::Type>,
+                a: $crate::utils::Arena,
+                s: $crate::scope::Scope,
+            ) -> $crate::utils::error::Status<$crate::function::Function> {
                 $(define_op!(@emit, self, $rep, $flag, $func, l, r, a, s));*;
                 crate::utils::error::err!(Internal, "TODO: <builtins.rs> @ Operator::getop")
             }

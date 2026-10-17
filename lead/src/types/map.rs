@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 use std::fmt::{self, Display};
 
-use crate::exec::Value;
+use super::list::List;
+use super::scalar::Scalar;
+use super::{Type, Value};
 use crate::function::Function;
-use crate::list::List;
-use crate::scalar::Scalar;
-use crate::scope::Type;
 use crate::utils;
 use crate::utils::error::Status;
 
