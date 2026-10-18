@@ -5,6 +5,7 @@ use std::rc::Rc;
 #[allow(unused_imports)]
 use crate::function::{Function, function};
 use crate::types::list::List;
+use crate::types::scalar::Scalar;
 use crate::types::{Type, Value};
 use crate::utils::Arena;
 use crate::utils::error::{Error, Status, err};
@@ -72,6 +73,10 @@ impl Internals {
         let mut uniq = HashSet::new();
         let mut map = HashMap::new();
         map.insert("I".to_string(), Type::from(List::empty())); // TODO: Initialize I
+        let boxes = List::from_vec(
+            unsafe { crate::utils::BOXES }.into_iter().map(|c| Scalar::Char(c)).collect(),
+        );
+        map.insert("BOXC".to_string(), Type::from(boxes.unwrap()));
         #[cfg(feature = "ffi")]
         {
             uniq.insert("extern".to_string());
@@ -198,6 +203,44 @@ impl Internals {
 
     #[inline]
     pub(crate) fn write_internal(&mut self, name: &str, v: Type) -> Status {
+        if name.as_bytes() == b"BOXC" {
+            let v = v.to_list()?;
+            if v.len() != 11 && v.len() != 1 {
+                return err!(Domain);
+            } else if !v.list()[0].is_char() {
+                return err!(Domain);
+            }
+            use crate::utils::{BOXES, BOXES_BL, BOXES_BR, BOXES_TL, BOXES_TR};
+            for (i, c) in (0..11).zip(v.list().iter().cycle()) {
+                unsafe {
+                    let c = c.to_char_unchecked();
+                    BOXES[i] = c;
+                }
+            }
+            // Big box of nonsense
+            unsafe {
+                BOXES_TL = [
+                    BOXES[0], BOXES[3], BOXES[0], BOXES[3], BOXES[0], BOXES[3], BOXES[0], BOXES[3],
+                    BOXES[1], BOXES[4], BOXES[1], BOXES[4], BOXES[1], BOXES[4], BOXES[1], BOXES[4],
+                ];
+                BOXES_TR = [
+                    BOXES[2], BOXES[5], BOXES[1], BOXES[4], BOXES[2], BOXES[5], BOXES[1], BOXES[4],
+                    BOXES[2], BOXES[5], BOXES[1], BOXES[4], BOXES[2], BOXES[5], BOXES[1], BOXES[4],
+                ];
+                BOXES_BR = [
+                    BOXES[8], BOXES[8], BOXES[7], BOXES[7], BOXES[5], BOXES[5], BOXES[4], BOXES[4],
+                    BOXES[8], BOXES[8], BOXES[7], BOXES[7], BOXES[5], BOXES[5], BOXES[4], BOXES[4],
+                ];
+                BOXES_BL = [
+                    BOXES[6], BOXES[6], BOXES[6], BOXES[6], BOXES[3], BOXES[3], BOXES[3], BOXES[3],
+                    BOXES[7], BOXES[7], BOXES[7], BOXES[7], BOXES[4], BOXES[4], BOXES[4], BOXES[4],
+                ];
+            }
+            self.map.insert("BOXC".to_string(), v.into());
+
+            return Ok(());
+        }
+
         if !self.map.contains_key(name) {
             return err!(Scope);
         }

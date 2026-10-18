@@ -377,7 +377,9 @@ impl Display for List {
                     for j in usize::from(row != 0)..y + 2 {
                         for i in 0..cols {
                             let string = &strings[row * cols + i];
-                            line.push_str(&string.1[j][usize::from(i != 0) * 3..]);
+                            let l = &string.1[j];
+                            let off = l.chars().next().unwrap().len_utf8();
+                            line.push_str(&l[usize::from(i != 0) * off..]);
                         }
                         if row + 1 != rows || j != y + 1 {
                             line.push('\n');

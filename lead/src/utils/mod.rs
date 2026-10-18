@@ -121,14 +121,18 @@ pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Funct
     )
 }
 
-pub const BOXES: &str = "┌┬┐├┼┤└┴┘│─";
-pub const BOXES_TL: [char; 16] =
+// BOXES_TL = 0, 3, 0, 3, 0, 3, 0, 3, 1, 4, 1, 4, 1, 4, 1, 4
+// BOXES_TR = 2, 5, 1, 4, 2, 5, 1, 4, 2, 5, 1, 4, 2, 5, 1, 4
+// BOXES_BR = 8, 8, 7, 7, 5, 5, 4, 4, 8, 8, 7, 7, 5, 5, 4, 4
+// BOXES_BL = 6, 6, 6, 6, 3, 3, 3, 3, 7, 7, 7, 7, 4, 4, 4, 4
+pub static mut BOXES: [char; 11] = ['┌', '┬', '┐', '├', '┼', '┤', '└', '┴', '┘', '│', '─'];
+pub static mut BOXES_TL: [char; 16] =
     ['┌', '├', '┌', '├', '┌', '├', '┌', '├', '┬', '┼', '┬', '┼', '┬', '┼', '┬', '┼'];
-pub const BOXES_TR: [char; 16] =
+pub static mut BOXES_TR: [char; 16] =
     ['┐', '┤', '┬', '┼', '┐', '┤', '┬', '┼', '┐', '┤', '┬', '┼', '┐', '┤', '┬', '┼'];
-pub const BOXES_BR: [char; 16] =
+pub static mut BOXES_BR: [char; 16] =
     ['┘', '┘', '┴', '┴', '┤', '┤', '┼', '┼', '┘', '┘', '┴', '┴', '┤', '┤', '┼', '┼'];
-pub const BOXES_BL: [char; 16] =
+pub static mut BOXES_BL: [char; 16] =
     ['└', '└', '└', '└', '├', '├', '├', '├', '┴', '┴', '┴', '┴', '┼', '┼', '┼', '┼'];
 
 pub(crate) fn display_boxed_lines(
@@ -145,16 +149,19 @@ pub(crate) fn display_boxed_lines(
         collected.push(String::with_capacity(mx + 4));
     }
 
+    let hori = unsafe { BOXES[10] };
+    let vert = unsafe { BOXES[9] };
+
     let mask = mask as usize;
     unsafe { assert_unchecked(mask < 16) }
-    collected[0].push(BOXES_TL[mask]);
-    collected[my + 1].push(BOXES_BL[mask]);
+    collected[0].push(unsafe { BOXES_TL[mask] });
+    collected[my + 1].push(unsafe { BOXES_BL[mask] });
     for _ in 0..mx + 2 {
-        collected[0].push('─');
-        collected[my + 1].push('─');
+        collected[0].push(hori);
+        collected[my + 1].push(hori);
     }
-    collected[0].push(BOXES_TR[mask]);
-    collected[my + 1].push(BOXES_BR[mask]);
+    collected[0].push(unsafe { BOXES_TR[mask] });
+    collected[my + 1].push(unsafe { BOXES_BR[mask] });
 
     let yoff = (my - lines.len()) / 2;
     for i in 0..my {
@@ -163,9 +170,9 @@ pub(crate) fn display_boxed_lines(
         let l = line.chars().count();
         let xoff = (mx - l + 2) / 2;
         if (mx - l) % 2 != 0 {
-            write!(f, "│{}{}{}│", " ".repeat(xoff), line, " ".repeat(xoff + 1))?;
+            write!(f, "{vert}{}{}{}{vert}", " ".repeat(xoff), line, " ".repeat(xoff + 1))?;
         } else {
-            write!(f, "│{0}{1}{0}│", " ".repeat(xoff), line)?;
+            write!(f, "{vert}{0}{1}{0}{vert}", " ".repeat(xoff), line)?;
         }
     }
 
