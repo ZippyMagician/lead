@@ -148,7 +148,7 @@ impl<'a> Lexer<'a> {
 
     #[inline]
     fn maybe_char(&mut self, start: usize) -> Status<Token<'a>> {
-        if self.next_if(|c| c.is_alphanumeric()).is_some() {
+        if self.next_if(|c| c.is_ascii_alphabetic()).is_some() {
             tok!(String, &self.input[start + 1..start + 2])
         } else {
             self.consume_builtin(start)

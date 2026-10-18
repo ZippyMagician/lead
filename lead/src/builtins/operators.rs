@@ -23,6 +23,8 @@ pub enum Operator {
     OverRank,
     /// `/`
     Fold,
+    /// `\``
+    TieCommute,
 }
 
 #[inline]
@@ -280,5 +282,17 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
 
     Ok(function!(1, [0, 99], true, true, move |a, b, o| {
         if let Some(b) = b { dyad(a, b, o).map(Value::List) } else { monad(a, o) }
+    }; a, s))
+}
+
+#[inline]
+pub(crate) fn tie_commute(f: Type, a: Arena, s: Scope) -> Status<Function> {
+    let f = f.to_function(a.clone(), s.clone())?;
+    Ok(function!(99, [99, 99], false, true, move |a, b, _| {
+        if let Some(b) = b {
+            f.dyadic_call(b, a)
+        } else {
+            f.dyadic_call(a.clone(), a)
+        }
     }; a, s))
 }

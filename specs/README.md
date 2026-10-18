@@ -185,6 +185,7 @@ Partial trains, of course, support constants within them too.
 | ```&:```| ```u&:v```|   Hook  |  N/A |  Hook  |  N/A | Binds as default if imm. |
 | ```/``` |  ```u/``` |  Reduce |   1  | N-wise Reduce | 0 99 |              |
 | ```@``` | ```u@v``` | Compose |  N/A |  Over  |  N/A | Rank if right arg is immediate |
+| ``` ` ```| ```u` ```|   Tie   |  N/A | Commute|  N/A | Flips operands if attached to dyadic operator|
 
 ## Library Builtins
 TODO. Old(er):
@@ -240,21 +241,17 @@ Lead_List* do_things(Lead_List* a, Lead_List* b) {
 }
 ```
 And then in lead
-```
-    extern 'liblinkingtest.so'
-    link 'do_things'
-    do_things 65
-A
-```
-Future syntax would include internals to make this nicer. For example:
-    
+```    
     []extern'liblinkingtest.so'
     test:[:]{
         do_things: []link'do_things'
     }
 
     test.do_things 65
-would most likely be the recommended usage.
+A
+```
+Is an example usage. `[]extern` and `[]link` serve as semi pre-processed internals, allowing them to be passed as values despite yielding functions.
+
 ## Quick examples
 As I think of them
 

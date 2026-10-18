@@ -425,6 +425,7 @@ impl<'a> Parser<'a> {
                     let Node::MonadicOp(o) = std::mem::take(&mut self.nodes[i - 1]) else {
                         unsafe { std::hint::unreachable_unchecked() }
                     };
+
                     self.nodes[i - 1] = Node::Op(o, Box::new(last), Box::new(None));
                     i -= 1;
                 }
@@ -432,8 +433,16 @@ impl<'a> Parser<'a> {
                     if i == 0 || i == self.nodes.len() - 1 {
                         return err!(Syntax, "Missing operator parameter.");
                     }
-                    let last = self.nodes.remove(i - 1);
-                    let next = self.nodes.remove(i);
+                    let mut last = self.nodes.remove(i - 1);
+                    let mut next = self.nodes.remove(i);
+                    // Swap dyadic operand arguments
+                    if let Node::MonadicOp(o) = next
+                        && o.get_name() == b"`"
+                    {
+                        next = self.nodes.remove(i);
+                        std::mem::swap(&mut last, &mut next);
+                    }
+
                     let Node::DyadicOp(o) = std::mem::take(&mut self.nodes[i - 1]) else {
                         unsafe { std::hint::unreachable_unchecked() }
                     };

@@ -68,10 +68,17 @@ macro_rules! define_op {
                 }
             }
 
+            pub fn get_name(&self) -> &[u8] {
+                match &self {
+                    $(Self::$rep => $tok),*,
+                    _ => unreachable!()
+                }
+            }
+
             pub fn is_monadic(&self) -> bool {
                 match &self {
                     $(Self::$rep => $flag),*,
-                    _ => todo!("<builtins.rs> @ Operator::is_monadic"),
+                    _ => unreachable!()
                 }
             }
 
@@ -117,4 +124,5 @@ define_op! {
     HookDefault => (b"&:", false, operators::hook_default);
     OverRank => (b"@", false, operators::over_rank);
     Fold => (b"/", true, operators::fold);
+    TieCommute => (b"`", true, operators::tie_commute);
 }
