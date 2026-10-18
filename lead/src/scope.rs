@@ -134,13 +134,12 @@ impl Internals {
         match name.as_bytes() {
             b"time" => {
                 use std::time::Instant;
-                let iterations =
-                    a.as_list()?.list().get(0).map(|n| n.to_num()).unwrap_or(Ok(1))? as usize;
-
-                let b = b.unwrap_or(a);
+                let iterations = b
+                    .map(|n| n.as_list()?.list().get(0).map(|n| n.to_num()).unwrap_or(Ok(1)))
+                    .unwrap_or(Ok(1))? as usize;
 
                 let arena = Rc::new(RefCell::new(typed_arena::Arena::new()));
-                let line = format!("{b}");
+                let line = format!("{a}");
                 let mut times = Vec::with_capacity(iterations);
                 let mut exec = crate::exec::Exec::new(arena.clone(), scope.clone());
                 exec.silent = true;
