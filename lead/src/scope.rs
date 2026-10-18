@@ -47,6 +47,10 @@ impl ScopeInternal {
         self.env.get_mut(name)
     }
 
+    pub fn set(&mut self, name: &str, t: Type) {
+        self.env.insert(name.to_string(), t);
+    }
+
     pub fn set_instant(&mut self, name: &str, l: List) {
         self.env.insert(name.to_string(), Type::Value(Value::List(l)));
     }
@@ -184,7 +188,7 @@ impl Internals {
                     crate::ffi::internal::call_symbol(
                         sym.clone(), &ar, a.to_list()?,
                         b.map(|n| n.to_list()).transpose()?,
-                    ).map(Value::from)
+                    ).map(Type::from)
                 }; arena.clone(), scope.clone())
                     .into(),
                 ))

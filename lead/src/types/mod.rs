@@ -23,7 +23,7 @@ pub enum Type {
 impl Type {
     #[inline]
     pub fn is_instant(&self) -> bool {
-        matches!(self, Self::Value(Value::List(_)))
+        matches!(self, Self::Value(Value::List(_) | Value::Map(_)))
     }
 
     #[inline]
@@ -56,7 +56,7 @@ impl Type {
     pub fn to_function(self, arena: Arena, scope: Scope) -> Status<Function> {
         match self {
             Self::Function(f) => Ok(f),
-            Self::Value(l @ Value::List(_)) => {
+            l @ Self::Value(Value::List(_)) => {
                 hint::cold_path();
                 Ok(function!(
                     move |_, _, _| Ok(l.clone());

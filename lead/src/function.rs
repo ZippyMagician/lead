@@ -3,8 +3,8 @@ use std::rc::Rc;
 
 use crate::builtins::symbols::Symbol;
 use crate::scope::Scope;
-use crate::types::Value;
 use crate::types::list::List;
+use crate::types::{Type, Value};
 use crate::utils::Arena;
 use crate::utils::error::Status;
 use crate::utils::function::*;
@@ -33,7 +33,7 @@ macro_rules! f {
     ($v:expr, $f:expr) => {{ $v & $f != 0 }};
 }
 
-pub type Func = Rc<dyn Fn(Value, Option<Value>, &Opts) -> Status<Value>>;
+pub type Func = Rc<dyn Fn(Value, Option<Value>, &Opts) -> Status<Type>>;
 pub type Monad = Rc<dyn Fn(List, &Opts) -> Status<List>>;
 pub type Dyad = Rc<dyn Fn(List, List, &Opts) -> Status<List>>;
 
@@ -43,7 +43,7 @@ impl Function {
     }
 
     pub fn scalar(sc: List, a: Arena, s: Scope) -> Self {
-        let v = Value::List(sc);
+        let v: Type = sc.into();
         Self {
             f: Rc::new(move |_, _, _| Ok(v.clone())),
             fl: VALUE_MONADIC | VALUE_DYADIC,
@@ -68,17 +68,17 @@ impl Function {
     }
 
     #[inline(always)]
-    pub fn monadic_call(&self, a: Value) -> Status<Value> {
+    pub fn monadic_call(&self, a: Value) -> Status<Type> {
         (self.f)(a, None, &self.op)
     }
 
     #[inline(always)]
-    pub fn dyadic_call(&self, a: Value, b: Value) -> Status<Value> {
+    pub fn dyadic_call(&self, a: Value, b: Value) -> Status<Type> {
         (self.f)(a, Some(b), &self.op)
     }
 
     #[inline(always)]
-    pub fn call_fn(&self, a: Value, b: Option<Value>) -> Status<Value> {
+    pub fn call_fn(&self, a: Value, b: Option<Value>) -> Status<Type> {
         (self.f)(a, b, &self.op)
     }
 
@@ -161,7 +161,7 @@ macro_rules! function {
     }};
 
     (@emit dyad false; $dyad:expr, $a:ident, $b:ident, $o:ident) => {{
-        $dyad($a.to_list()?, $b.to_list()?, $o).map($crate::types::Value::List)
+        $dyad($a.to_list()?, $b.to_list()?, $o).map($crate::types::Type::from)
     }};
 
     (@emit dyad true; $dyad:expr, $a:ident, $b:ident, $o:ident) => {{
@@ -169,7 +169,7 @@ macro_rules! function {
     }};
 
     (@emit monad false; $monad:expr, $a:ident, $o:ident) => {{
-        $monad($a.to_list()?, $o).map($crate::types::Value::List)
+        $monad($a.to_list()?, $o).map($crate::types::Type::from)
     }};
 
     (@emit monad true; $monad:expr, $a:ident, $o:ident) => {{

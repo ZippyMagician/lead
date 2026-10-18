@@ -5,10 +5,10 @@ use crate::builtins::operators::Operator;
 use crate::function::{Function, function};
 use crate::parse::{Assignment, Node};
 use crate::scope::Scope;
+use crate::types::Type;
 use crate::types::list::List;
 use crate::types::map;
 use crate::types::scalar::Scalar;
-use crate::types::{Type, Value};
 use crate::utils::error::{Error, Status, err};
 use crate::utils::{self, Arena};
 
@@ -21,7 +21,7 @@ pub struct Exec {
     pub silent: bool,
     pub(crate) block: bool,
     pub(crate) reference: Option<Vec<Node<'static>>>,
-    pub(crate) right: Option<Value>,
+    pub(crate) right: Option<Type>,
 }
 
 impl Exec {
@@ -69,9 +69,9 @@ impl Exec {
         let mut i = line.len() - 1;
         loop {
             match take(unsafe { line.get_unchecked_mut(i) }) {
-                Primitive(list) => self.right = Some(Value::List(list)),
-                PrimitiveString(list) => self.right = Some(Value::List(list)),
-                PrimitiveBoxes(list) => self.right = Some(Value::List(list)),
+                Primitive(list) => self.right = Some(list.into()),
+                PrimitiveString(list) => self.right = Some(list.into()),
+                PrimitiveBoxes(list) => self.right = Some(list.into()),
                 Literal(l) => self.right = Some(self.exec_literal(l, &mut line, &mut i)?),
                 LiteralInternal(l) => {
                     if let Some(_) = self.exec_internal(l, &mut line, &mut i)? {
@@ -132,19 +132,19 @@ impl Exec {
     }
 
     #[inline]
-    fn exec_instant<'a>(&mut self, node: Node<'a>) -> Status<Value> {
+    fn exec_instant<'a>(&mut self, node: Node<'a>) -> Status<Type> {
         use Node::*;
 
         match node {
-            Primitive(l) => Ok(Value::List(l)),
-            PrimitiveString(l) => Ok(Value::List(l)),
-            PrimitiveBoxes(l) => Ok(Value::List(l)),
-            Literal(l) => self.scope.borrow().get(l).unwrap().to_value(),
-            LiteralInternal(s) => self.scope.borrow().internals.borrow().get_instant(s).cloned(),
+            Primitive(l) => Ok(l.into()),
+            PrimitiveString(l) => Ok(l.into()),
+            PrimitiveBoxes(l) => Ok(l.into()),
+            Literal(l) => self.scope.borrow().get(l).ok_or(Error::Scope),
+            LiteralInternal(s) => self.scope.borrow().internals.borrow().get(s).cloned(),
             Assign { head: Assignment::Literal(head), body } => {
                 let s = self.scope.clone();
                 let list = self.exec_instant(Node::Group(body))?;
-                s.borrow_mut().set_value(head, list.clone());
+                s.borrow_mut().set(head, list.clone());
                 Ok(list)
             }
             Assign { head: Assignment::Accessor(head, tail), body } => {
@@ -168,7 +168,7 @@ impl Exec {
                 self.exec_line(body)?;
                 let out = self.right.take();
                 self.right = r;
-                Ok(out.unwrap_or(Value::List(List::empty())))
+                Ok(out.unwrap_or(List::empty().into()))
             }
             If { cond, body, otherwise } => {
                 let prev = self.right.take();
@@ -202,7 +202,7 @@ impl Exec {
                                 return err!(Syntax, format!("Invalid use of internal []{s}"));
                             }
                             body.remove(0);
-                            let right = self.exec_instant(Node::Group(body))?;
+                            let right = self.exec_instant(Node::Group(body))?.to_value()?;
                             self.scope
                                 .borrow()
                                 .internals
@@ -216,7 +216,7 @@ impl Exec {
                         map.insert_function(key.to_string(), res, &self.arena)?;
                     }
                 }
-                Ok(Value::Map(map))
+                Ok(map.into())
             }
             Accessor(head, body) => {
                 let s = self.scope.borrow();
@@ -225,8 +225,7 @@ impl Exec {
                     .as_map()?
                     .get_into(&body[0], &body[1..])
                     .cloned()
-                    .map(|n| n.to_value())
-                    .ok_or(Error::Domain)?
+                    .ok_or(Error::Domain)
             }
             _ => unreachable!(),
         }
@@ -235,14 +234,14 @@ impl Exec {
     #[inline]
     fn exec_literal<'a>(
         &mut self, name: &'a str, list: &mut Vec<Node<'a>>, i: &mut usize,
-    ) -> Status<Value> {
+    ) -> Status<Type> {
         let s = self.scope.clone();
         if self.block && name == "v" {
             if self.right.is_none() {
                 return err!(Argument);
             }
             let mut left = None;
-            let right = self.right.take().unwrap();
+            let right = self.right.take().unwrap().to_value()?;
             if *i > 0 && utils::is_instant(&list[*i - 1], &self.scope) {
                 left = Some(self.exec_instant(take(&mut list[*i - 1]))?);
                 *i -= 1;
@@ -256,7 +255,7 @@ impl Exec {
                 sc.set_instant("y", right.to_list()?);
                 *list = self.reference.as_ref().unwrap().clone();
                 *i = list.len();
-                Ok(Value::List(List::empty()))
+                Ok(List::empty().into())
             } else {
                 let f = utils::generate_block(
                     self.reference.take().unwrap(),
@@ -265,18 +264,18 @@ impl Exec {
                 );
                 // TODO: Check for maps, support alternate calls for blocks
                 if let Some(left) = left {
-                    f.dyadic_call(left, right)
+                    f.dyadic_call(left.to_value()?, right).map(Type::from)
                 } else {
-                    f.monadic_call(right)
+                    f.monadic_call(right).map(Type::from)
                 }
             }
         } else {
-            let value = s.borrow().get(name).ok_or(Error::Scope)?;
-            if value.is_function() {
-                let f = value.to_function(self.arena.clone(), self.scope.clone()).unwrap();
+            let typ = s.borrow().get(name).ok_or(Error::Scope)?;
+            if typ.is_function() {
+                let f = typ.to_function(self.arena.clone(), self.scope.clone()).unwrap();
                 self.exec_function(&f, list, i)
             } else {
-                value.to_value()
+                Ok(typ)
             }
         }
     }
@@ -293,27 +292,20 @@ impl Exec {
         }
 
         if it.is_instant(name) {
-            self.right = Some(it.get_instant(name)?.clone());
+            self.right = Some(it.get(name)?.clone());
         } else {
             if self.right.is_none() {
                 return err!(Argument);
             }
             let mut left = None;
-            let right = self.right.take().unwrap();
+            let right = self.right.take().unwrap().to_value()?;
             if *i > 0 && utils::is_instant(&list[*i - 1], &self.scope) {
-                left = Some(self.exec_instant(take(&mut list[*i - 1]))?);
+                left = Some(self.exec_instant(take(&mut list[*i - 1]))?.to_value()?);
                 *i -= 1;
             }
 
             let ret = it.exec_internal(name, right, left, &self.scope, &self.arena)?;
-            if ret.is_none() {
-                return Ok(None);
-            }
-            let ret = ret.unwrap();
-            if ret.is_function() {
-                return Ok(Some(ret.to_function(self.arena.clone(), self.scope.clone())?));
-            }
-            self.right = Some(ret.to_value().unwrap());
+            self.right = ret;
         }
         Ok(None)
     }
@@ -321,18 +313,18 @@ impl Exec {
     #[inline]
     fn exec_function<'a>(
         &mut self, f: &Function, line: &mut [Node<'a>], i: &mut usize,
-    ) -> Status<Value> {
+    ) -> Status<Type> {
         if self.right.is_none() {
             return err!(Argument);
         }
-        let right = self.right.take().unwrap();
+        let right = self.right.take().unwrap().to_value()?;
         // TODO: Check is value is map, support alternate block calls
         if *i > 0 && utils::is_instant(&line[*i - 1], &self.scope) {
-            let left = self.exec_instant(take(&mut line[*i - 1]))?;
+            let left = self.exec_instant(take(&mut line[*i - 1]))?.to_value()?;
             *i -= 1;
-            f.dyadic_call(left, right)
+            f.dyadic_call(left, right).map(Type::from)
         } else {
-            f.monadic_call(right)
+            f.monadic_call(right).map(Type::from)
         }
     }
 
@@ -367,7 +359,7 @@ impl Exec {
             // I don't have to check for operators since these are only stored for now
             if utils::is_instant(&n, &self.scope) {
                 let top = build.pop().unwrap();
-                let left = self.exec_instant(n)?;
+                let left = self.exec_instant(n)?.to_value()?;
                 if build.is_empty() {
                     build.push(function!(
                         move |a, b, _| top.dyadic_call(left.clone(), b.unwrap_or(a));
@@ -377,7 +369,10 @@ impl Exec {
                     let rightfn = build.pop().unwrap();
                     build.push(function!(
                         move |a, b, _| {
-                            top.dyadic_call(left.clone(), rightfn.call_fn(a, b)?)
+                            top.dyadic_call(
+                                left.clone(),
+                                rightfn.call_fn(a, b)?.to_value()?
+                            )
                         }; self.arena.clone(), self.scope.clone()
                     ));
                 }
@@ -427,7 +422,8 @@ impl Exec {
                 } else {
                     let g = build.pop().unwrap();
                     build.push(function!(
-                        move |a, b, _| f.monadic_call(g.call_fn(a, b)?);
+                        move |a, b, _|
+                            f.monadic_call(g.call_fn(a, b)?.to_value()?);
                         self.arena.clone(), self.scope.clone()
                     ));
                 }
@@ -438,8 +434,8 @@ impl Exec {
                     build.push(function!(
                         move |a, b, _| {
                             g.dyadic_call(
-                                f.call_fn(a.clone(), b.clone())?,
-                                h.call_fn(a, b)?,
+                                f.call_fn(a.clone(), b.clone())?.to_value()?,
+                                h.call_fn(a, b)?.to_value()?,
                             )
                         }; self.arena.clone(), self.scope.clone()
                     ));
@@ -458,7 +454,7 @@ impl Exec {
             let f = build.pop().unwrap();
             let g = build.pop().unwrap();
             Ok(function!(
-                move |a, b, _| f.monadic_call(g.call_fn(a, b)?);
+                move |a, b, _| f.monadic_call(g.call_fn(a, b)?.to_value()?);
                 self.arena.clone(), self.scope.clone()
             ))
         } else {
@@ -480,7 +476,7 @@ impl Exec {
             }
 
             if let Assignment::Literal(head) = head {
-                s.borrow_mut().set_value(head, list);
+                s.borrow_mut().set(head, list);
             } else if let Assignment::Accessor(head, body) = head {
                 let mut sc = s.borrow_mut();
                 let m = sc.get_mut(head).ok_or(Error::Scope)?.as_map_mut()?;
@@ -508,7 +504,7 @@ impl Exec {
                     return err!(Syntax, format!("Invalid use of internal []{s}"));
                 }
                 body.remove(0);
-                let right = self.exec_instant(Node::Group(body))?;
+                let right = self.exec_instant(Node::Group(body))?.to_value()?;
                 self.scope
                     .borrow()
                     .internals
@@ -563,7 +559,7 @@ impl Exec {
 
     #[inline]
     fn exec_tag<'a>(
-        &mut self, tag: crate::lex::Token<'a>, line: &mut [Node<'a>], i: &mut usize,
+        &mut self, tag: crate::lex::Token<'a>, _line: &mut [Node<'a>], _i: &mut usize,
     ) -> Status {
         use crate::lex::TokenTag;
 
@@ -572,49 +568,44 @@ impl Exec {
             (TokenTag::Symbol, "~") => self.right = None,
             // Get type
             (TokenTag::Symbol, "?") => {
-                let right = self.right.take().ok_or(Error::Argument)?;
+                let right = self.right.take().ok_or(Error::Argument)?.to_value()?;
                 if right.is_map() {
-                    self.right = Some(Value::List(List::string("`:")));
+                    self.right = Some(List::string("[:]").into());
                 } else {
                     let right = unsafe { right.to_list_unchecked() };
                     if right.is_empty() {
-                        self.right = Some(Value::List(List::string("()")));
+                        self.right = Some(List::string("()").into());
                         return Ok(());
                     }
-                    self.right = Some(Value::List(match right.list()[0] {
-                        Scalar::Number(_) | Scalar::Float(_) => List::string("N"),
-                        Scalar::Boolean(_) => List::string("B"),
-                        Scalar::Char(_) => List::string("C"),
-                        Scalar::Box(_) => List::string("X"),
-                    }))
+                    self.right = Some(
+                        match right.list()[0] {
+                            Scalar::Number(_) | Scalar::Float(_) => List::string("N"),
+                            Scalar::Boolean(_) => List::string("B"),
+                            Scalar::Char(_) => List::string("C"),
+                            Scalar::Box(_) => List::string("X"),
+                        }
+                        .into(),
+                    )
                 }
             }
             (TokenTag::Symbol, ">") => {
-                let right = self.right.take().ok_or(Error::Argument)?;
+                let right = self.right.take().ok_or(Error::Argument)?.to_value()?;
                 if right.is_empty() || right.is_map() {
                     return err!(Value);
                 }
                 let right = unsafe { right.to_list_unchecked() };
                 let obj = unsafe { right.list()[0].steal_box() };
                 // Can treat a stolen function as an actual function
-                if obj.is_function() {
-                    self.right = Some(self.exec_function(
-                        unsafe { obj.as_function_unchecked() },
-                        line,
-                        i,
-                    )?);
-                } else {
-                    self.right = Some(obj.to_value()?);
-                }
+                self.right = Some(obj);
             }
             (TokenTag::String, s) if s.len() == 1 => {
                 let mut right = self.right.take().ok_or(Error::Value)?.to_list()?;
                 if right.is_empty() {
-                    self.right = Some(Value::List(right));
+                    self.right = Some(right.into());
                 } else {
                     let ident = s.as_bytes()[0] as char;
                     crate::utils::symbols::for_0!(right; [v] = v.to_cast(ident)?);
-                    self.right = Some(Value::List(right));
+                    self.right = Some(right.into());
                 }
             }
             _ => return err!(Syntax, "Unrecognized tag."),

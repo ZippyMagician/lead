@@ -5,9 +5,9 @@ use std::hint::cold_path;
 use std::ops::*;
 
 use crate::function::Opts;
-use crate::types::Value;
 use crate::types::list::List;
 use crate::types::scalar;
+use crate::types::{Type, Value};
 use crate::utils::error::{Error, Status, err};
 use crate::utils::function::*;
 use crate::utils::symbols::{for_0, for_1, for_n2, pad_rank, scalar_op};
@@ -255,7 +255,7 @@ pub(super) fn bitor(mut a: List, mut b: List, _: &Opts) -> Status<List> {
 }
 
 // leftarrowm | < | 99 | Box
-pub(crate) fn boxed(a: Value, o: &Opts) -> Status<Value> {
+pub(crate) fn boxed(a: Value, o: &Opts) -> Status<Type> {
     Ok(List::scalar(Scalar::boxed_l(&o.a, a)?).into())
 }
 
@@ -270,11 +270,11 @@ pub(crate) fn lt(mut a: List, mut b: List, _: &Opts) -> Status<List> {
 }
 
 // rightarrowm | > | 99 | Unbox / First
-pub(crate) fn unbox(a: Value, o: &Opts) -> Status<Value> {
+pub(crate) fn unbox(a: Value, o: &Opts) -> Status<Type> {
     let a = a.to_list()?;
     if a.is_scalar() {
         let f = &a.list()[0];
-        if f.is_box() { unsafe { f.unbox_unchecked() }.to_value() } else { Ok(a.into()) }
+        if f.is_box() { unsafe { Ok(f.unbox_unchecked()) } } else { Ok(a.into()) }
     } else if a.is_empty() {
         cold_path();
         Ok(a.into())
@@ -322,20 +322,20 @@ pub(crate) fn reshape(a: List, b: List, o: &Opts) -> Status<List> {
 }
 
 // lbracketm / rbracketm | [ / ] | 99 | Identity
-pub(super) const fn identity(a: Value, _: &Opts) -> Status<Value> {
-    Ok(a)
+pub(super) const fn identity(a: Value, _: &Opts) -> Status<Type> {
+    Ok(Type::Value(a))
 }
 
 // lbracketd | [ | 99, 99 | Left
 #[inline(always)]
-pub(super) fn left(a: Value, b: Value, _: &Opts) -> Status<Value> {
-    Ok(a)
+pub(super) fn left(a: Value, b: Value, _: &Opts) -> Status<Type> {
+    Ok(a.into())
 }
 
 // rbracketd | ] | 99, 99 | Right
 #[inline(always)]
-pub(super) fn right(a: Value, b: Value, _: &Opts) -> Status<Value> {
-    Ok(b)
+pub(super) fn right(a: Value, b: Value, _: &Opts) -> Status<Type> {
+    Ok(b.into())
 }
 
 // questionm | ? | 99 | Dedup sieve
@@ -415,13 +415,13 @@ pub(super) fn group(a: List, b: List, o: &Opts) -> Status<List> {
 }
 
 // equalm | = | 2 / 99 | Transpose / Keys
-pub(super) fn transpose_keys(a: Value, o: &Opts) -> Status<Value> {
+pub(super) fn transpose_keys(a: Value, o: &Opts) -> Status<Type> {
     if a.is_empty() {
         return Ok(List::empty().into());
     }
 
     if let Value::Map(a) = a {
-        return a.keys(&o.a).map(Value::List);
+        return a.keys(&o.a).map(Type::from);
     }
 
     let a = unsafe { a.to_list_unchecked() };
@@ -433,7 +433,7 @@ pub(super) fn transpose_keys(a: Value, o: &Opts) -> Status<Value> {
 
     let rank = a.rank().to_vec();
     if dims == 1 {
-        return a.with_rank(&[1, rank[0]]).map(Value::List);
+        return a.with_rank(&[1, rank[0]]).map(Type::from);
     } else if leading == 1 {
         return List::unranked(
             &o.a,
@@ -444,9 +444,9 @@ pub(super) fn transpose_keys(a: Value, o: &Opts) -> Status<Value> {
                 .map(|v| v.with_rank(&[1, rank[0]]))
                 .collect::<Status<Vec<List>>>()?,
         )
-        .map(Value::List);
+        .map(Type::from);
     } else if leading == 0 {
-        return Ok(Value::List(a));
+        return Ok(a.into());
     }
 
     apply_loosem(&o.a, a, leading as u8, |a| {
@@ -470,7 +470,7 @@ pub(super) fn transpose_keys(a: Value, o: &Opts) -> Status<Value> {
             rank.into(),
         )
     })
-    .map(Value::List)
+    .map(Type::from)
 }
 
 // equald | = | 0 | Equals
@@ -556,21 +556,21 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
 }
 
 // commam | , | 99 | Ravel / Values
-pub(crate) fn ravel(a: Value, o: &Opts) -> Status<Value> {
+pub(crate) fn ravel(a: Value, o: &Opts) -> Status<Type> {
     if a.is_empty() {
         return Ok(List::empty().into());
     }
     if let Value::Map(m) = a {
-        return m.values().map(Value::List);
+        return m.values().map(Type::from);
     }
 
     let mut a = unsafe { a.to_list_unchecked() };
     if a.is_scalar() {
-        return Ok(Value::List(a));
+        return Ok(a.into());
     }
     a.ds = 1;
     a.rk = smallvec![a.len()];
-    Ok(Value::List(a))
+    Ok(a.into())
 }
 
 // commad | , | 1, 1 | Concatenate
@@ -775,7 +775,7 @@ pub(crate) fn table(a: List, b: List, o: &Opts) -> Status<List> {
 }
 
 // hashtagm | # | 99 | Tally
-pub(crate) fn tally(a: Value, o: &Opts) -> Status<Value> {
+pub(crate) fn tally(a: Value, o: &Opts) -> Status<Type> {
     if a.is_empty() {
         cold_path();
         return Ok(List::scalar(Scalar::Number(0)).into());
@@ -792,7 +792,7 @@ pub(crate) fn tally(a: Value, o: &Opts) -> Status<Value> {
     } else {
         let (windows, r) = applym(&mut a, o.rm);
         let v = vec![Scalar::Number(*r.last().unwrap_or(&1) as i64); windows.len()];
-        List::from_vec(v).map(Value::from)
+        List::from_vec(v).map(Type::from)
     }
 }
 

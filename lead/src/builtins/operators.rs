@@ -51,7 +51,7 @@ pub(crate) fn atop_bind(l: Type, r: Type, arena: Arena, scope: Scope) -> Status<
         let l = l.to_function(arena.clone(), scope.clone())?;
         let r = r.to_function(arena.clone(), scope.clone())?;
         Ok(function!(
-            move |a, b, _| l.monadic_call(r.call_fn(a, b)?);
+            move |a, b, _| l.monadic_call(r.call_fn(a, b)?.to_value()?);
             arena.clone(), scope.clone()
         ))
     }
@@ -85,8 +85,8 @@ pub(crate) fn hook_default(l: Type, r: Type, arena: Arena, scope: Scope) -> Stat
         let r = r.to_function(arena.clone(), scope.clone())?;
         Ok(function!(
             move |a, b, _| if let Some(b) = b {
-                l.dyadic_call(a, r.monadic_call(b)?)
-            } else { l.dyadic_call(a.clone(), r.monadic_call(a)?) };
+                l.dyadic_call(a, r.monadic_call(b)?.to_value()?)
+            } else { l.dyadic_call(a.clone(), r.monadic_call(a)?.to_value()?) };
             arena.clone(), scope.clone()
         ))
     }
@@ -128,8 +128,10 @@ pub(crate) fn over_rank(l: Type, r: Type, arena: Arena, scope: Scope) -> Status<
         let r = r.to_function(arena.clone(), scope.clone())?;
         Ok(function!(
             move |a, b, _| l.call_fn(
-                r.monadic_call(a)?,
-                b.map(|b| r.monadic_call(b)).transpose()?,
+                r.monadic_call(a)?.to_value()?,
+                b.map(|b|
+                    r.monadic_call(b).and_then(|v| v.to_value())
+                ).transpose()?,
             );
             arena.clone(), scope.clone()
         ))
@@ -222,7 +224,7 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
                 let items = a.list();
                 let mut acc = Value::List(List::scalar(items[0]));
                 for item in items.iter().skip(1) {
-                    acc = f.dyadic_call(acc, Value::List(List::scalar(*item)))?;
+                    acc = f.dyadic_call(acc, Value::List(List::scalar(*item)))?.to_value()?;
                 }
                 return acc.to_list();
             }
@@ -231,7 +233,7 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
             let mut items = a.ranked(d - 1)?.into_iter();
             let mut acc = Value::List(items.next().unwrap());
             for item in items {
-                acc = f.dyadic_call(acc, Value::List(item))?;
+                acc = f.dyadic_call(acc, Value::List(item))?.to_value()?;
             }
             acc.to_list()
         })
@@ -281,7 +283,11 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
     };
 
     Ok(function!(1, [0, 99], true, true, move |a, b, o| {
-        if let Some(b) = b { dyad(a, b, o).map(Value::List) } else { monad(a, o) }
+        if let Some(b) = b {
+            dyad(a, b, o).map(Type::from)
+        } else {
+            monad(a, o).map(Type::from)
+        }
     }; a, s))
 }
 

@@ -24,8 +24,8 @@ impl Map {
     }
 
     #[inline]
-    pub fn insert(&mut self, key: String, value: Value, a: &utils::Arena) -> Status {
-        let Scalar::Box(p) = Scalar::boxed_l(a, value)? else {
+    pub fn insert(&mut self, key: String, value: Type, a: &utils::Arena) -> Status {
+        let Scalar::Box(p) = Scalar::boxed_t(a, value)? else {
             unsafe { std::hint::unreachable_unchecked() }
         };
         self.internal.insert(key.to_string(), p);

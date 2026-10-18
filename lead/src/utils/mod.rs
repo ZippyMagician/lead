@@ -12,9 +12,9 @@ use super::exec::Exec;
 use super::function::Function;
 use super::parse::Node;
 use super::scope::Scope;
+use super::types::Type;
 use super::types::list::List;
 use super::types::scalar::Scalar::{self as S};
-use super::types::{Type, Value};
 use function::apply_loose;
 
 use typed_arena;
@@ -55,14 +55,7 @@ pub fn is_instant(node: &Node<'_>, scope: &Scope) -> bool {
         Assign { body, .. } if body.last().is_none_or(|n| is_instant(n, scope)) => true,
         Literal(s) => scope.borrow().get(s).is_some_and(|m| m.is_instant()),
         LiteralInternal(s) => scope.borrow().internals.borrow().is_instant(s),
-        // I love hacks
-        Group(body) if body.last().is_none_or(|n| is_instant(n, scope)) => {
-            if let Some(Node::LiteralInternal(s)) = body.get(0) {
-                !scope.borrow().internals.borrow().preprocess(s)
-            } else {
-                true
-            }
-        }
+        Group(body) => body.last().is_none_or(|n| is_instant(n, scope)),
         // lmao
         Accessor(head, body) => scope.borrow().get(head).is_some_and(|n| {
             n.as_map()
@@ -77,7 +70,7 @@ pub fn is_instant(node: &Node<'_>, scope: &Scope) -> bool {
 
 // Shorthand for this ridiculous code block
 macro_rules! run_block {
-    ($a:ident, $b:expr, $o:ident, $n:ident) => {{
+    (true, $a:ident, $b:expr, $o:ident, $n:ident) => {{
         let sc = $o.s.clone();
         let mut s = sc.borrow_mut();
         if let Some(b) = &$b {
@@ -90,8 +83,9 @@ macro_rules! run_block {
         drop(s);
         let mut e = Exec::new_imm($o.a.clone(), $o.s.clone());
         e.exec($n.clone())?;
-        e.right.unwrap_or(Value::List(List::empty())).to_list()
+        e.right.unwrap_or(List::empty().into())
     }};
+    (false, $a:ident, $b:expr, $o:ident, $n:ident) => {{ run_block!(true, $a, $b, $o, $n).to_list() }};
 }
 
 #[inline]
@@ -111,9 +105,9 @@ pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Funct
             };
 
             if cond {
-                run_block!(a, b, o, n).map(Value::List)
+                Ok(run_block!(true, a, b, o, n))
             } else {
-                apply_loose(&o, a, b, |a, b| run_block!(a, b, o, n)).map(Value::List)
+                apply_loose(&o, a, b, |a, b| run_block!(false, a, b, o, n)).map(Type::from)
             }
         };
         arena,
