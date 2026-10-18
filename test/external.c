@@ -26,19 +26,12 @@ Lead_List* test_list(Lead_List* a, Lead_List* b) {
         Lead_Scalar* bh = b->i + i;
         // if within and integer, add
         if (i < a->c && ah->t == INTEGER) (r->i + i)->v.n += ah->v.n;
-        if (i < b->c && ah->t == INTEGER) (r->i + i)->v.n += bh->v.n;
+        if (i < b->c && bh->t == INTEGER) (r->i + i)->v.n += bh->v.n;
     }
 
-    if (r->c % 2 == 0) {
-        r->d = 2;
-        r->r = malloc(sizeof(size_t) * 2);
-        r->r[0] = 2;
-        r->r[1] = r->c / 2;
-    } else {
-        r->d = 1;
-        r->r = malloc(sizeof(size_t) * 1);
-        *r->r = r->c;
-    }
+    r->d = 1;
+    r->r = malloc(sizeof(size_t) * 1);
+    *r->r = r->c;
 
     return r;
 }

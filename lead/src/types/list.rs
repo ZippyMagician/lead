@@ -71,7 +71,7 @@ impl List {
 
     #[inline]
     pub fn string(data: &str) -> Self {
-        let size = data.len();
+        let size = data.chars().count();
         Self { dt: data.chars().map(Scalar::Char).collect(), ct: size, ds: 1, rk: smallvec![size] }
     }
 

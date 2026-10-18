@@ -54,8 +54,15 @@ pub fn is_instant(node: &Node<'_>, scope: &Scope) -> bool {
         PrimitiveBoxes(_) => true,
         Assign { body, .. } if body.last().is_none_or(|n| is_instant(n, scope)) => true,
         Literal(s) => scope.borrow().get(s).is_some_and(|m| m.is_instant()),
-        LiteralInternal(_) => todo!("Literal internal"),
-        Group(body) if body.last().is_none_or(|n| is_instant(n, scope)) => true,
+        LiteralInternal(s) => scope.borrow().internals.borrow().is_instant(s),
+        // I love hacks
+        Group(body) if body.last().is_none_or(|n| is_instant(n, scope)) => {
+            if let Some(Node::LiteralInternal(s)) = body.get(0) {
+                !scope.borrow().internals.borrow().preprocess(s)
+            } else {
+                true
+            }
+        }
         // lmao
         Accessor(head, body) => scope.borrow().get(head).is_some_and(|n| {
             n.as_map()
@@ -114,7 +121,7 @@ pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Funct
     )
 }
 
-// const BOXES: &str = "┌┬┐├┼┤└┴┘│─";
+pub const BOXES: &str = "┌┬┐├┼┤└┴┘│─";
 pub const BOXES_TL: [char; 16] =
     ['┌', '├', '┌', '├', '┌', '├', '┌', '├', '┬', '┼', '┬', '┼', '┬', '┼', '┬', '┼'];
 pub const BOXES_TR: [char; 16] =

@@ -1,30 +1,36 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use crate::function::Function;
+#[allow(unused_imports)]
+use crate::function::{Function, function};
 use crate::types::list::List;
 use crate::types::{Type, Value};
+use crate::utils::Arena;
+use crate::utils::error::{Error, Status, err};
 
 pub type Scope = Rc<RefCell<ScopeInternal>>;
 
 pub fn new_scope() -> Scope {
-    Rc::new(RefCell::new(ScopeInternal::new()))
+    let internals = Rc::new(RefCell::new(Internals::new()));
+    Rc::new(RefCell::new(ScopeInternal::new(internals)))
 }
 
 #[derive(Clone)]
 pub struct ScopeInternal {
     parent: Option<Scope>,
     env: HashMap<String, Type>,
+    pub(crate) internals: Rc<RefCell<Internals>>,
 }
 
 impl ScopeInternal {
-    fn new() -> Self {
-        Self { parent: None, env: HashMap::new() }
+    fn new(internals: Rc<RefCell<Internals>>) -> Self {
+        Self { parent: None, env: HashMap::new(), internals }
     }
 
     pub fn child(parent: Rc<RefCell<Self>>) -> Rc<RefCell<Self>> {
-        Rc::new(RefCell::new(Self { parent: Some(parent), env: HashMap::new() }))
+        let internals = parent.borrow().internals.clone();
+        Rc::new(RefCell::new(Self { parent: Some(parent), env: HashMap::new(), internals }))
     }
 
     pub fn has(&self, name: &str) -> bool {
@@ -50,5 +56,153 @@ impl ScopeInternal {
 
     pub fn set_function(&mut self, name: &str, f: Function) {
         self.env.insert(name.to_string(), Type::Function(f));
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct Internals {
+    map: HashMap<String, Type>,
+    uniq: HashSet<String>,
+}
+
+#[allow(dead_code)]
+impl Internals {
+    #[inline]
+    pub(crate) fn new() -> Self {
+        let mut uniq = HashSet::new();
+        let mut map = HashMap::new();
+        map.insert("I".to_string(), Type::from(List::empty())); // TODO: Initialize I
+        #[cfg(feature = "ffi")]
+        {
+            uniq.insert("extern".to_string());
+            uniq.insert("link".to_string());
+        }
+        uniq.insert("time".to_string());
+        Self { map, uniq }
+    }
+
+    #[inline(always)]
+    pub(crate) fn preprocess(&self, name: &str) -> bool {
+        match name.as_bytes() {
+            #[cfg(feature = "ffi")]
+            b"extern" => true,
+            #[cfg(feature = "ffi")]
+            b"link" => true,
+            _ => false,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn has(&self, name: &str) -> bool {
+        self.map.contains_key(name) || self.uniq.contains(name)
+    }
+
+    #[inline]
+    pub(crate) fn is_instant(&self, name: &str) -> bool {
+        self.map.get(name).is_some_and(|v| v.is_instant())
+    }
+
+    #[inline]
+    pub(crate) fn get(&self, name: &str) -> Status<&Type> {
+        self.map.get(name).ok_or(Error::Scope)
+    }
+
+    #[inline]
+    pub(crate) fn get_instant(&self, name: &str) -> Status<&Value> {
+        self.map.get(name).ok_or(Error::Scope)?.as_value()
+    }
+
+    // SAFETY: Assumes called checks ahead of time if it is instant
+    #[inline]
+    unsafe fn get_function(&self, name: &str) -> &Function {
+        unsafe { self.map.get(name).unwrap().as_function_unchecked() }
+    }
+
+    #[inline]
+    pub(crate) fn exec_internal(
+        &self, name: &str, a: Value, b: Option<Value>, scope: &Scope, arena: &Arena,
+    ) -> Status<Option<Type>> {
+        match name.as_bytes() {
+            b"time" => {
+                use std::time::Instant;
+                let iterations =
+                    a.as_list()?.list().get(0).map(|n| n.to_num()).unwrap_or(Ok(1))? as usize;
+
+                let b = b.unwrap_or(a);
+
+                let arena = Rc::new(RefCell::new(typed_arena::Arena::new()));
+                let line = format!("{b}");
+                let mut times = Vec::with_capacity(iterations);
+                let mut exec = crate::exec::Exec::new(arena.clone(), scope.clone());
+                exec.silent = true;
+                let mut l = crate::lex::Lexer::new(&line);
+                l.tokenize()?;
+
+                for _ in 0..iterations {
+                    let t0 = Instant::now();
+                    let mut p = crate::parse::Parser::new(arena.clone(), scope.clone(), l.tokens());
+                    p.parse()?;
+                    exec.exec(p.nodes())?;
+                    let t1 = Instant::now();
+                    times.push(t1 - t0);
+                }
+
+                drop(arena);
+                let mut acc = times[0];
+                for i in 1..iterations {
+                    acc += times[i];
+                }
+                acc /= iterations as u32;
+                Ok(Some(List::string(&format!("{acc:?}")).into()))
+            }
+            #[cfg(feature = "ffi")]
+            b"extern" => {
+                use std::path::{Path, absolute};
+                if b.is_some() {
+                    return crate::err!(Domain);
+                }
+                let name = format!("{a}");
+                let path = absolute(Path::new(&name)).unwrap();
+                crate::ffi::internal::load_library(&path)?;
+                Ok(None)
+            }
+            #[cfg(feature = "ffi")]
+            b"link" => {
+                if b.is_some() {
+                    return crate::err!(Domain);
+                }
+                let name = format!("{a}");
+                let sym = crate::ffi::internal::link_symbol(&name)?;
+                let ar = arena.clone();
+                Ok(Some(
+                    function!(move |a, b, _| {
+                    crate::ffi::internal::call_symbol(
+                        sym.clone(), &ar, a.to_list()?,
+                        b.map(|n| n.to_list()).transpose()?,
+                    ).map(Value::from)
+                }; arena.clone(), scope.clone())
+                    .into(),
+                ))
+            }
+            _ => self
+                .map
+                .get(name)
+                .unwrap()
+                .clone()
+                .to_function(arena.clone(), scope.clone())?
+                .call_fn(a, b)
+                .map(Type::from)
+                .map(Some),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn write_internal(&mut self, name: &str, v: Type) -> Status {
+        if !self.map.contains_key(name) {
+            return err!(Scope);
+        }
+
+        self.map.insert(name.to_string(), v);
+        Ok(())
     }
 }

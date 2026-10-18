@@ -473,7 +473,7 @@ impl<'a> Debug for Node<'a> {
             Node::PrimitiveString(l) => write!(f, "{l:?}"),
             Node::PrimitiveBoxes(l) => write!(f, "{l:?}"),
             Node::Literal(l) => write!(f, "Lit({l})"),
-            Node::LiteralInternal(l) => write!(f, "Internal({l}.)"),
+            Node::LiteralInternal(l) => write!(f, "Internal([]{l})"),
             Node::Function(_) => write!(f, "Function"),
             Node::MonadicOp(_) => write!(f, "Adverb"),
             Node::DyadicOp(_) => write!(f, "Conjunction"),

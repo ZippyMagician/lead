@@ -73,7 +73,11 @@ impl Exec {
                 PrimitiveString(list) => self.right = Some(Value::List(list)),
                 PrimitiveBoxes(list) => self.right = Some(Value::List(list)),
                 Literal(l) => self.right = Some(self.exec_literal(l, &mut line, &mut i)?),
-                LiteralInternal(l) => self.right = Some(self.exec_internal(l)?),
+                LiteralInternal(l) => {
+                    if let Some(_) = self.exec_internal(l, &mut line, &mut i)? {
+                        return err!(Syntax, "Illegal dangling function");
+                    }
+                }
                 Tag(t) => self.exec_tag(t, &mut line, &mut i)?,
                 Function(f) => self.right = Some(self.exec_function(&f, &mut line, &mut i)?),
                 Op(o, l, r) => {
@@ -136,7 +140,7 @@ impl Exec {
             PrimitiveString(l) => Ok(Value::List(l)),
             PrimitiveBoxes(l) => Ok(Value::List(l)),
             Literal(l) => self.scope.borrow().get(l).unwrap().to_value(),
-            LiteralInternal(_) => err!(Internal, "TODO: Internals @ <exec.rs> exec_instant"),
+            LiteralInternal(s) => self.scope.borrow().internals.borrow().get_instant(s).cloned(),
             Assign { head: Assignment::Literal(head), body } => {
                 let s = self.scope.clone();
                 let list = self.exec_instant(Node::Group(body))?;
@@ -189,11 +193,27 @@ impl Exec {
                     if utils::is_instant(&value, &self.scope) {
                         map.insert(key.to_string(), self.exec_instant(value)?, &self.arena)?;
                     } else {
-                        map.insert_function(
-                            key.to_string(),
-                            self.exec_train(vec![value])?,
-                            &self.arena,
-                        )?;
+                        let mut body =
+                            if let Node::Group(value) = value { value } else { vec![value] };
+                        let res = if let Some(Node::LiteralInternal(s)) = body.get(0).cloned()
+                            && self.scope.borrow().internals.borrow().preprocess(s)
+                        {
+                            if !utils::is_instant(&body[body.len() - 1], &self.scope) {
+                                return err!(Syntax, format!("Invalid use of internal []{s}"));
+                            }
+                            body.remove(0);
+                            let right = self.exec_instant(Node::Group(body))?;
+                            self.scope
+                                .borrow()
+                                .internals
+                                .borrow()
+                                .exec_internal(s, right, None, &self.scope, &self.arena)?
+                                .ok_or(Error::Domain)?
+                                .to_function(self.arena.clone(), self.scope.clone())?
+                        } else {
+                            self.exec_train(body)?
+                        };
+                        map.insert_function(key.to_string(), res, &self.arena)?;
                     }
                 }
                 Ok(Value::Map(map))
@@ -262,8 +282,40 @@ impl Exec {
     }
 
     #[inline]
-    fn exec_internal(&mut self, _name: &str) -> Status<Value> {
-        err!(Internal, "TODO: Internals @ <exec.rs> exec_internal")
+    fn exec_internal<'a>(
+        &mut self, name: &'a str, list: &mut Vec<Node<'a>>, i: &mut usize,
+    ) -> Status<Option<Function>> {
+        let s = self.scope.clone();
+        let sc = s.borrow();
+        let it = sc.internals.borrow();
+        if !it.has(name) {
+            return err!(Scope);
+        }
+
+        if it.is_instant(name) {
+            self.right = Some(it.get_instant(name)?.clone());
+        } else {
+            if self.right.is_none() {
+                return err!(Argument);
+            }
+            let mut left = None;
+            let right = self.right.take().unwrap();
+            if *i > 0 && utils::is_instant(&list[*i - 1], &self.scope) {
+                left = Some(self.exec_instant(take(&mut list[*i - 1]))?);
+                *i -= 1;
+            }
+
+            let ret = it.exec_internal(name, right, left, &self.scope, &self.arena)?;
+            if ret.is_none() {
+                return Ok(None);
+            }
+            let ret = ret.unwrap();
+            if ret.is_function() {
+                return Ok(Some(ret.to_function(self.arena.clone(), self.scope.clone())?));
+            }
+            self.right = Some(ret.to_value().unwrap());
+        }
+        Ok(None)
     }
 
     #[inline]
@@ -354,8 +406,15 @@ impl Exec {
                         .ok_or(Error::Scope)?
                         .to_function(self.arena.clone(), self.scope.clone())?;
                 }
-            } else if let Node::LiteralInternal(_) = n {
-                return err!(Internal, "TODO: Internals in trains");
+            } else if let Node::LiteralInternal(s) = n {
+                f = self
+                    .scope
+                    .borrow()
+                    .internals
+                    .borrow()
+                    .get(s)?
+                    .clone()
+                    .to_function(self.arena.clone(), self.scope.clone())?;
             } else if let Node::Group(g) = n {
                 f = self.exec_train(g)?;
             } else {
@@ -411,9 +470,6 @@ impl Exec {
     fn exec_assignment<'a>(
         &mut self, head: Assignment<'a>, body: Vec<Node<'a>>, preserve_instant: bool,
     ) -> Status {
-        if matches!(head, Assignment::Internal(_)) {
-            return err!(Internal, "TODO: Internals in assignments");
-        }
         let group = Node::Group(body);
         if utils::is_instant(&group, &self.scope) {
             let s = self.scope.clone();
@@ -436,13 +492,33 @@ impl Exec {
                         .as_map_mut()?
                 };
                 last.insert(body.last().unwrap().to_string(), list, &self.arena)?;
-            } else if let Assignment::Internal(_) = head {
-                unreachable!()
+            } else if let Assignment::Internal(head) = head {
+                let sc = s.borrow_mut();
+                let mut it = sc.internals.borrow_mut();
+                it.write_internal(head, list.into())?;
             }
         } else {
             // SAFETY: This is set as a `Node::Group` a few lines ago
-            let Node::Group(body) = group else { unsafe { unreachable_unchecked() } };
-            let res = self.exec_train(body)?;
+            let Node::Group(mut body) = group else { unsafe { unreachable_unchecked() } };
+            // Is it a preprocessed internal?
+            let res = if let Some(Node::LiteralInternal(s)) = body.get(0).cloned()
+                && self.scope.borrow().internals.borrow().preprocess(s)
+            {
+                if !utils::is_instant(&body[body.len() - 1], &self.scope) {
+                    return err!(Syntax, format!("Invalid use of internal []{s}"));
+                }
+                body.remove(0);
+                let right = self.exec_instant(Node::Group(body))?;
+                self.scope
+                    .borrow()
+                    .internals
+                    .borrow()
+                    .exec_internal(s, right, None, &self.scope, &self.arena)?
+                    .ok_or(Error::Domain)?
+                    .to_function(self.arena.clone(), self.scope.clone())?
+            } else {
+                self.exec_train(body)?
+            };
 
             if let Assignment::Literal(head) = head {
                 self.scope.borrow_mut().set_function(head, res);
@@ -458,8 +534,10 @@ impl Exec {
                         .as_map_mut()?
                 };
                 last.insert_function(body.last().unwrap().to_string(), res, &self.arena)?;
-            } else if let Assignment::Internal(_) = head {
-                unreachable!()
+            } else if let Assignment::Internal(head) = head {
+                let sc = self.scope.borrow_mut();
+                let mut it = sc.internals.borrow_mut();
+                it.write_internal(head, res.into())?;
             }
         }
 
@@ -556,10 +634,11 @@ impl Exec {
         } else if let Node::Group(g) = node {
             Ok(Type::Function(self.exec_train(g)?))
         } else if let Node::Literal(name) = node {
-            let t = self.scope.borrow_mut().get(name).ok_or(Error::Scope)?;
+            let t = self.scope.borrow().get(name).ok_or(Error::Scope)?;
             Ok(t)
-        } else if let Node::LiteralInternal(_) = node {
-            err!(Internal, "TODO: Internals in operators")
+        } else if let Node::LiteralInternal(name) = node {
+            let t = self.scope.borrow().internals.borrow().get(name)?.clone();
+            Ok(t)
         } else {
             err!(Syntax, "Unsupported node provided to operator")
         }

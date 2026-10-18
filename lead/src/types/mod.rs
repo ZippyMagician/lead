@@ -152,6 +152,24 @@ impl Type {
     }
 }
 
+impl From<List> for Type {
+    fn from(l: List) -> Self {
+        Self::Value(Value::List(l))
+    }
+}
+
+impl From<Map> for Type {
+    fn from(m: Map) -> Self {
+        Self::Value(Value::Map(m))
+    }
+}
+
+impl From<Function> for Type {
+    fn from(f: Function) -> Self {
+        Self::Function(f)
+    }
+}
+
 #[repr(C, u8)]
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
 pub enum Value {

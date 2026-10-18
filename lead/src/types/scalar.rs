@@ -116,7 +116,7 @@ impl Scalar {
             },
             _ => {
                 std::hint::cold_path();
-                return err!(Value)
+                return err!(Value);
             }
         };
         Ok(res)
@@ -320,6 +320,7 @@ macro_rules! impl_arith_ops {
 
                 fn $f(self, rhs: i64) -> Self::Output {
                     if self.is_box() {
+                        ::std::hint::cold_path();
                         err!(NaN)
                     } else if let Float(fl) = self {
                         let $a1 = fl;
