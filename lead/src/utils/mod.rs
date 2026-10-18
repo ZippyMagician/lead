@@ -60,7 +60,7 @@ pub fn is_instant(node: &Node<'_>, scope: &Scope) -> bool {
         Accessor(head, body) => scope.borrow().get(head).is_some_and(|n| {
             n.as_map()
                 .ok()
-                .is_some_and(|n| n.get_into(&body[0], &body[1..]).is_some_and(|n| n.is_value()))
+                .is_some_and(|n| n.get_into(&body[0], &body[1..]).is_some_and(|n| n.is_instant()))
         }),
         If { .. } => true, // Statements (almost) always yield something
         Map(_) => true,

@@ -4,8 +4,8 @@ use std::fmt::{self, Debug, Display};
 use std::hint::{/*cold_path,*/ unreachable_unchecked};
 use std::ops::*;
 
+use super::Type;
 use super::list::List;
-use super::{Type, Value};
 use crate::utils::error::{Error, Status, err};
 use crate::utils::{Arena, display_boxed};
 
@@ -27,15 +27,8 @@ impl Scalar {
     #[inline]
     pub fn boxed(a: &Arena, l: List) -> Status<Self> {
         let arena = a.borrow_mut();
-        let l = Value::List(l).into();
+        let l = l.into();
         let r = arena.alloc(l);
-        Ok(Box(r))
-    }
-
-    #[inline]
-    pub fn boxed_l(a: &Arena, l: Value) -> Status<Self> {
-        let arena = a.borrow_mut();
-        let r = arena.alloc(l.into());
         Ok(Box(r))
     }
 
@@ -55,7 +48,7 @@ impl Scalar {
     #[inline]
     pub fn boxed_leak(l: List) -> Status<Self> {
         use std::boxed::Box;
-        let l = Value::List(l).into();
+        let l = l.into();
         Ok(Self::Box(Box::into_raw(Box::new(l))))
     }
 
@@ -108,9 +101,7 @@ impl Scalar {
                 _ => Self::Char(self.to_char().unwrap()),
             },
             'B' => match self {
-                Self::Box(_) => {
-                    Self::Boolean(!unsafe { self.as_unboxed_unchecked() }.as_value()?.is_empty())
-                }
+                Self::Box(_) => Self::Boolean(!unsafe { self.as_unboxed_unchecked() }.is_empty()),
                 Self::Boolean(_) => self,
                 _ => Self::Boolean(self.to_bool().unwrap()),
             },

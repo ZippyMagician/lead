@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::fmt::{self, Display};
 
+use super::Type;
 use super::list::List;
 use super::scalar::Scalar;
-use super::{Type, Value};
 use crate::function::Function;
 use crate::utils;
 use crate::utils::error::Status;
@@ -82,9 +82,7 @@ impl Map {
         let mut pairs = Vec::new();
         let mut arena = Arena::new();
         for (key, value) in &self.internal {
-            pairs.push(
-                Scalar::boxed_custom(&mut arena, Value::List(List::string(key)).into()).unwrap(),
-            );
+            pairs.push(Scalar::boxed_custom(&mut arena, List::string(key).into()).unwrap());
             pairs.push(Scalar::Box(*value));
         }
         List::mat(pairs, 2, smallvec![2, self.internal.len()]).unwrap()
@@ -159,9 +157,7 @@ impl Display for Map {
             return write!(f, "{formatted}");
         }
         for (key, value) in &self.internal {
-            pairs.push(
-                Scalar::boxed_custom(&mut arena, Value::List(List::string(key)).into()).unwrap(),
-            );
+            pairs.push(Scalar::boxed_custom(&mut arena, List::string(key).into()).unwrap());
             pairs.push(Scalar::Box(*value));
         }
 

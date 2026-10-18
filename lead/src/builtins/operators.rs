@@ -3,9 +3,9 @@ use std::ops::*;
 use crate::builtins::symbols::Symbol;
 use crate::function::{Function, Opts, function};
 use crate::scope::Scope;
+use crate::types::Type;
 use crate::types::list::List;
 use crate::types::scalar::Scalar;
-use crate::types::{Type, Value};
 use crate::utils::Arena;
 use crate::utils::error::{Status, err};
 use crate::utils::function::*;
@@ -33,13 +33,13 @@ pub(crate) fn atop_bind(l: Type, r: Type, arena: Arena, scope: Scope) -> Status<
         return err!(Domain);
     }
 
-    if l.is_value() {
+    if l.is_instant() {
         let r = r.to_function(arena.clone(), scope.clone())?;
         Ok(function!(
             move |a, b, _| r.dyadic_call(l.clone(), b.unwrap_or(a));
             arena.clone(), scope.clone()
         ))
-    } else if r.is_value() {
+    } else if r.is_instant() {
         let l = l.to_function(arena.clone(), scope.clone())?;
         Ok(function!(
             move |a, _, _| l.dyadic_call(a, r.clone());
@@ -61,7 +61,7 @@ pub(crate) fn hook_default(l: Type, r: Type, arena: Arena, scope: Scope) -> Stat
         return err!(Domain);
     }
 
-    if l.is_value() {
+    if l.is_instant() {
         let r = r.to_function(arena.clone(), scope.clone())?;
         Ok(function!(
             move |a, b, _| if let Some(b) = b {
@@ -69,7 +69,7 @@ pub(crate) fn hook_default(l: Type, r: Type, arena: Arena, scope: Scope) -> Stat
             } else { r.dyadic_call(l.clone(), a) };
             arena.clone(), scope.clone()
         ))
-    } else if r.is_value() {
+    } else if r.is_instant() {
         let l = l.to_function(arena.clone(), scope.clone())?;
         Ok(function!(
             move |a, b, _|
@@ -96,7 +96,7 @@ pub(crate) fn over_rank(l: Type, r: Type, arena: Arena, scope: Scope) -> Status<
 
     if r.is_instant() {
         let mut l = l.to_function(arena.clone(), scope.clone())?;
-        let r = r.to_instant()?;
+        let r = r.to_list()?;
 
         if r.is_empty() || r.len() > 2 {
             return err!(Domain);
@@ -231,7 +231,6 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
             }
             acc.to_list()
         })
-        .map(Value::List)
     };
     let f = fr;
 

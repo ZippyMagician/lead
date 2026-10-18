@@ -4,9 +4,9 @@ use std::rc::Rc;
 
 #[allow(unused_imports)]
 use crate::function::{Function, function};
+use crate::types::Type;
 use crate::types::list::List;
 use crate::types::scalar::Scalar;
-use crate::types::{Type, Value};
 use crate::utils::Arena;
 use crate::utils::error::{Error, Status, err};
 
@@ -52,11 +52,7 @@ impl ScopeInternal {
     }
 
     pub fn set_instant(&mut self, name: &str, l: List) {
-        self.env.insert(name.to_string(), Type::Value(Value::List(l)));
-    }
-
-    pub fn set_value(&mut self, name: &str, l: Value) {
-        self.env.insert(name.to_string(), Type::Value(l));
+        self.env.insert(name.to_string(), Type::List(l));
     }
 
     pub fn set_function(&mut self, name: &str, f: Function) {
@@ -114,11 +110,6 @@ impl Internals {
     #[inline]
     pub(crate) fn get(&self, name: &str) -> Status<&Type> {
         self.map.get(name).ok_or(Error::Scope)
-    }
-
-    #[inline]
-    pub(crate) fn get_instant(&self, name: &str) -> Status<&Value> {
-        self.map.get(name).ok_or(Error::Scope)?.as_value()
     }
 
     // SAFETY: Assumes called checks ahead of time if it is instant

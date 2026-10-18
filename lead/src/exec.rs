@@ -565,10 +565,10 @@ impl Exec {
             (TokenTag::Symbol, "~") => self.right = None,
             // Get type
             (TokenTag::Symbol, "?") => {
-                let right = self.right.take().ok_or(Error::Argument)?.to_value()?;
+                let right = self.right.take().ok_or(Error::Argument)?;
                 if right.is_map() {
                     self.right = Some(List::string("[:]").into());
-                } else {
+                } else if right.is_list() {
                     let right = unsafe { right.to_list_unchecked() };
                     if right.is_empty() {
                         self.right = Some(List::string("()").into());
@@ -583,13 +583,16 @@ impl Exec {
                         }
                         .into(),
                     )
+                } else {
+                    self.right = Some(List::string("{}").into());
                 }
             }
             (TokenTag::Symbol, ">") => {
-                let right = self.right.take().ok_or(Error::Argument)?.to_value()?;
+                let right = self.right.take().ok_or(Error::Argument)?;
                 if right.is_empty() || right.is_map() {
                     return err!(Value);
                 }
+                // SAFETY: `is_empty` returns tru for functions
                 let right = unsafe { right.to_list_unchecked() };
                 let obj = unsafe { right.list()[0].steal_box() };
                 // Can treat a stolen function as an actual function
