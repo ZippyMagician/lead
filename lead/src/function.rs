@@ -3,26 +3,25 @@ use std::rc::Rc;
 
 use crate::builtins::symbols::Symbol;
 use crate::scope::Scope;
+use crate::types::Type;
 use crate::types::list::List;
-use crate::types::{Type, Value};
 use crate::utils::Arena;
 use crate::utils::error::Status;
 use crate::utils::function::*;
 
+// Applied: is general rank support baked into the definition?
+// General: does it take + yield a generic Type, or only Lists?
 const APPLIED_MONADIC: u8 = 0b0001;
 const APPLIED_DYADIC: u8 = 0b0010;
-const VALUE_MONADIC: u8 = 0b0100;
-const VALUE_DYADIC: u8 = 0b1000;
+const GENERAL_MONADIC: u8 = 0b0100;
+const GENERAL_DYADIC: u8 = 0b1000;
 
 #[derive(Clone)]
 pub struct Function {
     // Monad / Dyad
     f: Func,
 
-    // Is it applyable? (i.e., `@` works)
     pub(crate) fl: u8,
-    // pub(crate) am: bool,
-    // pub(crate) ad: bool,
     // Underlying symbol
     pub(crate) s: Option<Symbol>,
     // Opts
@@ -33,9 +32,7 @@ macro_rules! f {
     ($v:expr, $f:expr) => {{ $v & $f != 0 }};
 }
 
-pub type Func = Rc<dyn Fn(Value, Option<Value>, &Opts) -> Status<Type>>;
-pub type Monad = Rc<dyn Fn(List, &Opts) -> Status<List>>;
-pub type Dyad = Rc<dyn Fn(List, List, &Opts) -> Status<List>>;
+pub type Func = Rc<dyn Fn(Type, Option<Type>, &Opts) -> Status<Type>>;
 
 impl Function {
     pub fn new(f: Func, rm: u8, rd: [u8; 2], a: Arena, s: Scope, sym: Option<Symbol>) -> Self {
@@ -46,7 +43,7 @@ impl Function {
         let v: Type = sc.into();
         Self {
             f: Rc::new(move |_, _, _| Ok(v.clone())),
-            fl: VALUE_MONADIC | VALUE_DYADIC,
+            fl: GENERAL_MONADIC | GENERAL_DYADIC,
             s: None,
             op: Opts { rm: 99, rd: [99, 99], a, s },
         }
@@ -60,25 +57,25 @@ impl Function {
             f,
             fl: (am as u8) * APPLIED_MONADIC
                 | (ad as u8) * APPLIED_DYADIC
-                | (vm as u8) * VALUE_MONADIC
-                | (vd as u8) * VALUE_DYADIC,
+                | (vm as u8) * GENERAL_MONADIC
+                | (vd as u8) * GENERAL_DYADIC,
             s: sym,
             op: Opts { rm, rd, a, s },
         }
     }
 
     #[inline(always)]
-    pub fn monadic_call(&self, a: Value) -> Status<Type> {
+    pub fn monadic_call(&self, a: Type) -> Status<Type> {
         (self.f)(a, None, &self.op)
     }
 
     #[inline(always)]
-    pub fn dyadic_call(&self, a: Value, b: Value) -> Status<Type> {
+    pub fn dyadic_call(&self, a: Type, b: Type) -> Status<Type> {
         (self.f)(a, Some(b), &self.op)
     }
 
     #[inline(always)]
-    pub fn call_fn(&self, a: Value, b: Option<Value>) -> Status<Type> {
+    pub fn call_fn(&self, a: Type, b: Option<Type>) -> Status<Type> {
         (self.f)(a, b, &self.op)
     }
 
@@ -89,15 +86,15 @@ impl Function {
         self.op.rm = rm;
         if !f!(self.fl, APPLIED_MONADIC) {
             let m = self.f.clone();
-            let vm = f!(self.fl, VALUE_MONADIC);
+            let vm = f!(self.fl, GENERAL_MONADIC);
             self.f = Rc::new(move |a, b, o| {
                 if b.is_some() {
                     (m)(a, b, &o)
-                } else if vm && a.is_map() {
+                } else if vm && !a.is_list() {
                     (m)(a, None, &o)
                 } else {
                     let a = a.to_list()?;
-                    Ok(apply_loosem(&o.a, a, o.rm, |a| (m)(Value::List(a), None, &o)?.to_list())?
+                    Ok(apply_loosem(&o.a, a, o.rm, |a| (m)(Type::from(a), None, &o)?.to_list())?
                         .into())
                 }
             });
@@ -112,14 +109,14 @@ impl Function {
         self.op.rd = rd;
         if !f!(self.fl, APPLIED_DYADIC) {
             let d = self.f.clone();
-            let vd = f!(self.fl, VALUE_DYADIC);
+            let vd = f!(self.fl, GENERAL_DYADIC);
             self.f = Rc::new(move |a, b, o| {
                 if let Some(b) = b {
-                    if vd && (a.is_map() || b.is_map()) {
+                    if vd && (!a.is_list() || !b.is_list()) {
                         (d)(a, Some(b), &o)
                     } else {
                         Ok(apply_loosed(&o.a, a.to_list()?, b.to_list()?, o.rd, |a, b| {
-                            (d)(Value::List(a), Some(Value::List(b)), &o)?.to_list()
+                            (d)(Type::from(a), Some(Type::from(b)), &o)?.to_list()
                         })?
                         .into())
                     }

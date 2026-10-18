@@ -32,6 +32,11 @@ impl Type {
     }
 
     #[inline]
+    pub fn is_list(&self) -> bool {
+        matches!(self, Self::Value(Value::List(_)))
+    }
+
+    #[inline]
     pub fn is_map(&self) -> bool {
         matches!(self, Self::Value(Value::Map(_)))
     }
@@ -148,6 +153,22 @@ impl Type {
         match &self {
             Self::Value(v) => v,
             _ => unsafe { hint::unreachable_unchecked() },
+        }
+    }
+
+    #[inline]
+    pub unsafe fn to_list_unchecked(self) -> List {
+        match self {
+            Self::Value(Value::List(l)) => l,
+            _ => unsafe { hint::unreachable_unchecked() },
+        }
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        match &self {
+            Self::Function(_) => true,
+            Self::Value(v) => v.is_empty(),
         }
     }
 }

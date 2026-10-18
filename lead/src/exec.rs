@@ -202,7 +202,7 @@ impl Exec {
                                 return err!(Syntax, format!("Invalid use of internal []{s}"));
                             }
                             body.remove(0);
-                            let right = self.exec_instant(Node::Group(body))?.to_value()?;
+                            let right = self.exec_instant(Node::Group(body))?;
                             self.scope
                                 .borrow()
                                 .internals
@@ -241,7 +241,7 @@ impl Exec {
                 return err!(Argument);
             }
             let mut left = None;
-            let right = self.right.take().unwrap().to_value()?;
+            let right = self.right.take().unwrap();
             if *i > 0 && utils::is_instant(&list[*i - 1], &self.scope) {
                 left = Some(self.exec_instant(take(&mut list[*i - 1]))?);
                 *i -= 1;
@@ -264,7 +264,7 @@ impl Exec {
                 );
                 // TODO: Check for maps, support alternate calls for blocks
                 if let Some(left) = left {
-                    f.dyadic_call(left.to_value()?, right).map(Type::from)
+                    f.dyadic_call(left, right).map(Type::from)
                 } else {
                     f.monadic_call(right).map(Type::from)
                 }
@@ -298,9 +298,9 @@ impl Exec {
                 return err!(Argument);
             }
             let mut left = None;
-            let right = self.right.take().unwrap().to_value()?;
+            let right = self.right.take().unwrap();
             if *i > 0 && utils::is_instant(&list[*i - 1], &self.scope) {
-                left = Some(self.exec_instant(take(&mut list[*i - 1]))?.to_value()?);
+                left = Some(self.exec_instant(take(&mut list[*i - 1]))?);
                 *i -= 1;
             }
 
@@ -317,10 +317,10 @@ impl Exec {
         if self.right.is_none() {
             return err!(Argument);
         }
-        let right = self.right.take().unwrap().to_value()?;
+        let right = self.right.take().unwrap();
         // TODO: Check is value is map, support alternate block calls
         if *i > 0 && utils::is_instant(&line[*i - 1], &self.scope) {
-            let left = self.exec_instant(take(&mut line[*i - 1]))?.to_value()?;
+            let left = self.exec_instant(take(&mut line[*i - 1]))?;
             *i -= 1;
             f.dyadic_call(left, right).map(Type::from)
         } else {
@@ -359,7 +359,7 @@ impl Exec {
             // I don't have to check for operators since these are only stored for now
             if utils::is_instant(&n, &self.scope) {
                 let top = build.pop().unwrap();
-                let left = self.exec_instant(n)?.to_value()?;
+                let left = self.exec_instant(n)?;
                 if build.is_empty() {
                     build.push(function!(
                         move |a, b, _| top.dyadic_call(left.clone(), b.unwrap_or(a));
@@ -369,10 +369,7 @@ impl Exec {
                     let rightfn = build.pop().unwrap();
                     build.push(function!(
                         move |a, b, _| {
-                            top.dyadic_call(
-                                left.clone(),
-                                rightfn.call_fn(a, b)?.to_value()?
-                            )
+                            top.dyadic_call(left.clone(), rightfn.call_fn(a, b)?)
                         }; self.arena.clone(), self.scope.clone()
                     ));
                 }
@@ -423,7 +420,7 @@ impl Exec {
                     let g = build.pop().unwrap();
                     build.push(function!(
                         move |a, b, _|
-                            f.monadic_call(g.call_fn(a, b)?.to_value()?);
+                            f.monadic_call(g.call_fn(a, b)?);
                         self.arena.clone(), self.scope.clone()
                     ));
                 }
@@ -434,8 +431,8 @@ impl Exec {
                     build.push(function!(
                         move |a, b, _| {
                             g.dyadic_call(
-                                f.call_fn(a.clone(), b.clone())?.to_value()?,
-                                h.call_fn(a, b)?.to_value()?,
+                                f.call_fn(a.clone(), b.clone())?,
+                                h.call_fn(a, b)?,
                             )
                         }; self.arena.clone(), self.scope.clone()
                     ));
@@ -454,7 +451,7 @@ impl Exec {
             let f = build.pop().unwrap();
             let g = build.pop().unwrap();
             Ok(function!(
-                move |a, b, _| f.monadic_call(g.call_fn(a, b)?.to_value()?);
+                move |a, b, _| f.monadic_call(g.call_fn(a, b)?);
                 self.arena.clone(), self.scope.clone()
             ))
         } else {
@@ -504,7 +501,7 @@ impl Exec {
                     return err!(Syntax, format!("Invalid use of internal []{s}"));
                 }
                 body.remove(0);
-                let right = self.exec_instant(Node::Group(body))?.to_value()?;
+                let right = self.exec_instant(Node::Group(body))?;
                 self.scope
                     .borrow()
                     .internals

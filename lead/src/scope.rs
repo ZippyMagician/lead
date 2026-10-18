@@ -129,7 +129,7 @@ impl Internals {
 
     #[inline]
     pub(crate) fn exec_internal(
-        &self, name: &str, a: Value, b: Option<Value>, scope: &Scope, arena: &Arena,
+        &self, name: &str, a: Type, b: Option<Type>, scope: &Scope, arena: &Arena,
     ) -> Status<Option<Type>> {
         match name.as_bytes() {
             b"time" => {
@@ -200,7 +200,6 @@ impl Internals {
                 .clone()
                 .to_function(arena.clone(), scope.clone())?
                 .call_fn(a, b)
-                .map(Type::from)
                 .map(Some),
         }
     }

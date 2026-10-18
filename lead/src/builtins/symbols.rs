@@ -5,9 +5,9 @@ use std::hint::cold_path;
 use std::ops::*;
 
 use crate::function::Opts;
+use crate::types::Type;
 use crate::types::list::List;
 use crate::types::scalar;
-use crate::types::{Type, Value};
 use crate::utils::error::{Error, Status, err};
 use crate::utils::function::*;
 use crate::utils::symbols::{for_0, for_1, for_n2, pad_rank, scalar_op};
@@ -255,8 +255,8 @@ pub(super) fn bitor(mut a: List, mut b: List, _: &Opts) -> Status<List> {
 }
 
 // leftarrowm | < | 99 | Box
-pub(crate) fn boxed(a: Value, o: &Opts) -> Status<Type> {
-    Ok(List::scalar(Scalar::boxed_l(&o.a, a)?).into())
+pub(crate) fn boxed(a: Type, o: &Opts) -> Status<Type> {
+    Ok(List::scalar(Scalar::boxed_t(&o.a, a)?).into())
 }
 
 // leftarrowd | < | 0, 0 | Less than
@@ -270,7 +270,7 @@ pub(crate) fn lt(mut a: List, mut b: List, _: &Opts) -> Status<List> {
 }
 
 // rightarrowm | > | 99 | Unbox / First
-pub(crate) fn unbox(a: Value, o: &Opts) -> Status<Type> {
+pub(crate) fn unbox(a: Type, o: &Opts) -> Status<Type> {
     let a = a.to_list()?;
     if a.is_scalar() {
         let f = &a.list()[0];
@@ -322,20 +322,20 @@ pub(crate) fn reshape(a: List, b: List, o: &Opts) -> Status<List> {
 }
 
 // lbracketm / rbracketm | [ / ] | 99 | Identity
-pub(super) const fn identity(a: Value, _: &Opts) -> Status<Type> {
-    Ok(Type::Value(a))
+pub(super) const fn identity(a: Type, _: &Opts) -> Status<Type> {
+    Ok(a)
 }
 
 // lbracketd | [ | 99, 99 | Left
 #[inline(always)]
-pub(super) fn left(a: Value, b: Value, _: &Opts) -> Status<Type> {
-    Ok(a.into())
+pub(super) fn left(a: Type, b: Type, _: &Opts) -> Status<Type> {
+    Ok(a)
 }
 
 // rbracketd | ] | 99, 99 | Right
 #[inline(always)]
-pub(super) fn right(a: Value, b: Value, _: &Opts) -> Status<Type> {
-    Ok(b.into())
+pub(super) fn right(a: Type, b: Type, _: &Opts) -> Status<Type> {
+    Ok(b)
 }
 
 // questionm | ? | 99 | Dedup sieve
@@ -415,12 +415,12 @@ pub(super) fn group(a: List, b: List, o: &Opts) -> Status<List> {
 }
 
 // equalm | = | 2 / 99 | Transpose / Keys
-pub(super) fn transpose_keys(a: Value, o: &Opts) -> Status<Type> {
+pub(super) fn transpose_keys(a: Type, o: &Opts) -> Status<Type> {
     if a.is_empty() {
         return Ok(List::empty().into());
     }
 
-    if let Value::Map(a) = a {
+    if let Ok(a) = a.as_map() {
         return a.keys(&o.a).map(Type::from);
     }
 
@@ -556,11 +556,11 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
 }
 
 // commam | , | 99 | Ravel / Values
-pub(crate) fn ravel(a: Value, o: &Opts) -> Status<Type> {
+pub(crate) fn ravel(a: Type, o: &Opts) -> Status<Type> {
     if a.is_empty() {
         return Ok(List::empty().into());
     }
-    if let Value::Map(m) = a {
+    if let Ok(m) = a.as_map() {
         return m.values().map(Type::from);
     }
 
@@ -775,13 +775,13 @@ pub(crate) fn table(a: List, b: List, o: &Opts) -> Status<List> {
 }
 
 // hashtagm | # | 99 | Tally
-pub(crate) fn tally(a: Value, o: &Opts) -> Status<Type> {
+pub(crate) fn tally(a: Type, o: &Opts) -> Status<Type> {
     if a.is_empty() {
         cold_path();
         return Ok(List::scalar(Scalar::Number(0)).into());
     }
 
-    if let Value::Map(m) = a {
+    if let Ok(m) = a.as_map() {
         return Ok(List::scalar(Scalar::Number(m.internal.len() as i64)).into());
     }
 
