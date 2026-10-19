@@ -10,7 +10,7 @@ use crate::types::list::List;
 use crate::types::scalar;
 use crate::utils::error::{Error, Status, err};
 use crate::utils::function::*;
-use crate::utils::symbols::{for_0, for_1, for_n2, pad_rank, scalar_op};
+use crate::utils::symbols::{for_0, for_1, for_n, for_n2, pad_rank, scalar_op};
 use scalar::Scalar::{self, Boolean, Char, Float, Number};
 
 use num_traits::AsPrimitive;
@@ -311,6 +311,28 @@ pub(crate) fn shape(a: List, _: &Opts) -> Status<List> {
 
 // dollard | $ | 1, 99 | Reshape
 pub(crate) fn reshape(a: List, b: List, o: &Opts) -> Status<List> {
+    if a.dims() <= o.rd[0] as usize {
+        let mut rank = a
+            .list()
+            .iter()
+            .map(|n| n.to_num().map(|n| n as usize))
+            .collect::<Status<SmallVec<[usize; 4]>>>()?;
+        if b.dims() <= o.rd[1] as usize {
+            return b.with_rank(&rank);
+        } else {
+            let r = &b.rank()[0..o.rd[1] as usize];
+            let mut v = Vec::with_capacity(
+                b.len() / r.iter().product::<usize>() * rank.iter().product::<usize>(),
+            );
+            for_n!(b, o.rd[1] as usize; [(b, r)] {
+                let size = rank.iter().product();
+                v.extend(b.into_iter().copied().cycle().take(size));
+            });
+            rank.extend(b.rank()[o.rd[1] as usize..].iter().copied());
+            return List::mat(v, rank.len(), rank);
+        }
+    }
+
     apply_loosed(&o.a, a, b, o.rd, |a, b| {
         let rank = a
             .list()
@@ -353,16 +375,19 @@ pub(super) fn dedup_sieve(a: List, o: &Opts) -> Status<List> {
         List::from_vec(new)
     } else {
         let rank: SmallVec<[usize; 4]> = SmallVec::from(a.rank());
-        let ldims = usize::min(o.rm as usize, a.dims() - 1);
+        let ldims = usize::min(o.rm as usize, usize::max(a.dims(), 1) - 1);
         let runs = a.ranked(ldims)?;
         let mut m = HashSet::new();
         let mut new = Vec::with_capacity(runs.len());
         for run in runs.iter() {
-            if m.contains(run) {
+            // SAFETY: I call List::unranked after, which will ensure these do not
+            // outlive the actual allocation, which is in `runs`.
+            let l = unsafe { run.as_list() };
+            if m.contains(&l) {
                 continue;
             }
-            m.insert(run);
-            new.push(run.clone());
+            m.insert(l.clone());
+            new.push(l);
         }
 
         List::unranked(&o.a, rank.len(), &rank[..ldims], new)
@@ -378,7 +403,7 @@ pub(super) fn group(a: List, b: List, o: &Opts) -> Status<List> {
         return Ok(a);
     }
 
-    let ldims = usize::min(o.rm as usize, a.dims() - 1);
+    let ldims = usize::min(o.rm as usize, usize::max(a.dims(), 1) - 1);
     let rank: SmallVec<[usize; 4]> = SmallVec::from(a.rank());
     let dims = a.dims();
     let runs = a.ranked(ldims)?;
@@ -526,7 +551,7 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
         } else {
             let index = unsafe { index.unbox_unchecked() }
                 .to_list()?
-                .list()
+                .take_list()
                 .iter()
                 .map(|n| n.to_num().map(|n| n as usize))
                 .collect::<Status<Vec<usize>>>()?;
@@ -694,7 +719,7 @@ pub(crate) fn concat(mut a: List, mut b: List, o: &Opts) -> Status<List> {
     let mut rank: SmallVec<[usize; 4]> = smallvec![];
     if ad == 0 && bd == 0 {
         rank.push(2);
-        rank.extend(r.iter().cloned());
+        rank.extend(r.iter().copied());
     } else {
         for i in 0..usize::max(ldim, r.len()) {
             if i + 1 == ldim {
@@ -787,8 +812,7 @@ pub(crate) fn tally(a: Type, o: &Opts) -> Status<Type> {
 
     let mut a = unsafe { a.to_list_unchecked() };
     if o.rm as usize >= a.dims() {
-        Ok(Scalar::Number(unsafe { *a.rank().last().unwrap_unchecked() } as i64)
-            .into())
+        Ok(Scalar::Number(unsafe { *a.rank().last().unwrap_unchecked() } as i64).into())
     } else {
         let (windows, r) = applym(&mut a, o.rm);
         let v = vec![Scalar::Number(*r.last().unwrap_or(&1) as i64); windows.len()];
@@ -797,42 +821,45 @@ pub(crate) fn tally(a: Type, o: &Opts) -> Status<Type> {
 }
 
 // hashtagd | # | 99, 1 | Replicate
-pub(crate) fn replicate(a: List, b: List, _: &Opts) -> Status<List> {
+pub(crate) fn replicate(a: List, b: List, o: &Opts) -> Status<List> {
     if a.is_empty() {
         return Ok(a);
     }
-    let mut counts = b
-        .list()
-        .iter()
-        .map(|n| n.to_num().and_then(|x| if x >= 0 { Ok(x) } else { err!(Domain) }))
-        .collect::<Status<Vec<i64>>>()?;
-    let size: usize = a.rank()[0..a.dims() - 1].iter().chain(&[1]).product();
+    
+    apply_loosed(&o.a, a, b, o.rd, |a, b| {
+        let mut counts = b
+            .list()
+            .iter()
+            .map(|n| n.to_num().and_then(|x| if x >= 0 { Ok(x) } else { err!(Domain) }))
+            .collect::<Status<Vec<i64>>>()?;
+        let size: usize = a.rank()[0..a.dims() - 1].iter().chain(&[1]).product();
 
-    let iters = a.len() / size;
-    if counts.len() != iters {
-        if iters % counts.len() != 0 {
-            cold_path();
-            return err!(Domain);
-        } else {
-            let mut i = 0;
-            counts.reserve(iters - counts.len());
-            while counts.len() != iters {
-                counts.push(counts[i]);
-                i += 1;
+        let iters = a.len() / size;
+        if counts.len() != iters {
+            if iters % counts.len() != 0 {
+                cold_path();
+                return err!(Domain);
+            } else {
+                let mut i = 0;
+                counts.reserve(iters - counts.len());
+                while counts.len() != iters {
+                    counts.push(counts[i]);
+                    i += 1;
+                }
             }
         }
-    }
 
-    let total = counts.iter().sum::<i64>() as usize;
-    let mut v: Vec<Scalar> = Vec::with_capacity(total * size);
-    let mut tallies = counts.into_iter();
-    for window in a.list().chunks(size) {
-        for _ in 0..tallies.next().unwrap() {
-            v.extend(window);
+        let total = counts.iter().sum::<i64>() as usize;
+        let mut v: Vec<Scalar> = Vec::with_capacity(total * size);
+        let mut tallies = counts.into_iter();
+        for window in a.list().chunks(size) {
+            for _ in 0..tallies.next().unwrap() {
+                v.extend(window);
+            }
         }
-    }
 
-    let mut r = SmallVec::from(&a.rank()[0..a.dims() - 1]);
-    r.push(total);
-    List::mat(v, r.len(), r)
+        let mut r = SmallVec::from(&a.rank()[0..a.dims() - 1]);
+        r.push(total);
+        List::mat(v, r.len(), r)
+    })
 }

@@ -13,7 +13,7 @@ use super::function::Function;
 use super::parse::Node;
 use super::scope::Scope;
 use super::types::Type;
-use super::types::list::List;
+use super::types::list::{List, ListWindow};
 use super::types::scalar::Scalar::{self as S};
 use function::apply_loose;
 
@@ -70,12 +70,12 @@ pub fn is_instant(node: &Node<'_>, scope: &Scope) -> bool {
 
 // Shorthand for this ridiculous code block
 macro_rules! run_block {
-    (true, $a:ident, $b:expr, $o:ident, $n:ident) => {{
+    (true, $a:expr, $b:expr, $o:ident, $n:ident) => {{
         let sc = $o.s.clone();
         let mut s = sc.borrow_mut();
-        if let Some(b) = &$b {
+        if let Some(b) = $b {
             s.set_instant("x", $a);
-            s.set_instant("y", b.clone());
+            s.set_instant("y", b);
         } else {
             s.set_instant("y", $a);
         }
@@ -85,7 +85,7 @@ macro_rules! run_block {
         e.exec($n.clone())?;
         e.right.unwrap_or(List::empty().into())
     }};
-    (false, $a:ident, $b:expr, $o:ident, $n:ident) => {{ run_block!(true, $a, $b, $o, $n).to_list() }};
+    (false, $a:expr, $b:expr, $o:ident, $n:ident) => {{ run_block!(true, $a, $b, $o, $n).to_list() }};
 }
 
 #[inline]
@@ -107,7 +107,9 @@ pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Funct
             if cond {
                 Ok(run_block!(true, a, b, o, n))
             } else {
-                apply_loose(&o, a, b, |a, b| run_block!(false, a, b, o, n)).map(Type::from)
+                apply_loose(&o, a, b, |a, b|
+                    run_block!(false, a.to_owned()?, b.as_ref().map(ListWindow::to_owned).transpose()?,
+                o, n)).map(Type::from)
             }
         };
         arena,

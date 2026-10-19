@@ -151,30 +151,6 @@ impl List {
         }
     }
 
-    #[inline]
-    pub(crate) unsafe fn alloc_list(r: &[usize], v: &[Scalar]) -> Status<List> {
-        let count: usize = r.iter().product();
-        let dims = r.len();
-        let rank = SmallVec::from_slice(r);
-
-        let mut bucket = v.into_iter();
-        let layout = Layout::array::<Scalar>(count).unwrap();
-        // SAFETY: See below. Assumes called has valid rank.
-        unsafe {
-            let ptr = alloc(layout) as *mut Scalar;
-            if ptr.is_null() {
-                return err!(MemoryFault, "Could not allocate space.");
-            }
-
-            for i in 0..count {
-                ptr.add(i).write(*bucket.next().unwrap());
-            }
-
-            let raw: *mut [Scalar] = slice_from_raw_parts_mut(ptr, count);
-            Ok(Self::new(Box::from_raw(raw), count, dims, rank))
-        }
-    }
-
     // Swaps out rank. It is in place if possible
     #[inline]
     pub fn with_rank(mut self, r: &[usize]) -> Status<Self> {
@@ -191,47 +167,81 @@ impl List {
         } else if self.is_empty() {
             Ok(self)
         } else {
-            let mut bucket = self.take_list().into_iter().cycle();
-            let layout = Layout::array::<Scalar>(count).unwrap();
-            // SAFETY: Pointer is checked for NULL. Size of allocation is known,
-            // slice is transmuted and boxed immediately
-            unsafe {
-                let ptr = alloc(layout) as *mut Scalar;
-                if ptr.is_null() {
-                    return err!(MemoryFault, "Could not allocate space.");
-                }
-
-                for i in 0..count {
-                    ptr.add(i).write(bucket.next().unwrap());
-                }
-
-                let raw: *mut [Scalar] = slice_from_raw_parts_mut(ptr, count);
-                Ok(Self::new(Box::from_raw(raw), count, r.len(), r.into()))
-            }
+            let bucket = self.take_list().into_iter().cycle();
+            unsafe { Self::alloc_iter(r, bucket) }
         }
     }
 
     #[inline]
-    pub fn ranked(self, dims: usize) -> Status<Vec<Self>> {
-        if dims == 0 {
-            Ok(self.take_list().into_iter().map(List::scalar).collect())
-        } else if dims >= self.dims() {
-            Ok(vec![self])
-        } else {
-            let rank: SmallVec<[usize; INLINE_SIZE]> =
-                self.rank().iter().copied().take(dims).collect();
-            let ct: usize = rank.iter().product();
+    pub(crate) unsafe fn alloc_list(r: &[usize], v: &[Scalar]) -> Status<List> {
+        unsafe { Self::alloc_iter(r, v.iter().copied()) }
+    }
 
+    // SAFETY: Assumes called has provided valid sizes
+    #[inline]
+    pub(crate) unsafe fn alloc_iter<T>(r: &[usize], mut bucket: T) -> Status<List>
+    where
+        T: Iterator<Item = Scalar>,
+    {
+        let count: usize = r.iter().product();
+        let dims = r.len();
+        let rank = SmallVec::from_slice(r);
+
+        let layout = Layout::array::<Scalar>(count).unwrap();
+        // SAFETY: Pointer is checked if it is null.
+        unsafe {
+            let ptr = alloc(layout) as *mut Scalar;
+            if ptr.is_null() {
+                return err!(MemoryFault, "Could not allocate space.");
+            }
+
+            for i in 0..count {
+                ptr.add(i).write(bucket.next().unwrap());
+            }
+
+            let raw: *mut [Scalar] = slice_from_raw_parts_mut(ptr, count);
+            Ok(Self::new(Box::from_raw(raw), count, dims, rank))
+        }
+    }
+
+    // SAFETY: Don't be an idi- god this code is so fucking unsafe
+    // Don't let windows outlive the main List. This is as_ref, so
+    // the list is unallocated at the end of the statement.
+    // If I use `ListWindow::as_list()`, and that child outlives this
+    // parent, then some fucky shit happenes. So don't. Use `to_owned`
+    // when possible. That means I can't arbitrarily pass ListWindows
+    // 'cast' to Lists into functions, since some functions make use of
+    // in place operations to avoid extra allocations.
+    // NOTE: Perhaps in the future I can pass a flag when the List Window
+    // is passed as an argument, and each function that can do in place
+    // changes (i.e. the scalar operations (for now), they will choose
+    // to instead allocate a new spot for the data? That will just introduce
+    // even more issues, however. Although it would be funny to be doing
+    // this in Rust of all languages...
+    #[inline]
+    pub fn ranked(&self, dims: usize) -> Status<Vec<ListWindow>> {
+        if dims == 0 {
+            let mut v = Vec::with_capacity(self.len());
+            let ptr = self.dt.as_ptr() as *mut Scalar;
+            for i in 0..self.len() {
+                v.push(unsafe { ListWindow::new(ptr.add(i), 1, 1, &[1]) });
+            }
+            Ok(v)
+        } else if dims >= self.dims() {
+            let ptr = self.dt.as_ptr() as *mut Scalar;
+            Ok(vec![ListWindow::new(ptr, self.len(), self.dims(), self.rank())])
+        } else {
+            let rank: SmallVec<[usize; 2]> = SmallVec::from_slice(&self.rank()[0..dims]);
+            let ct: usize = rank.iter().product();
             unsafe { std::hint::assert_unchecked(self.ct % ct == 0) }
 
             let size = self.ct / ct;
-            let mut b = Vec::with_capacity(size);
-            let list = self.take_list();
-            for chunk in list.chunks_exact(ct) {
-                b.push(unsafe { Self::alloc_list(&rank, chunk)? });
+            let mut v = Vec::with_capacity(size);
+            let ptr = self.dt.as_ptr() as *mut Scalar;
+            for i in 0..size {
+                v.push(ListWindow::new(unsafe { ptr.add(i * ct) }, ct, rank.len(), &rank));
             }
-
-            Ok(b)
+            return Ok(v);
         }
     }
 
@@ -441,9 +451,9 @@ impl Display for List {
             }
         } else {
             let dims = self.dims();
-            let ranked = self.clone().ranked(dims - 1).expect("Couldn't disp. list");
+            let ranked = self.ranked(dims - 1).expect("Couldn't disp. list");
             for i in 0..ranked.len() {
-                write!(f, "{}", ranked[i])?;
+                write!(f, "{}", unsafe { ranked[i].as_list() })?;
                 if i + 1 != ranked.len() {
                     write!(f, "{}", "\n".repeat(dims - 1))?;
                 }
@@ -460,3 +470,115 @@ impl Default for List {
         Self::empty()
     }
 }
+
+// Trust me bro, this definitely isn't the most awful bugs known to man
+// just waiting to happen. 100% safe code only here
+#[derive(Clone, Debug)]
+pub struct ListWindow {
+    dt: *mut Scalar,
+    ct: usize,
+    ds: usize,
+    rk: SmallVec<[usize; INLINE_SIZE]>,
+}
+
+impl ListWindow {
+    pub fn new(dt: *mut Scalar, ct: usize, ds: usize, rk: &[usize]) -> Self {
+        Self { dt, ct, ds, rk: SmallVec::from_slice(rk) }
+    }
+
+    #[inline(always)]
+    pub fn list(&self) -> &[Scalar] {
+        unsafe { std::slice::from_raw_parts(self.dt, self.ct) }
+    }
+
+    #[inline(always)]
+    pub fn dims(&self) -> usize {
+        unsafe { std::hint::assert_unchecked(self.rk.len() == self.ds) };
+        self.ds
+    }
+
+    #[inline(always)]
+    pub fn rank(&self) -> &[usize] {
+        &self.rk
+    }
+
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        self.ct
+    }
+
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    #[inline(always)]
+    pub fn is_scalar(&self) -> bool {
+        self.len() == 1
+    }
+
+    #[inline]
+    pub fn ranked(&self, dims: usize) -> Status<Vec<ListWindow>> {
+        if dims == 0 {
+            let mut v = Vec::with_capacity(self.len());
+            let ptr = self.dt;
+            for i in 0..self.len() {
+                v.push(unsafe { ListWindow::new(ptr.add(i), 1, 1, &[1]) });
+            }
+            Ok(v)
+        } else if dims >= self.dims() {
+            let ptr = self.dt;
+            Ok(vec![ListWindow::new(ptr, self.len(), self.dims(), self.rank())])
+        } else {
+            let rank: SmallVec<[usize; 2]> = SmallVec::from_slice(&self.rank()[0..dims]);
+            let ct: usize = rank.iter().product();
+            unsafe { std::hint::assert_unchecked(self.ct % ct == 0) }
+
+            let size = self.ct / ct;
+            let mut v = Vec::with_capacity(size);
+            let ptr = self.dt;
+            for i in 0..size {
+                v.push(ListWindow::new(unsafe { ptr.add(i * ct) }, ct, rank.len(), &rank));
+            }
+            return Ok(v);
+        }
+    }
+
+    // Swaps out rank. It is in place if possible
+    #[inline]
+    pub fn with_rank(mut self, r: &[usize]) -> Status<List> {
+        let count: usize = r.iter().product();
+        if count == self.ct {
+            if INLINE_SIZE >= self.dims() || INLINE_SIZE < r.len() {
+                self.rk = SmallVec::from_slice(r);
+            } else {
+                self.rk.clear();
+                self.rk.extend_from_slice(r);
+            }
+            self.ds = self.rk.len();
+            self.to_owned()
+        } else if self.is_empty() {
+            Ok(List::empty())
+        } else {
+            let slice = unsafe { &*slice_from_raw_parts_mut(self.dt, self.ct) };
+            let bucket = slice.into_iter().copied().cycle();
+            unsafe { List::alloc_iter(r, bucket) }
+        }
+    }
+
+    // SAFETY: Good fucking luck
+    #[inline]
+    pub unsafe fn as_list(&self) -> List {
+        unsafe {
+            let taken = slice_from_raw_parts_mut(self.dt, self.ct);
+            List::new(Box::from_raw(taken), self.ct, self.ds, self.rk.clone())
+        }
+    }
+
+    #[inline]
+    pub fn to_owned(&self) -> Status<List> {
+        let slice = unsafe { &*slice_from_raw_parts_mut(self.dt, self.ct) };
+        unsafe { List::alloc_list(&self.rk, slice) }
+    }
+}
+

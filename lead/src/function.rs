@@ -82,6 +82,10 @@ impl Function {
     // Applies new rank to monadic function
     #[inline]
     pub fn apply_rm(&mut self, rm: u8) {
+        if self.op.rm == rm {
+            std::hint::cold_path();
+            return;
+        }
         self.s = None;
         self.op.rm = rm;
         if !f!(self.fl, APPLIED_MONADIC) {
@@ -94,8 +98,9 @@ impl Function {
                     (m)(a, None, &o)
                 } else {
                     let a = a.to_list()?;
-                    Ok(apply_loosem(&o.a, a, o.rm, |a| (m)(Type::from(a), None, &o)?.to_list())?
-                        .into())
+                    Ok(apply_loosem(&o.a, a, o.rm, |a|
+                        (m)(Type::from(a.to_owned()?), None, &o)?.to_list())?.into()
+                    )
                 }
             });
             self.fl |= APPLIED_MONADIC;
@@ -105,6 +110,10 @@ impl Function {
     // Applies new rank to dyadic function
     #[inline]
     pub fn apply_rd(&mut self, rd: [u8; 2]) {
+        if self.op.rd == rd {
+            std::hint::cold_path();
+            return;
+        }
         self.s = None;
         self.op.rd = rd;
         if !f!(self.fl, APPLIED_DYADIC) {
@@ -116,7 +125,7 @@ impl Function {
                         (d)(a, Some(b), &o)
                     } else {
                         Ok(apply_loosed(&o.a, a.to_list()?, b.to_list()?, o.rd, |a, b| {
-                            (d)(Type::from(a), Some(Type::from(b)), &o)?.to_list()
+                            (d)(Type::from(a.to_owned()?), Some(Type::from(b.to_owned()?)), &o)?.to_list()
                         })?
                         .into())
                     }

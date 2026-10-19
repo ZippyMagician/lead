@@ -46,6 +46,27 @@ macro_rules! for_1 {
     };
 }
 
+macro_rules! for_n {
+    ($a:ident, $n:expr; [($v:ident, $r:ident)] $b:expr) => {
+        '_for_n: {
+            if $a.is_empty() {
+                break '_for_n;
+            }
+
+            let lists = $a.list();
+            let axis = usize::min($a.dims(), $n);
+            let $r = &$a.rank()[0..axis];
+            let size: usize = $r.iter().product();
+            unsafe { ::std::hint::assert_unchecked(lists.len() % size == 0) };
+            for $v in lists.chunks_exact(size) {
+                {
+                    $b
+                };
+            }
+        }
+    };
+}
+
 macro_rules! for_n2 {
     ($n1:expr, $a:ident, $n2:expr, $b:ident; [($l:ident, $lr:ident), ($r:ident, $rr:ident)] $bl:expr) => {
         '_for_n2: {
@@ -119,6 +140,7 @@ macro_rules! for_n2 {
 
 pub(crate) use for_0;
 pub(crate) use for_1;
+pub(crate) use for_n;
 pub(crate) use for_n2;
 
 macro_rules! scalar_op {

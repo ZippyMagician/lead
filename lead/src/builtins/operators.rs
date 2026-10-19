@@ -10,8 +10,6 @@ use crate::utils::Arena;
 use crate::utils::error::{Status, err};
 use crate::utils::function::*;
 
-use smallvec::{SmallVec, smallvec};
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[repr(C)]
 pub enum Operator {
@@ -152,7 +150,7 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
         apply_loosem(&o.a, a, o.rm, |a| {
             if a.is_scalar() {
                 std::hint::cold_path();
-                return Ok(a);
+                return a.to_owned();
             }
 
             if o.rm == 1 && a.dims() == 1 {
@@ -231,9 +229,9 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
 
             let d = a.dims();
             let mut items = a.ranked(d - 1)?.into_iter();
-            let mut acc = Type::from(items.next().unwrap());
+            let mut acc = Type::from(items.next().unwrap().to_owned()?);
             for item in items {
-                acc = f.dyadic_call(acc, Type::from(item))?;
+                acc = f.dyadic_call(acc, Type::from(item.to_owned()?))?;
             }
             acc.to_list()
         })
@@ -245,7 +243,7 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
         let b = b.to_list()?;
         apply_loosed(&o.a, a, b, o.rd, |a, b| {
             if b.is_scalar() {
-                return Ok(b);
+                return Ok(List::scalar(b.list()[0]));
             }
             if !a.is_scalar() {
                 return err!(Domain);
@@ -261,18 +259,18 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
             };
 
             let dims = b.dims();
-            let mut arr = b.ranked(dims - 1)?;
+            let arr = b.ranked(dims - 1)?;
             let jump = if unique { window } else { 1 };
 
             let mut cells = vec![List::empty(); 1 + (arr.len() - window) / jump];
             let mut j = 0;
             while j <= arr.len() - window {
                 let i = j / jump;
-                cells[i] = std::mem::take(&mut arr[j]);
+                cells[i] = arr[j].to_owned()?;
                 for k in j + 1..j + window {
                     let previous = std::mem::take(&mut cells[i]);
                     cells[i] = f
-                        .dyadic_call(Type::from(previous), Type::from(arr[k].clone()))?
+                        .dyadic_call(Type::from(previous), Type::from(arr[k].to_owned()?))?
                         .to_list()?;
                 }
                 j += jump;

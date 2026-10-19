@@ -1,7 +1,7 @@
 use std::hint;
 
 use crate::function::Opts;
-use crate::types::list::List;
+use crate::types::list::{List, ListWindow};
 use crate::types::scalar::Scalar;
 
 use super::Arena;
@@ -34,7 +34,7 @@ pub fn applym<'a>(l: &'a mut List, r: u8) -> (Vec<&'a mut [Scalar]>, SmallVec<[u
 #[inline]
 pub fn apply_loose<T>(o: &Opts, a: List, b: Option<List>, f: T) -> Status<List>
 where
-    T: Fn(List, Option<List>) -> Status<List>,
+    T: Fn(ListWindow, Option<ListWindow>) -> Status<List>,
 {
     if let Some(b) = b {
         apply_loosed(&o.a, a, b, o.rd, |a, b| f(a, Some(b)))
@@ -47,7 +47,7 @@ where
 #[inline]
 pub fn apply_loosem<T>(arena: &Arena, l: List, r: u8, f: T) -> Status<List>
 where
-    T: Fn(List) -> Status<List>,
+    T: Fn(ListWindow) -> Status<List>,
 {
     let dims = l.dims();
     let rank = l.rank().to_vec();
@@ -64,7 +64,7 @@ where
 #[inline]
 pub fn apply_loosed<T>(arena: &Arena, a: List, b: List, r: [u8; 2], f: T) -> Status<List>
 where
-    T: Fn(List, List) -> Status<List>,
+    T: Fn(ListWindow, ListWindow) -> Status<List>,
 {
     let left = a.ranked(r[0] as usize)?;
     let right = b.ranked(r[1] as usize)?;
