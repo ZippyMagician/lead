@@ -10,6 +10,8 @@ use crate::utils::Arena;
 use crate::utils::error::{Status, err};
 use crate::utils::function::*;
 
+use smallvec::{SmallVec, smallvec};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[repr(C)]
 pub enum Operator {
@@ -25,6 +27,10 @@ pub enum Operator {
     Fold,
     /// `\``
     TieCommute,
+    /// `"`
+    Each,
+    /// `":`
+    EachAtom,
 }
 
 #[inline]
@@ -216,9 +222,9 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
                     }
                 }
                 let items = a.list();
-                let mut acc = Type::from(List::scalar(items[0]));
+                let mut acc = Type::Scalar(items[0]);
                 for item in items.iter().skip(1) {
-                    acc = f.dyadic_call(acc, Type::from(List::scalar(*item)))?;
+                    acc = f.dyadic_call(acc, Type::Scalar(*item))?;
                 }
                 return acc.to_list();
             }
@@ -294,4 +300,32 @@ pub(crate) fn tie_commute(f: Type, a: Arena, s: Scope) -> Status<Function> {
             f.dyadic_call(a.clone(), a)
         }
     }; a, s))
+}
+
+#[inline]
+pub(crate) fn each(f: Type, a: Arena, s: Scope) -> Status<Function> {
+    let f = f.to_function(a.clone(), s.clone())?;
+    Ok(function!(99, [99, 99], true, true, move |a, b, o| {
+        let mut f = f.clone();
+        let keys_a = if a.is_map() { a.to_map()?.key_values(&o.a) } else { a.to_list() }?;
+        if let Some(b) = b {
+            let keys_b = if b.is_map() { b.to_map()?.key_values(&o.a) } else { b.to_list() }?;
+            let da = usize::max(1, usize::min(o.rd[0] as usize, keys_a.dims()));
+            let db = usize::max(1, usize::min(o.rd[1] as usize, keys_b.dims()));
+            f.apply_rd([da as u8 - 1, db as u8 - 1]);
+            f.dyadic_call(Type::List(keys_a), Type::List(keys_b))
+        } else {
+            let da = usize::max(1, usize::min(o.rd[0] as usize, keys_a.dims()));
+            f.apply_rm(da as u8 - 1);
+            f.monadic_call(Type::List(keys_a))
+        }
+    }; a, s))
+}
+
+#[inline]
+pub(crate) fn eachatom(f: Type, a: Arena, s: Scope) -> Status<Function> {
+    let mut f = f.to_function(a.clone(), s.clone())?;
+    f.apply_rm(0);
+    f.apply_rd([0, 0]);
+    Ok(f)
 }

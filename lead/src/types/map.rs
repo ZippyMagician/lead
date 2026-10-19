@@ -113,6 +113,20 @@ impl Map {
         }
         List::from_vec(values)
     }
+
+    #[inline]
+    pub(crate) fn key_values(&self, a: &utils::Arena) -> Status<List> {
+        if self.is_empty() {
+            return Ok(List::empty());
+        }
+
+        let mut pairs = Vec::with_capacity(self.internal.len() * 2);
+        for (key, value) in &self.internal {
+            pairs.push(Scalar::boxed(a, List::string(key))?);
+            pairs.push(Scalar::Box(*value));
+        }
+        List::mat(pairs, 2, smallvec![2, self.internal.len()])
+    }
 }
 
 #[macro_export]

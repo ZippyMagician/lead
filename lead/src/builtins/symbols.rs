@@ -256,7 +256,7 @@ pub(super) fn bitor(mut a: List, mut b: List, _: &Opts) -> Status<List> {
 
 // leftarrowm | < | 99 | Box
 pub(crate) fn boxed(a: Type, o: &Opts) -> Status<Type> {
-    Ok(List::scalar(Scalar::boxed_t(&o.a, a)?).into())
+    Ok(Scalar::boxed_t(&o.a, a)?.into())
 }
 
 // leftarrowd | < | 0, 0 | Less than
@@ -279,7 +279,7 @@ pub(crate) fn unbox(a: Type, o: &Opts) -> Status<Type> {
         cold_path();
         Ok(a.into())
     } else {
-        Ok(List::scalar(a.list()[0]).into())
+        Ok(a.list()[0].into())
     }
 }
 
@@ -586,10 +586,10 @@ pub(crate) fn concat(mut a: List, mut b: List, o: &Opts) -> Status<List> {
     let box_b = boxit && a.list()[0].repr() == 3 && b.list()[0].repr() != 3;
 
     if box_a {
-        for_0!(a; [l] = Scalar::boxed(&o.a, List::scalar(*l))?);
+        for_0!(a; [l] = Scalar::boxed_t(&o.a, Type::Scalar(*l))?);
     }
     if box_b {
-        for_0!(b; [l] = Scalar::boxed(&o.a, List::scalar(*l))?);
+        for_0!(b; [l] = Scalar::boxed_t(&o.a, Type::Scalar(*l))?);
     }
 
     if o.rd[0] == 1 && o.rd[1] == 1 {
@@ -778,16 +778,16 @@ pub(crate) fn table(a: List, b: List, o: &Opts) -> Status<List> {
 pub(crate) fn tally(a: Type, o: &Opts) -> Status<Type> {
     if a.is_empty() {
         cold_path();
-        return Ok(List::scalar(Scalar::Number(0)).into());
+        return Ok(Scalar::Number(0).into());
     }
 
     if let Ok(m) = a.as_map() {
-        return Ok(List::scalar(Scalar::Number(m.internal.len() as i64)).into());
+        return Ok(Scalar::Number(m.internal.len() as i64).into());
     }
 
     let mut a = unsafe { a.to_list_unchecked() };
     if o.rm as usize >= a.dims() {
-        Ok(List::scalar(Scalar::Number(unsafe { *a.rank().last().unwrap_unchecked() } as i64))
+        Ok(Scalar::Number(unsafe { *a.rank().last().unwrap_unchecked() } as i64)
             .into())
     } else {
         let (windows, r) = applym(&mut a, o.rm);

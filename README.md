@@ -22,6 +22,9 @@ Ideas:
   - Keep `Scalar` types copyable for speed. Should I overload most arithmetic ops?
   - Dicts?
 
+Best way to avoid some of the performance issues?
+- Apply functions don't need to reallocate for calls.. maybe some hacky solution to borrow data instead?
+
 ### Syntax (tentative)
 ```
 [~] 2 * ~e9    -- Don't print

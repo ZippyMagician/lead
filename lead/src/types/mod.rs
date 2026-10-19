@@ -12,12 +12,14 @@ use crate::utils::error::{Status, err};
 
 use list::List;
 use map::Map;
+use scalar::Scalar;
 
 #[derive(Clone, Debug)]
 #[repr(C, u8)]
 pub enum Type {
     Function(Function),
     List(List),
+    Scalar(Scalar),
     Map(Map),
 }
 
@@ -34,12 +36,27 @@ impl Type {
 
     #[inline]
     pub fn is_list(&self) -> bool {
-        matches!(self, Self::List(_))
+        matches!(self, Self::List(_) | Self::Scalar(_))
     }
 
     #[inline]
     pub fn is_map(&self) -> bool {
         matches!(self, Self::Map(_))
+    }
+
+    #[inline]
+    pub fn is_scalar(&self) -> bool {
+        matches!(self, Self::Scalar(_)) || self.is_list() && self.as_list().unwrap().is_scalar()
+    }
+
+    #[inline]
+    pub fn is_scalar_strict(&self) -> bool {
+        matches!(self, Self::Scalar(_))
+    }
+
+    #[inline]
+    pub fn is_list_strict(&self) -> bool {
+        matches!(self, Self::List(_))
     }
 
     #[inline]
@@ -68,6 +85,7 @@ impl Type {
     pub fn to_list(self) -> Status<List> {
         match self {
             Self::List(l) => Ok(l),
+            Self::Scalar(s) => Ok(List::scalar(s)),
             _ => err!(ValueS, "Cannot treat as list"),
         }
     }
@@ -108,7 +126,26 @@ impl Type {
     }
 
     #[inline]
+    pub fn to_scalar(self) -> Status<Scalar> {
+        match self {
+            Self::Scalar(s) => Ok(s),
+            _ => {
+                hint::cold_path();
+                err!(ValueS, "Cannot treat as map.")
+            }
+        }
+    }
+
+    #[inline]
     pub unsafe fn to_list_unchecked(self) -> List {
+        match self {
+            Self::List(l) => l,
+            _ => unsafe { hint::unreachable_unchecked() },
+        }
+    }
+
+    #[inline]
+    pub unsafe fn as_list_unchecked(&self) -> &List {
         match self {
             Self::List(l) => l,
             _ => unsafe { hint::unreachable_unchecked() },
@@ -121,7 +158,14 @@ impl Type {
             Self::Function(_) => true,
             Self::List(l) => l.is_empty(),
             Self::Map(m) => m.is_empty(),
+            Self::Scalar(_) => false,
         }
+    }
+}
+
+impl From<Scalar> for Type {
+    fn from(s: Scalar) -> Self {
+        Self::Scalar(s)
     }
 }
 
@@ -204,6 +248,7 @@ impl Display for Type {
             Self::Function(_) => write!(f, "{{{{ .. }}}}"),
             Self::List(v) => write!(f, "{v}"),
             Self::Map(m) => write!(f, "{m}"),
+            Self::Scalar(s) => write!(f, "{s}"),
         }
     }
 }

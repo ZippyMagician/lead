@@ -81,6 +81,11 @@ impl List {
     }
 
     #[inline(always)]
+    pub fn take_list(self) -> Vec<Scalar> {
+        self.dt.into_vec()
+    }
+
+    #[inline(always)]
     pub fn list_mut(&mut self) -> &mut [Scalar] {
         &mut self.dt
     }
@@ -146,6 +151,30 @@ impl List {
         }
     }
 
+    #[inline]
+    pub(crate) unsafe fn alloc_list(r: &[usize], v: &[Scalar]) -> Status<List> {
+        let count: usize = r.iter().product();
+        let dims = r.len();
+        let rank = SmallVec::from_slice(r);
+
+        let mut bucket = v.into_iter();
+        let layout = Layout::array::<Scalar>(count).unwrap();
+        // SAFETY: See below. Assumes called has valid rank.
+        unsafe {
+            let ptr = alloc(layout) as *mut Scalar;
+            if ptr.is_null() {
+                return err!(MemoryFault, "Could not allocate space.");
+            }
+
+            for i in 0..count {
+                ptr.add(i).write(*bucket.next().unwrap());
+            }
+
+            let raw: *mut [Scalar] = slice_from_raw_parts_mut(ptr, count);
+            Ok(Self::new(Box::from_raw(raw), count, dims, rank))
+        }
+    }
+
     // Swaps out rank. It is in place if possible
     #[inline]
     pub fn with_rank(mut self, r: &[usize]) -> Status<Self> {
@@ -162,7 +191,7 @@ impl List {
         } else if self.is_empty() {
             Ok(self)
         } else {
-            let mut bucket = self.list().iter().cycle();
+            let mut bucket = self.take_list().into_iter().cycle();
             let layout = Layout::array::<Scalar>(count).unwrap();
             // SAFETY: Pointer is checked for NULL. Size of allocation is known,
             // slice is transmuted and boxed immediately
@@ -173,7 +202,7 @@ impl List {
                 }
 
                 for i in 0..count {
-                    ptr.add(i).write(*bucket.next().unwrap());
+                    ptr.add(i).write(bucket.next().unwrap());
                 }
 
                 let raw: *mut [Scalar] = slice_from_raw_parts_mut(ptr, count);
@@ -185,7 +214,7 @@ impl List {
     #[inline]
     pub fn ranked(self, dims: usize) -> Status<Vec<Self>> {
         if dims == 0 {
-            Ok(self.list().iter().copied().map(List::scalar).collect())
+            Ok(self.take_list().into_iter().map(List::scalar).collect())
         } else if dims >= self.dims() {
             Ok(vec![self])
         } else {
@@ -195,10 +224,11 @@ impl List {
 
             unsafe { std::hint::assert_unchecked(self.ct % ct == 0) }
 
-            let mut b = Vec::with_capacity(self.ct / ct);
-            for i in 0..self.ct / ct {
-                let l = self.list()[i * ct..i * ct + ct].to_vec();
-                b.push(List::mat(l, dims, rank.clone())?);
+            let size = self.ct / ct;
+            let mut b = Vec::with_capacity(size);
+            let list = self.take_list();
+            for chunk in list.chunks_exact(ct) {
+                b.push(unsafe { Self::alloc_list(&rank, chunk)? });
             }
 
             Ok(b)

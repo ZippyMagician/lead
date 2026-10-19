@@ -125,4 +125,6 @@ define_op! {
     OverRank => (b"@", false, operators::over_rank);
     Fold => (b"/", true, operators::fold);
     TieCommute => (b"`", true, operators::tie_commute);
+    Each => (b"\"", true, operators::each);
+    EachAtom => (b"\":", true, operators::eachatom);
 }
