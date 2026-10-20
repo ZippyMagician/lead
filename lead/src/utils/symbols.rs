@@ -144,29 +144,63 @@ pub(crate) use for_n;
 pub(crate) use for_n2;
 
 macro_rules! maybe_apply {
+    // Same as below but for monads
+    ([scalar] $o:ident, $a:ident, $body:expr) => {
+        maybe_apply!($o.rm == 0 || $o.rm as usize >= $a.dims(), &$o.a, $a, $o.rm, $body)
+    };
+
     ($cond:expr, $arena:expr, $a:ident, $rm:expr, $body:expr) => {
         if $cond {
-            {
-                $body
-            }
+            { $body }
         } else {
             #[allow(unused_mut)]
-            $crate::utils::function::apply_loosem($arena, $a, $rm, |mut $a| {
-                $body
+            $crate::utils::function::apply_loosem($arena, $a, $rm, |mut $a| $body)
+        }
+    };
+
+    // Dyadic conditional application for underlying scalar ops
+    ([scalar] $o:ident, $a:ident, $b:ident, $body:expr) => {
+        maybe_apply!(
+            $o.rd == [0, 0] || $o.rd[0] as usize >= $a.dims() && $o.rd[1] as usize >= $a.dims(),
+            &$o.a,
+            $a,
+            $b,
+            $o.rd,
+            true,
+            $body
+        )
+    };
+
+    // Unique case for when mutating is unavailable i.e. copied slices
+    ($cond:expr, $arena:expr, $a:ident, $b:ident, $rd:expr, $copy_deterministic:ident, $body:expr) => {
+        if $cond {
+            { $body }
+        } else {
+            #[allow(unused_mut)]
+            $crate::utils::function::apply_loosed($arena, $a, $b, $rd, |mut $a, mut $b| {
+                if $copy_deterministic {
+                    if $a.len() >= $b.len() {
+                        let mut $a = $a.owned()?;
+                        { $body }
+                    } else {
+                        let mut $b = $b.owned()?;
+                        { $body }
+                    }
+                } else {
+                    let mut $a = $a.owned()?;
+                    let mut $b = $b.owned()?;
+                    { $body }
+                }
             })
         }
     };
 
+    // The above but no mutation
     ($cond:expr, $arena:expr, $a:ident, $b:ident, $rd:expr, $body:expr) => {
         if $cond {
-            {
-                $body
-            }
+            { $body }
         } else {
-            #[allow(unused_mut)]
-            $crate::utils::function::apply_loosed($arena, $a, $b, $rd, |mut $a, mut $b| {
-                $body
-            })
+            $crate::utils::function::apply_loosed($arena, $a, $b, $rd, |$a, $b| $body)
         }
     };
 }
@@ -187,6 +221,7 @@ macro_rules! scalar_op {
     // e1: L is &mut S, R is &S.
     // e2: L is S, R is &mut S
     // e3: L is &mut S, R is S
+    // SAFETY: When called on `ListWindows`, depends on caller not being an idiot
     ($a:ident, $b:ident, [$l:ident, $r:ident] = $e1:block; $e2:block; $e3:block;) => {
         if $a.len() == $b.len() {
             let values = $a.list_mut();
@@ -229,8 +264,7 @@ macro_rules! scalar_op {
         } else {
             err!(Domain)
         }
-
-    }
+    };
 }
 
 pub(crate) use scalar_op;

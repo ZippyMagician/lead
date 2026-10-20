@@ -200,7 +200,7 @@ impl List {
     // Don't let windows outlive the main List. This is as_ref, so
     // the list is unallocated at the end of the statement.
     // If I use `ListWindow::as_list()`, and that child outlives this
-    // parent, then some fucky shit happenes. So don't. Use `to_owned`
+    // parent, then some fucky shit happenes. So don't. Use `owned`
     // when possible. That means I can't arbitrarily pass ListWindows
     // 'cast' to Lists into functions, since some functions make use of
     // in place operations to avoid extra allocations.
@@ -223,6 +223,8 @@ impl List {
             let ptr = self.dt.as_ptr() as *mut Scalar;
             Ok(vec![ListWindow::new(ptr, self.len(), self.dims(), self.rank())])
         } else {
+            // NOTE: Don't pass this into windows, it is dropped at the end of `ranked`
+            // therefore leaving the pointer to it dangling
             let rank: SmallVec<[usize; 2]> = SmallVec::from_slice(&self.rank()[0..dims]);
             let ct: usize = rank.iter().product();
             unsafe { std::hint::assert_unchecked(self.ct % ct == 0) }
@@ -231,7 +233,12 @@ impl List {
             let mut v = Vec::with_capacity(size);
             let ptr = self.dt.as_ptr() as *mut Scalar;
             for i in 0..size {
-                v.push(ListWindow::new(unsafe { ptr.add(i * ct) }, ct, rank.len(), &rank));
+                v.push(ListWindow::new(
+                    unsafe { ptr.add(i * ct) },
+                    ct,
+                    rank.len(),
+                    &self.rk[0..dims],
+                ));
             }
             return Ok(v);
         }
@@ -526,6 +533,8 @@ impl ListWindow {
             let ptr = self.dt;
             Ok(vec![ListWindow::new(ptr, self.len(), self.dims(), self.rank())])
         } else {
+            // NOTE: Don't pass this into windows, it is dropped at the end of `ranked`
+            // therefore leaving the pointer to it dangling
             let rank: SmallVec<[usize; 2]> = SmallVec::from_slice(&self.rank()[0..dims]);
             let ct: usize = rank.iter().product();
             unsafe { std::hint::assert_unchecked(self.ct % ct == 0) }
@@ -534,7 +543,12 @@ impl ListWindow {
             let mut v = Vec::with_capacity(size);
             let ptr = self.dt;
             for i in 0..size {
-                v.push(ListWindow::new(unsafe { ptr.add(i * ct) }, ct, rank.len(), &rank));
+                v.push(ListWindow::new(
+                    unsafe { ptr.add(i * ct) },
+                    ct,
+                    rank.len(),
+                    &self.rank()[0..dims],
+                ));
             }
             return Ok(v);
         }
@@ -547,7 +561,7 @@ impl ListWindow {
         if count == self.ct {
             self.rk = r.as_ptr();
             self.ds = r.len();
-            self.to_owned()
+            self.owned()
         } else if self.is_empty() {
             Ok(List::empty())
         } else {
@@ -567,8 +581,7 @@ impl ListWindow {
     }
 
     #[inline]
-    pub fn to_owned(&self) -> Status<List> {
-        let slice = unsafe { &*slice_from_raw_parts_mut(self.dt, self.ct) };
-        unsafe { List::alloc_list(self.rank(), slice) }
+    pub fn owned(&self) -> Status<List> {
+        unsafe { List::alloc_list(self.rank(), self.list()) }
     }
 }

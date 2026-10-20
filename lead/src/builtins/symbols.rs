@@ -75,7 +75,7 @@ pub(super) fn abs(mut a: List, _: &Opts) -> Status<List> {
 }
 
 // plusd | + | 0, 0 | Addition
-pub(super) fn add(mut a: List, mut b: List, _: &Opts) -> Status<List> {
+pub(super) fn add(mut a: List, mut b: List, o: &Opts) -> Status<List> {
     if a.is_empty() {
         cold_path();
         Ok(b)
@@ -83,19 +83,21 @@ pub(super) fn add(mut a: List, mut b: List, _: &Opts) -> Status<List> {
         cold_path();
         Ok(a)
     } else if matches!(a.list()[0], Scalar::Char(_)) || matches!(b.list()[0], Scalar::Char(_)) {
-        scalar_op!(a, b,
-            [l, r] = { Scalar::Char(char::from_u32(
-                l.to_num()? as u32 + r.to_num()? as u32
-            ).ok_or(Error::NaN)?) };
-            { Scalar::Char(char::from_u32(
-                l.to_num()? as u32 + r.to_num()? as u32
-            ).ok_or(Error::NaN)?) };
-            { Scalar::Char(char::from_u32(
-                l.to_num()? as u32 + r.to_num()? as u32
-            ).ok_or(Error::NaN)?) };
-        )
+        maybe_apply!([scalar] o, a, b, {
+            scalar_op!(a, b,
+                [l, r] = { Scalar::Char(char::from_u32(
+                    l.to_num()? as u32 + r.to_num()? as u32
+                ).ok_or(Error::NaN)?) };
+                { Scalar::Char(char::from_u32(
+                    l.to_num()? as u32 + r.to_num()? as u32
+                ).ok_or(Error::NaN)?) };
+                { Scalar::Char(char::from_u32(
+                    l.to_num()? as u32 + r.to_num()? as u32
+                ).ok_or(Error::NaN)?) };
+            )
+        })
     } else {
-        scalar_op!(a, b, add)
+        maybe_apply!([scalar] o, a, b, scalar_op!(a, b, add))
     }
 }
 
@@ -113,7 +115,7 @@ pub(super) fn negate(mut a: List, _: &Opts) -> Status<List> {
 }
 
 // dashd | - | 0, 0 | Subtraction
-pub(super) fn sub(mut a: List, mut b: List, _: &Opts) -> Status<List> {
+pub(super) fn sub(mut a: List, mut b: List, o: &Opts) -> Status<List> {
     if a.is_empty() {
         cold_path();
         Ok(b)
@@ -121,19 +123,21 @@ pub(super) fn sub(mut a: List, mut b: List, _: &Opts) -> Status<List> {
         cold_path();
         Ok(a)
     } else if matches!(a.list()[0], Scalar::Char(_)) || matches!(b.list()[0], Scalar::Char(_)) {
-        scalar_op!(a, b,
-            [l, r] = { Scalar::Char(char::from_u32(
-                l.to_num()? as u32 - r.to_num()? as u32
-            ).ok_or(Error::NaN)?) };
-            { Scalar::Char(char::from_u32(
-                l.to_num()? as u32 - r.to_num()? as u32
-            ).ok_or(Error::NaN)?) };
-            { Scalar::Char(char::from_u32(
-                l.to_num()? as u32 - r.to_num()? as u32
-            ).ok_or(Error::NaN)?) };
-        )
+        maybe_apply!([scalar] o, a, b, {
+            scalar_op!(a, b,
+                [l, r] = { Scalar::Char(char::from_u32(
+                    l.to_num()? as u32 - r.to_num()? as u32
+                ).ok_or(Error::NaN)?) };
+                { Scalar::Char(char::from_u32(
+                    l.to_num()? as u32 - r.to_num()? as u32
+                ).ok_or(Error::NaN)?) };
+                { Scalar::Char(char::from_u32(
+                    l.to_num()? as u32 - r.to_num()? as u32
+                ).ok_or(Error::NaN)?) };
+            )
+        })
     } else {
-        scalar_op!(a, b, sub)
+        maybe_apply!([scalar] o, a, b, scalar_op!(a, b, sub))
     }
 }
 
@@ -153,7 +157,7 @@ pub(super) fn signum(mut a: List, _: &Opts) -> Status<List> {
 }
 
 // stard | * | 0, 0 | Multiplication / Boolean And
-pub(super) fn mul(mut a: List, mut b: List, _: &Opts) -> Status<List> {
+pub(super) fn mul(mut a: List, mut b: List, o: &Opts) -> Status<List> {
     if a.is_empty() {
         cold_path();
         return Ok(b);
@@ -162,19 +166,21 @@ pub(super) fn mul(mut a: List, mut b: List, _: &Opts) -> Status<List> {
         return Ok(a);
     } else if matches!(a.list()[0], Scalar::Boolean(_)) && matches!(b.list()[0], Scalar::Boolean(_))
     {
-        scalar_op!(a, b,
-            [l, r] = { Scalar::Boolean(
-                unsafe { l.to_bool_unchecked() && r.to_bool_unchecked() }
-            ) };
-            { Scalar::Boolean(
-                unsafe { l.to_bool_unchecked() && r.to_bool_unchecked() }
-            ) };
-            { Scalar::Boolean(
-                unsafe { l.to_bool_unchecked() && r.to_bool_unchecked() }
-            ) };
-        )
+        maybe_apply!([scalar] o, a, b, {
+            scalar_op!(a, b,
+                [l, r] = { Scalar::Boolean(
+                    unsafe { l.to_bool_unchecked() && r.to_bool_unchecked() }
+                ) };
+                { Scalar::Boolean(
+                    unsafe { l.to_bool_unchecked() && r.to_bool_unchecked() }
+                ) };
+                { Scalar::Boolean(
+                    unsafe { l.to_bool_unchecked() && r.to_bool_unchecked() }
+                ) };
+            )
+        })
     } else {
-        scalar_op!(a, b, mul)
+        maybe_apply!([scalar] o, a, b, scalar_op!(a, b, mul))
     }
 }
 
@@ -195,8 +201,8 @@ pub(super) fn reciprocal(mut a: List, _: &Opts) -> Status<List> {
 }
 
 // percentd | % | 0, 0 | Division
-pub(super) fn div(mut a: List, mut b: List, _: &Opts) -> Status<List> {
-    scalar_op!(a, b, div)
+pub(super) fn div(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+    maybe_apply!([scalar] o, a, b, scalar_op!(a, b, div))
 }
 
 // pipem | | | 0 | Boolean not
@@ -213,7 +219,7 @@ pub(super) fn not(mut a: List, _: &Opts) -> Status<List> {
 }
 
 // piped | | | 0, 0 | Residue (Modulus) / Boolean Or
-pub(super) fn residue(mut a: List, mut b: List, _: &Opts) -> Status<List> {
+pub(super) fn residue(mut a: List, mut b: List, o: &Opts) -> Status<List> {
     if a.is_empty() {
         cold_path();
         Ok(b)
@@ -222,24 +228,26 @@ pub(super) fn residue(mut a: List, mut b: List, _: &Opts) -> Status<List> {
         Ok(a)
     } else if matches!(a.list()[0], Scalar::Boolean(_)) && matches!(b.list()[0], Scalar::Boolean(_))
     {
-        scalar_op!(a, b,
-            [l, r] = { Scalar::Boolean(
-                unsafe { l.to_bool_unchecked() || r.to_bool_unchecked() }
-            ) };
-            { Scalar::Boolean(
-                unsafe { l.to_bool_unchecked() || r.to_bool_unchecked() }
-            ) };
-            { Scalar::Boolean(
-                unsafe { l.to_bool_unchecked() || r.to_bool_unchecked() }
-            ) };
-        )
+        maybe_apply!([scalar] o, a, b, {
+            scalar_op!(a, b,
+                [l, r] = { Scalar::Boolean(
+                    unsafe { l.to_bool_unchecked() || r.to_bool_unchecked() }
+                ) };
+                { Scalar::Boolean(
+                    unsafe { l.to_bool_unchecked() || r.to_bool_unchecked() }
+                ) };
+                { Scalar::Boolean(
+                    unsafe { l.to_bool_unchecked() || r.to_bool_unchecked() }
+                ) };
+            )
+        })
     } else {
-        scalar_op!(b, a, rem)
+        maybe_apply!([scalar] o, a, b, scalar_op!(b, a, rem))
     }
 }
 
 // exclamationm | ! | 0 | Factorial
-pub(super) fn factorial(mut a: List, _: &Opts) -> Status<List> {
+pub(super) fn factorial(mut a: List, o: &Opts) -> Status<List> {
     for_0!(a; [v] = {
         let n = v.to_num()?;
         if n < 0 {
@@ -254,8 +262,11 @@ pub(super) fn factorial(mut a: List, _: &Opts) -> Status<List> {
 }
 
 // exclamationd | ! | 0, 0 | Bitwise OR
-pub(super) fn bitor(mut a: List, mut b: List, _: &Opts) -> Status<List> {
-    scalar_op!(a, b, [l, r] = { Scalar::Number(l.to_num()? | r.to_num()?) })
+pub(super) fn bitor(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+    maybe_apply!([scalar] o, a, b, {
+        // SAFETY: Underlying `apply_loosem` will take ownership if necessary
+        scalar_op!(a, b, [l, r] = { Scalar::Number(l.to_num()? | r.to_num()?) })
+    })
 }
 
 // leftarrowm | < | 99 | Box
@@ -264,13 +275,16 @@ pub(crate) fn boxed(a: Type, o: &Opts) -> Status<Type> {
 }
 
 // leftarrowd | < | 0, 0 | Less than
-pub(crate) fn lt(mut a: List, mut b: List, _: &Opts) -> Status<List> {
-    scalar_op! {
-        a, b, [l, r] =
-        { Scalar::Boolean(*l < *r) };
-        { Scalar::Boolean(l < *r)  };
-        { Scalar::Boolean(*l < r)  };
-    }
+pub(crate) fn lt(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+    maybe_apply!([scalar] o, a, b, {
+        // SAFETY: Underlying `apply_loosem` will take ownership if necessary
+        scalar_op! {
+            a, b, [l, r] =
+            { Scalar::Boolean(*l < *r) };
+            { Scalar::Boolean(l < *r)  };
+            { Scalar::Boolean(*l < r)  };
+        }
+    })
 }
 
 // rightarrowm | > | 99 | Unbox / First
@@ -288,24 +302,27 @@ pub(crate) fn unbox(a: Type, o: &Opts) -> Status<Type> {
 }
 
 // rightarrowd | > | 0, 0 | Greater than
-pub(crate) fn gt(mut a: List, mut b: List, _: &Opts) -> Status<List> {
-    scalar_op! {
-        a, b, [l, r] =
-        { Scalar::Boolean(*l > *r) };
-        { Scalar::Boolean(l > *r) };
-        { Scalar::Boolean(*l < r) };
-    }
+pub(crate) fn gt(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+    maybe_apply!([scalar] o, a, b, {
+        // SAFETY: Underlying `apply_loosem` will take ownership if necessary
+        scalar_op! {
+            a, b, [l, r] =
+            { Scalar::Boolean(*l > *r) };
+            { Scalar::Boolean(l > *r) };
+            { Scalar::Boolean(*l < r) };
+        }
+    })
 }
 
 // caretm | ^ | 0 | Exponential
-pub(super) fn exp(mut a: List, _: &Opts) -> Status<List> {
+pub(super) fn exp(mut a: List, o: &Opts) -> Status<List> {
     for_0!(a; [v] = Float(v.to_float()?.exp()));
     Ok(a)
 }
 
 // caretd | ^ | 0, 0 | Bitwise AND
 pub(super) fn bitand(mut a: List, mut b: List, o: &Opts) -> Status<List> {
-    maybe_apply!(o.rd == [0, 0] || o.rd[0] as usize >= a.dims() && o.rd[1] as usize >= a.dims(), &o.a, a, b, o.rd, {
+    maybe_apply!([scalar] o, a, b, {
         scalar_op!(a, b, [l, r] = { Scalar::Number(l.to_num()? & r.to_num()?) })
     })
 }
@@ -358,14 +375,56 @@ pub(super) const fn identity(a: Type, o: &Opts) -> Status<Type> {
 
 // lbracketd | [ | 99, 99 | Left
 #[inline(always)]
-pub(super) fn left(a: Type, b: Type, _: &Opts) -> Status<Type> {
-    Ok(a)
+pub(super) fn left(a: Type, b: Type, o: &Opts) -> Status<Type> {
+    if o.rd == [99, 99] || !a.is_list() && !b.is_list() {
+        Ok(a)
+    } else if !b.is_list() {
+        Ok(a)
+    } else if !a.is_list() {
+        let b = b.to_list()?;
+        let boxed = Scalar::boxed_t(&o.a, a)?;
+        maybe_apply!(o.rd[1] as usize >= b.dims(), &o.a, b, o.rd[1], Ok(List::scalar(boxed)))
+            .map(Type::List)
+    } else {
+        let a = a.to_list()?;
+        let b = b.to_list()?;
+        maybe_apply!(
+            o.rd[0] as usize >= a.dims() && o.rd[1] as usize >= b.dims(),
+            &o.a,
+            a,
+            b,
+            o.rd,
+            Ok(unsafe { a.as_list() })
+        )
+        .map(Type::List)
+    }
 }
 
 // rbracketd | ] | 99, 99 | Right
 #[inline(always)]
-pub(super) fn right(a: Type, b: Type, _: &Opts) -> Status<Type> {
-    Ok(b)
+pub(super) fn right(a: Type, b: Type, o: &Opts) -> Status<Type> {
+    if o.rd == [99, 99] || !a.is_list() && !b.is_list() {
+        Ok(b)
+    } else if !b.is_list() {
+        let a = a.to_list()?;
+        let boxed = Scalar::boxed_t(&o.a, b)?;
+        maybe_apply!(o.rd[0] as usize >= a.dims(), &o.a, a, o.rd[0], Ok(List::scalar(boxed)))
+            .map(Type::List)
+    } else if !a.is_list() {
+        Ok(b)
+    } else {
+        let a = a.to_list()?;
+        let b = b.to_list()?;
+        maybe_apply!(
+            o.rd[0] as usize >= a.dims() && o.rd[1] as usize >= b.dims(),
+            &o.a,
+            a,
+            b,
+            o.rd,
+            Ok(unsafe { b.as_list() })
+        )
+        .map(Type::List)
+    }
 }
 
 // questionm | ? | 99 | Dedup sieve
@@ -506,7 +565,7 @@ pub(super) fn transpose_keys(a: Type, o: &Opts) -> Status<Type> {
     .map(Type::from)
 }
 
-// equald | = | 0 | Equals
+// equald | = | 0, 0 | Equals
 #[inline(always)]
 pub(super) fn equal(mut a: List, mut b: List, o: &Opts) -> Status<List> {
     if o.rd[0] == 0 && o.rd[1] == 0 {
@@ -524,25 +583,28 @@ pub(super) fn equal(mut a: List, mut b: List, o: &Opts) -> Status<List> {
 
 // tildem | ~ | 0 | 1-range / Rising alphabet
 pub(super) fn range(mut a: List, o: &Opts) -> Status<List> {
-    if a.is_scalar() {
-        let end = a.take_list()[0];
-        if end.is_char() {
-            List::range(if end.to_num()? < 97 { Scalar::Char('A') } else { Scalar::Char('a') }, end)
+    maybe_apply!([scalar] o, a, {
+        if a.is_scalar() {
+            let end = a.list()[0];
+            if end.is_char() {
+                List::range(if end.to_num()? < 97 { Scalar::Char('A') } else { Scalar::Char('a') }, end)
+            } else {
+                List::range(Scalar::Number(1), end)
+            }
         } else {
-            List::range(Scalar::Number(1), end)
+            for_0!(a; [v] = Scalar::boxed(
+                &o.a, List::range({
+                    if v.is_char() {
+                        if v.to_num()? < 97 { Scalar::Char('A') } else { Scalar::Char('a') }
+                    } else {
+                        Scalar::Number(1)
+                    }
+                }, *v)?)?
+            );
+            // SAFETY: Underlying `apply_loosem` will take ownership if necessary
+            Ok(unsafe { a.as_list() })
         }
-    } else {
-        for_0!(a; [v] = Scalar::boxed(
-            &o.a, List::range({
-                if v.is_char() {
-                    if v.to_num()? < 97 { Scalar::Char('A') } else { Scalar::Char('a') }
-                } else {
-                    Scalar::Number(1)
-                }
-            }, *v)?)?
-        );
-        Ok(a)
-    }
+    })
 }
 
 // tilded | ~ | 99, 0 | Index
@@ -885,26 +947,12 @@ pub(crate) fn replicate(a: List, b: List, o: &Opts) -> Status<List> {
 
 // leftcurlym | { | 0 | Increment
 pub(crate) fn inc(mut a: List, o: &Opts) -> Status<List> {
-    if o.rm == 0 || o.rm as usize >= a.dims() {
-        for_0!(a; [v] = v.add(1)?);
-        Ok(a)
-    } else {
-        apply_loosem(&o.a, a, o.rm, |mut a| {
-            for_0!(a; [v] = v.add(1)?);
-            Ok(unsafe { a.as_list() })
-        })
-    }
+    for_0!(a; [v] = v.add(1)?);
+    Ok(a)
 }
 
 // rightcurlym | } | 0 | Decrement
 pub(crate) fn dec(mut a: List, o: &Opts) -> Status<List> {
-    if o.rm == 0 || o.rm as usize >= a.dims() {
-        for_0!(a; [v] = v.add(1)?);
-        Ok(a)
-    } else {
-        apply_loosem(&o.a, a, o.rm, |mut a| {
-            for_0!(a; [v] = v.sub(1)?);
-            Ok(unsafe { a.as_list() })
-        })
-    }
+    for_0!(a; [v] = v.add(1)?);
+    Ok(a)
 }

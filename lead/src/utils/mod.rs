@@ -6,7 +6,6 @@ pub mod symbols;
 use std::cell::RefCell;
 use std::fmt::Write;
 use std::hint::assert_unchecked;
-use std::ops::Deref;
 use std::rc::Rc;
 
 use super::exec::Exec;
@@ -109,8 +108,8 @@ pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Funct
                 Ok(run_block!(true, a, b, o, n))
             } else {
                 apply_loose(&o, a, b, |a, b| run_block!(false,
-                    (*a).to_owned()?,
-                    b.as_ref().map(|&b| b.deref().to_owned()).transpose()?,
+                    a.owned()?,
+                    b.as_ref().map(|&b| b.owned()).transpose()?,
                 o, n)).map(Type::from)
             }
         };

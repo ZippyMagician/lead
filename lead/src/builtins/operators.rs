@@ -150,7 +150,7 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
         apply_loosem(&o.a, a, o.rm, |a| {
             if a.is_scalar() {
                 std::hint::cold_path();
-                return a.deref().to_owned();
+                return a.owned();
             }
 
             if o.rm == 1 && a.dims() == 1 {
@@ -229,9 +229,9 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
 
             let d = a.dims();
             let mut items = a.ranked(d - 1)?.into_iter();
-            let mut acc = Type::from(items.next().unwrap().to_owned()?);
+            let mut acc = Type::from(items.next().unwrap().owned()?);
             for item in items {
-                acc = f.dyadic_call(acc, Type::from(item.to_owned()?))?;
+                acc = f.dyadic_call(acc, Type::from(item.owned()?))?;
             }
             acc.to_list()
         })
@@ -266,11 +266,11 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
             let mut j = 0;
             while j <= arr.len() - window {
                 let i = j / jump;
-                cells[i] = arr[j].to_owned()?;
+                cells[i] = arr[j].owned()?;
                 for k in j + 1..j + window {
                     let previous = std::mem::take(&mut cells[i]);
                     cells[i] = f
-                        .dyadic_call(Type::from(previous), Type::from(arr[k].to_owned()?))?
+                        .dyadic_call(Type::from(previous), Type::from(arr[k].owned()?))?
                         .to_list()?;
                 }
                 j += jump;

@@ -99,26 +99,26 @@ macro_rules! define_op {
 }
 
 define_syms! {
-    Plus => (b"+", 0, false, false, symbols::abs; [0, 0], false, false, symbols::add);
-    Dash => (b"-", 0, false, false, symbols::negate; [0, 0], false, false, symbols::sub);
-    Star => (b"*", 0, false, false, symbols::signum; [0, 0], false, false, symbols::mul);
-    Percent => (b"%", 0, false, false, symbols::reciprocal; [0, 0], false, false, symbols::div);
-    Pipe => (b"|", 0, false, false, symbols::not; [0, 0], false, false, symbols::residue);
-    Exclamation => (b"!", 0, false, false, symbols::factorial; [0, 0], false, false, symbols::bitor);
-    LeftArrow => (b"<", 99, false, true, symbols::boxed; [0, 0], false, false, symbols::lt);
-    RightArrow => (b">", 99, false, true, symbols::unbox; [0, 0], false, false, symbols::gt);
-    Caret => (b"^", 0, false, false, symbols::exp; [0, 0], true, false, symbols::bitand);
+    Plus => (b"+", 0, true, false, symbols::abs; [0, 0], true, false, symbols::add);
+    Dash => (b"-", 0, true, false, symbols::negate; [0, 0], true, false, symbols::sub);
+    Star => (b"*", 0, true, false, symbols::signum; [0, 0], true, false, symbols::mul);
+    Percent => (b"%", 0, true, false, symbols::reciprocal; [0, 0], true, false, symbols::div);
+    Pipe => (b"|", 0, true, false, symbols::not; [0, 0], true, false, symbols::residue);
+    Exclamation => (b"!", 0, true, false, symbols::factorial; [0, 0], true, false, symbols::bitor);
+    LeftArrow => (b"<", 99, false, true, symbols::boxed; [0, 0], true, false, symbols::lt);
+    RightArrow => (b">", 99, false, true, symbols::unbox; [0, 0], true, false, symbols::gt);
+    Caret => (b"^", 0, true, false, symbols::exp; [0, 0], true, false, symbols::bitand);
     Dollar => (b"$", 99, true, false, symbols::shape; [1, 99], true, false, symbols::reshape);
-    LeftBracket => (b"[", 99, false, true, symbols::identity; [99, 99], false, true, symbols::left);
-    RightBracket => (b"]", 99, false, true, symbols::identity; [99, 99], false, true, symbols::right);
+    LeftBracket => (b"[", 99, false, true, symbols::identity; [99, 99], true, true, symbols::left);
+    RightBracket => (b"]", 99, false, true, symbols::identity; [99, 99], true, true, symbols::right);
     Question => (b"?", 99, true, false, symbols::dedup_sieve; [99, 1], true, false, symbols::group);
     Equal => (b"=", 2, true, true, symbols::transpose_keys; [0, 0], true, false, symbols::equal);
-    Tilde => (b"~", 0, false, false, symbols::range; [99, 0], true, false, symbols::index);
+    Tilde => (b"~", 0, true, false, symbols::range; [99, 0], true, false, symbols::index);
     Comma => (b",", 99, true, true, symbols::ravel; [1, 1], true, false, symbols::concat);
     Semicolon => (b";", 1, false, false, symbols::mold; [99, 99], false, false, symbols::table);
     Hashtag => (b"#", 99, true, true, symbols::tally; [99, 1], true, false, symbols::replicate);
-    LeftCurly => (b"{", 0, true, false, symbols::inc; [99, 99], false, false, symbols::add);
-    RightCurly => (b"}", 0, true, false, symbols::dec; [99, 99], false, false, symbols::sub); // TODO:
+    LeftCurly => (b"{", 0, true, false, symbols::inc; [99, 99], false, false, symbols::add); // TODO(d)
+    RightCurly => (b"}", 0, true, false, symbols::dec; [99, 99], false, false, symbols::sub); // TODO(d)
 }
 
 define_op! {

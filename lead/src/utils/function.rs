@@ -50,6 +50,7 @@ pub fn apply_loosem<T>(arena: &Arena, l: List, r: u8, f: T) -> Status<List>
 where
     T: Fn(ManuallyDrop<ListWindow>) -> Status<List>,
 {
+    let l = ManuallyDrop::new(l);
     let dims = l.dims();
     let rank = l.rank().to_vec();
     let lists = l.ranked(r as usize)?;
@@ -63,7 +64,7 @@ where
         res = res.clone();
     }
     // Drop after windows are collected and memcpy'd
-    drop(l);
+    drop(ManuallyDrop::into_inner(l));
     res
 }
 
@@ -73,6 +74,8 @@ pub fn apply_loosed<T>(arena: &Arena, a: List, b: List, r: [u8; 2], f: T) -> Sta
 where
     T: Fn(ManuallyDrop<ListWindow>, ManuallyDrop<ListWindow>) -> Status<List>,
 {
+    let a = ManuallyDrop::new(a);
+    let b = ManuallyDrop::new(b);
     let left = a.ranked(r[0] as usize)?;
     let right = b.ranked(r[1] as usize)?;
     let no_swap = left.len() >= right.len();
@@ -115,7 +118,7 @@ where
         List::unranked(arena, values[0].dims() + 1, &[values.len()], values)
     };
     // See above
-    drop(a);
-    drop(b);
+    drop(ManuallyDrop::into_inner(a));
+    drop(ManuallyDrop::into_inner(b));
     res
 }
