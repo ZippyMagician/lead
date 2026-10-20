@@ -951,6 +951,80 @@ pub(crate) fn inc(mut a: List, o: &Opts) -> Status<List> {
     Ok(a)
 }
 
+// leftcurlyd | { | 1, 99 | Take
+pub(crate) fn take(a: List, b: List, o: &Opts) -> Status<List> {
+    if o.rd[0] as usize > 1 {
+        return err!(Domain);
+    }
+    maybe_apply!(o.rd[0] as usize >= a.dims() && o.rd[1] as usize >= b.dims(), &o.a, a, b, o.rd, {
+        let indices = a
+            .list()
+            .iter()
+            .map(|n| n.to_num().map(|n| n as usize))
+            .collect::<Status<Vec<usize>>>()?;
+        let rank = b.rank();
+        let bucket = b.list();
+        let fill = bucket[0].get_fill()?;
+
+        if indices.len() == 1 {
+            let size = indices[0];
+            let count = rank[0];
+            if size <= count {
+                return b.with_rank(&[size]);
+            } else {
+                let mut v = Vec::with_capacity(count);
+                v.extend(b.list().iter().copied());
+                for _ in 0..size - count {
+                    v.push(fill);
+                }
+                return List::from_vec(v);
+            }
+        }
+
+        let sizes = [1]
+            .into_iter()
+            .chain(rank.iter().scan(1, |acc, x| {
+                *acc = *acc * *x;
+                Some(*acc)
+            }))
+            .collect::<Vec<usize>>();
+        let total = indices.iter().product::<usize>() as usize;
+        let mut v = Vec::with_capacity(total);
+        let min = usize::min(indices.len(), rank.len());
+
+        for i in 0..total {
+            let mut idx: SmallVec<[usize; 3]> = smallvec::SmallVec::with_capacity(indices.len());
+            let mut k = i;
+            for j in 0..indices.len() {
+                idx.push(k % indices[j]);
+                k /= indices[j];
+            }
+
+            let mut j = 0;
+            let mut within = true;
+            for k in 0..min {
+                if idx[k] >= rank[k] {
+                    within = false;
+                    break;
+                }
+                j += sizes[k] * idx[k];
+            }
+            if min < indices.len() {
+                for j in min..indices.len() {
+                    if idx[j] != 0 {
+                        within = false;
+                        break;
+                    }
+                }
+            }
+
+            v.push(if within { bucket[j] } else { fill });
+        }
+
+        List::mat(v, indices.len(), indices.into())
+    })
+}
+
 // rightcurlym | } | 0 | Decrement
 pub(crate) fn dec(mut a: List, o: &Opts) -> Status<List> {
     for_0!(a; [v] = v.add(1)?);

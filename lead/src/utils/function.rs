@@ -97,7 +97,7 @@ where
     if values.len() == 1 {
         // See apply_loosem for explanation
         std::hint::cold_path();
-        values = values.clone();
+        values[0] = values[0].clone();
     }
 
     let r = values[0].rank().to_owned();
