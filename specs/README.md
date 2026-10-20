@@ -258,3 +258,11 @@ As I think of them
     -- equiv. to J's dyadic `;`.
     -- First separator between if/else is literal tab, since it is within a group.
     laminate:{{((`X=[?]x):x <x),(`Y=[?]y):y)<y}}
+
+    -- comparison
+    enc:{{(y):(x,`2|y)v y%2)x}}@1 0&`()
+    enc2:()&{{(*/0=,y):x)(x,`2|y)v y%2}}@=@1
+
+enc is a version of `#:` I implemented in `ayr`. Not only does `enc2` represent `B:` / `ENC` (see above), which is a matrix output of binary representations of
+each inputted integer, it is also ~*15x* faster.. thought that was an interesting example to include. Sometimes I forget how useful array languages can be for
+certain calculations

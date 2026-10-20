@@ -185,6 +185,9 @@ impl List {
     {
         let count: usize = r.iter().product();
         let dims = r.len();
+        if dims == 0 {
+            return Ok(List::empty())
+        }
         let rank = SmallVec::from_slice(r);
 
         let layout = Layout::array::<Scalar>(count).unwrap();
@@ -473,17 +476,17 @@ impl Default for List {
 
 // Trust me bro, this definitely isn't the most awful bugs known to man
 // just waiting to happen. 100% safe code only here
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct ListWindow {
     dt: *mut Scalar,
     ct: usize,
     ds: usize,
-    rk: SmallVec<[usize; INLINE_SIZE]>,
+    rk: *const usize, //SmallVec<[usize; INLINE_SIZE]>,
 }
 
 impl ListWindow {
     pub fn new(dt: *mut Scalar, ct: usize, ds: usize, rk: &[usize]) -> Self {
-        Self { dt, ct, ds, rk: SmallVec::from_slice(rk) }
+        Self { dt, ct, ds, rk: rk.as_ptr() }
     }
 
     #[inline(always)]
@@ -493,13 +496,12 @@ impl ListWindow {
 
     #[inline(always)]
     pub fn dims(&self) -> usize {
-        unsafe { std::hint::assert_unchecked(self.rk.len() == self.ds) };
         self.ds
     }
 
     #[inline(always)]
     pub fn rank(&self) -> &[usize] {
-        &self.rk
+        unsafe { std::slice::from_raw_parts(self.rk, self.ds) }
     }
 
     #[inline(always)]
@@ -549,13 +551,8 @@ impl ListWindow {
     pub fn with_rank(mut self, r: &[usize]) -> Status<List> {
         let count: usize = r.iter().product();
         if count == self.ct {
-            if INLINE_SIZE >= self.dims() || INLINE_SIZE < r.len() {
-                self.rk = SmallVec::from_slice(r);
-            } else {
-                self.rk.clear();
-                self.rk.extend_from_slice(r);
-            }
-            self.ds = self.rk.len();
+            self.rk = r.as_ptr();
+            self.ds = r.len();
             self.to_owned()
         } else if self.is_empty() {
             Ok(List::empty())
@@ -571,14 +568,14 @@ impl ListWindow {
     pub unsafe fn as_list(&self) -> List {
         unsafe {
             let taken = slice_from_raw_parts_mut(self.dt, self.ct);
-            List::new(Box::from_raw(taken), self.ct, self.ds, self.rk.clone())
+            List::new(Box::from_raw(taken), self.ct, self.ds, SmallVec::from_slice(self.rank()))
         }
     }
 
     #[inline]
     pub fn to_owned(&self) -> Status<List> {
         let slice = unsafe { &*slice_from_raw_parts_mut(self.dt, self.ct) };
-        unsafe { List::alloc_list(&self.rk, slice) }
+        unsafe { List::alloc_list(self.rank(), slice) }
     }
 }
 
