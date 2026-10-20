@@ -119,34 +119,18 @@ impl List {
 
     #[inline]
     pub fn range(start: Scalar, end: Scalar) -> Status<Self> {
-        if start.is_char() && end.is_char() {
-            let _start = unsafe { start.to_char_unchecked() };
-            let _end = unsafe { end.to_char_unchecked() };
-
-            return err!(Internal, "TODO: Alphabetical range @ <list.rs> range");
-        } else {
-            let start = start.to_num()?;
-            let end = end.to_num()?;
-            if end < start || end < 0 || start < 0 {
-                return err!(Domain);
-            }
-
-            let count: usize = (end - start + 1) as usize;
-            let layout = Layout::array::<Scalar>(count).unwrap();
-            // SAFETY: Pointer is checked for NULL. Size of allocation is known,
-            // slice is transmuted and boxed immediately
-            unsafe {
-                let ptr = alloc(layout) as *mut Scalar;
-                if ptr.is_null() {
-                    return err!(MemoryFault, "Could not allocate space.");
-                }
-
-                for (j, i) in (start..).zip(0..count) {
-                    ptr.add(i).write(Scalar::Number(j));
-                }
-
-                let raw: *mut [Scalar] = slice_from_raw_parts_mut(ptr, count);
-                Ok(Self::new(Box::from_raw(raw), count, 1, smallvec![count]))
+        let chars = start.is_char() && end.is_char();
+        let start = start.to_num()?;
+        let end = end.to_num()?;
+        if end < start || end < 0 || start < 0 {
+            return err!(Domain);
+        }
+        let count: usize = (end - start + 1) as usize;
+        unsafe {
+            if chars {
+                Self::alloc_iter(&[count], (start..=end).map(|i| Scalar::Char(i as u8 as char)))
+            } else {
+                Self::alloc_iter(&[count], (start..=end).map(Scalar::Number))
             }
         }
     }
@@ -172,13 +156,13 @@ impl List {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub(crate) unsafe fn alloc_list(r: &[usize], v: &[Scalar]) -> Status<List> {
         unsafe { Self::alloc_iter(r, v.iter().copied()) }
     }
 
     // SAFETY: Assumes called has provided valid sizes
-    #[inline]
+    #[inline(always)]
     pub(crate) unsafe fn alloc_iter<T>(r: &[usize], mut bucket: T) -> Status<List>
     where
         T: Iterator<Item = Scalar>,
@@ -186,7 +170,7 @@ impl List {
         let count: usize = r.iter().product();
         let dims = r.len();
         if dims == 0 {
-            return Ok(List::empty())
+            return Ok(List::empty());
         }
         let rank = SmallVec::from_slice(r);
 
@@ -199,7 +183,7 @@ impl List {
             }
 
             for i in 0..count {
-                ptr.add(i).write(bucket.next().unwrap());
+                ptr.add(i).write(bucket.next().unwrap_unchecked());
             }
 
             let raw: *mut [Scalar] = slice_from_raw_parts_mut(ptr, count);
@@ -578,4 +562,3 @@ impl ListWindow {
         unsafe { List::alloc_list(self.rank(), slice) }
     }
 }
-

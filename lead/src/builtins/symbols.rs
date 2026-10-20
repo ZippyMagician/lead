@@ -517,10 +517,21 @@ pub(super) fn equal(mut a: List, mut b: List, o: &Opts) -> Status<List> {
 // tildem | ~ | 0 | 1-range / Rising alphabet
 pub(super) fn range(mut a: List, o: &Opts) -> Status<List> {
     if a.is_scalar() {
-        List::range(Scalar::Number(1), a.list()[0])
+        let end = a.take_list()[0];
+        if end.is_char() {
+            List::range(if end.to_num()? < 97 { Scalar::Char('A') } else { Scalar::Char('a') }, end)
+        } else {
+            List::range(Scalar::Number(1), end)
+        }
     } else {
         for_0!(a; [v] = Scalar::boxed(
-            &o.a, List::range(Scalar::Number(1), *v)?)?
+            &o.a, List::range({
+                if v.is_char() {
+                    if v.to_num()? < 97 { Scalar::Char('A') } else { Scalar::Char('a') }
+                } else {
+                    Scalar::Number(1)
+                }
+            }, *v)?)?
         );
         Ok(a)
     }
@@ -825,7 +836,7 @@ pub(crate) fn replicate(a: List, b: List, o: &Opts) -> Status<List> {
     if a.is_empty() {
         return Ok(a);
     }
-    
+
     apply_loosed(&o.a, a, b, o.rd, |a, b| {
         let mut counts = b
             .list()
