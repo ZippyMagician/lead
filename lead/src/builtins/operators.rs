@@ -150,7 +150,7 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
         apply_loosem(&o.a, a, o.rm, |a| {
             if a.is_scalar() {
                 std::hint::cold_path();
-                return a.to_owned();
+                return a.deref().to_owned();
             }
 
             if o.rm == 1 && a.dims() == 1 {

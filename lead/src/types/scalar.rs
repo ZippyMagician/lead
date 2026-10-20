@@ -305,25 +305,6 @@ macro_rules! impl_arith_ops {
                     }
                 }
             }
-
-            impl $name<i64> for Scalar {
-                type Output = Status<Self>;
-
-                fn $f(self, rhs: i64) -> Self::Output {
-                    if self.is_box() {
-                        ::std::hint::cold_path();
-                        err!(NaN)
-                    } else if let Float(fl) = self {
-                        let $a1 = fl;
-                        let $a2 = rhs as f64;
-                        f($operation)
-                    } else {
-                        let $a1 = self.to_num()?;
-                        let $a2 = rhs;
-                        n($operation)
-                    }
-                }
-            }
         )*
     }
 }
@@ -346,6 +327,38 @@ impl_arith_ops! {
             std::hint::cold_path(); return err!(NaN);
         } else { l % r }
     };
+}
+
+impl Add<u32> for Scalar {
+    type Output = Status<Self>;
+
+    fn add(self, rhs: u32) -> Self::Output {
+        if self.is_box() {
+            return err!(NaN);
+        } else if self.is_float() {
+            return f(unsafe { self.to_float_unchecked() } + rhs as f64);
+        } else if self.is_char() {
+            return c(unsafe { self.to_char_unchecked() } as u32 + rhs);
+        } else {
+            return n(self.to_num()? + rhs as i64);
+        }
+    }
+}
+
+impl Sub<u32> for Scalar {
+    type Output = Status<Self>;
+
+    fn sub(self, rhs: u32) -> Self::Output {
+        if self.is_box() {
+            return err!(NaN);
+        } else if self.is_float() {
+            return f(unsafe { self.to_float_unchecked() } - rhs as f64);
+        } else if self.is_char() {
+            return c(unsafe { self.to_char_unchecked() } as u32 - rhs);
+        } else {
+            return n(self.to_num()? - rhs as i64);
+        }
+    }
 }
 
 impl PartialEq for Scalar {

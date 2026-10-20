@@ -6,6 +6,7 @@ pub mod symbols;
 use std::cell::RefCell;
 use std::fmt::Write;
 use std::hint::assert_unchecked;
+use std::ops::Deref;
 use std::rc::Rc;
 
 use super::exec::Exec;
@@ -13,7 +14,7 @@ use super::function::Function;
 use super::parse::Node;
 use super::scope::Scope;
 use super::types::Type;
-use super::types::list::{List, ListWindow};
+use super::types::list::List;
 use super::types::scalar::Scalar::{self as S};
 use function::apply_loose;
 
@@ -107,8 +108,9 @@ pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Funct
             if cond {
                 Ok(run_block!(true, a, b, o, n))
             } else {
-                apply_loose(&o, a, b, |a, b|
-                    run_block!(false, a.to_owned()?, b.as_ref().map(ListWindow::to_owned).transpose()?,
+                apply_loose(&o, a, b, |a, b| run_block!(false,
+                    (*a).to_owned()?,
+                    b.as_ref().map(|&b| b.deref().to_owned()).transpose()?,
                 o, n)).map(Type::from)
             }
         };

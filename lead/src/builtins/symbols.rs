@@ -10,7 +10,7 @@ use crate::types::list::List;
 use crate::types::scalar;
 use crate::utils::error::{Error, Status, err};
 use crate::utils::function::*;
-use crate::utils::symbols::{for_0, for_1, for_n, for_n2, pad_rank, scalar_op};
+use crate::utils::symbols::{for_0, for_1, for_n, for_n2, maybe_apply, pad_rank, scalar_op};
 use scalar::Scalar::{self, Boolean, Char, Float, Number};
 
 use num_traits::AsPrimitive;
@@ -56,6 +56,10 @@ pub enum Symbol {
     Semicolon,
     /// `#`
     Hashtag,
+    /// `{`
+    LeftCurly,
+    /// `}`
+    RightCurly,
 }
 
 // plusm | + | 0 | Absolute value / Cast to int
@@ -300,13 +304,17 @@ pub(super) fn exp(mut a: List, _: &Opts) -> Status<List> {
 }
 
 // caretd | ^ | 0, 0 | Bitwise AND
-pub(super) fn bitand(mut a: List, mut b: List, _: &Opts) -> Status<List> {
-    scalar_op!(a, b, [l, r] = { Scalar::Number(l.to_num()? & r.to_num()?) })
+pub(super) fn bitand(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+    maybe_apply!(o.rd == [0, 0] || o.rd[0] as usize >= a.dims() && o.rd[1] as usize >= a.dims(), &o.a, a, b, o.rd, {
+        scalar_op!(a, b, [l, r] = { Scalar::Number(l.to_num()? & r.to_num()?) })
+    })
 }
 
 // dollarm | $ | 99 | Shape
-pub(crate) fn shape(a: List, _: &Opts) -> Status<List> {
-    List::from_vec(a.rank().iter().map(|n| Scalar::Number(*n as i64)).collect())
+pub(crate) fn shape(a: List, o: &Opts) -> Status<List> {
+    maybe_apply!(o.rm as usize >= a.dims(), &o.a, a, o.rm, unsafe {
+        List::alloc_iter(&[a.dims()], a.rank().iter().map(|n| Scalar::Number(*n as i64)))
+    })
 }
 
 // dollard | $ | 1, 99 | Reshape
@@ -344,7 +352,7 @@ pub(crate) fn reshape(a: List, b: List, o: &Opts) -> Status<List> {
 }
 
 // lbracketm / rbracketm | [ / ] | 99 | Identity
-pub(super) const fn identity(a: Type, _: &Opts) -> Status<Type> {
+pub(super) const fn identity(a: Type, o: &Opts) -> Status<Type> {
     Ok(a)
 }
 
@@ -873,4 +881,30 @@ pub(crate) fn replicate(a: List, b: List, o: &Opts) -> Status<List> {
         r.push(total);
         List::mat(v, r.len(), r)
     })
+}
+
+// leftcurlym | { | 0 | Increment
+pub(crate) fn inc(mut a: List, o: &Opts) -> Status<List> {
+    if o.rm == 0 || o.rm as usize >= a.dims() {
+        for_0!(a; [v] = v.add(1)?);
+        Ok(a)
+    } else {
+        apply_loosem(&o.a, a, o.rm, |mut a| {
+            for_0!(a; [v] = v.add(1)?);
+            Ok(unsafe { a.as_list() })
+        })
+    }
+}
+
+// rightcurlym | } | 0 | Decrement
+pub(crate) fn dec(mut a: List, o: &Opts) -> Status<List> {
+    if o.rm == 0 || o.rm as usize >= a.dims() {
+        for_0!(a; [v] = v.add(1)?);
+        Ok(a)
+    } else {
+        apply_loosem(&o.a, a, o.rm, |mut a| {
+            for_0!(a; [v] = v.sub(1)?);
+            Ok(unsafe { a.as_list() })
+        })
+    }
 }

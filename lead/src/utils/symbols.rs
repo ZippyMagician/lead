@@ -143,6 +143,36 @@ pub(crate) use for_1;
 pub(crate) use for_n;
 pub(crate) use for_n2;
 
+macro_rules! maybe_apply {
+    ($cond:expr, $arena:expr, $a:ident, $rm:expr, $body:expr) => {
+        if $cond {
+            {
+                $body
+            }
+        } else {
+            #[allow(unused_mut)]
+            $crate::utils::function::apply_loosem($arena, $a, $rm, |mut $a| {
+                $body
+            })
+        }
+    };
+
+    ($cond:expr, $arena:expr, $a:ident, $b:ident, $rd:expr, $body:expr) => {
+        if $cond {
+            {
+                $body
+            }
+        } else {
+            #[allow(unused_mut)]
+            $crate::utils::function::apply_loosed($arena, $a, $b, $rd, |mut $a, mut $b| {
+                $body
+            })
+        }
+    };
+}
+
+pub(crate) use maybe_apply;
+
 macro_rules! scalar_op {
     ($a:ident, $b:ident, $d:ident) => {
         scalar_op!($a, $b,
@@ -163,11 +193,11 @@ macro_rules! scalar_op {
             for ($l, $r) in values.iter_mut().zip($b.list()) {
                 *$l = $e1;
             }
-            Ok($a)
+            Ok(unsafe { $a.as_list() })
         } else if $a.is_empty() {
-            Ok($b)
+            Ok(unsafe { $b.as_list() })
         } else if $b.is_empty() {
-            Ok($a)
+            Ok(unsafe { $a.as_list() })
         } else if $a.is_scalar() {
             // And now it's fucking slower?? what the fuck
             /*for (l, r) in $b.list_mut().iter_mut().zip(
@@ -177,25 +207,25 @@ macro_rules! scalar_op {
             }*/
             let $l = $a.list()[0];
             for_0!($b; [$r] = $e2);
-            Ok($b)
+            Ok(unsafe { $b.as_list() })
         } else if $b.is_scalar() {
             let $r = $b.list()[0];
             for_0!($a; [$l] = $e3);
-            Ok($a)
+            Ok(unsafe { $a.as_list() })
         } else if $a.len() % $b.len() == 0 {
             let m = $a.list_mut();
             let o = $b.list();
             for ($l, $r) in m.iter_mut().zip(o.iter().cycle()) {
                 *$l = $e1;
             }
-            Ok($a)
+            Ok(unsafe { $a.as_list() })
         } else if $b.len() % $a.len() == 0 {
             let m = $b.list_mut();
             let o = $a.list();
             for ($r, $l) in m.iter_mut().zip(o.iter().cycle()) {
                 *$r = $e1;
             }
-            Ok($b)
+            Ok(unsafe { $b.as_list() })
         } else {
             err!(Domain)
         }

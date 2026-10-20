@@ -1,4 +1,5 @@
 use std::hint;
+use std::mem::ManuallyDrop;
 
 use crate::function::Opts;
 use crate::types::list::{List, ListWindow};
@@ -34,7 +35,7 @@ pub fn applym<'a>(l: &'a mut List, r: u8) -> (Vec<&'a mut [Scalar]>, SmallVec<[u
 #[inline]
 pub fn apply_loose<T>(o: &Opts, a: List, b: Option<List>, f: T) -> Status<List>
 where
-    T: Fn(ListWindow, Option<ListWindow>) -> Status<List>,
+    T: Fn(ManuallyDrop<ListWindow>, Option<ManuallyDrop<ListWindow>>) -> Status<List>,
 {
     if let Some(b) = b {
         apply_loosed(&o.a, a, b, o.rd, |a, b| f(a, Some(b)))
@@ -47,21 +48,30 @@ where
 #[inline]
 pub fn apply_loosem<T>(arena: &Arena, l: List, r: u8, f: T) -> Status<List>
 where
-    T: Fn(ListWindow) -> Status<List>,
+    T: Fn(ManuallyDrop<ListWindow>) -> Status<List>,
 {
     let dims = l.dims();
     let rank = l.rank().to_vec();
     let lists = l.ranked(r as usize)?;
-    let result = lists.into_iter().map(f).collect::<Status<Vec<List>>>()?;
+    let single = lists.len() == 1;
+    let result =
+        lists.into_iter().map(|a| f(ManuallyDrop::new(a))).collect::<Status<Vec<List>>>()?;
+    let mut res = List::unranked(arena, dims, &rank[r as usize..], result);
+    // Avoid issues with single length windows being dropped
+    if single {
+        std::hint::cold_path();
+        res = res.clone();
+    }
+    // Drop after windows are collected and memcpy'd
     drop(l);
-    List::unranked(arena, dims, &rank[r as usize..], result)
+    res
 }
 
 // Applies function generally over dyadic input. Does not make assumptions
 #[inline]
 pub fn apply_loosed<T>(arena: &Arena, a: List, b: List, r: [u8; 2], f: T) -> Status<List>
 where
-    T: Fn(ListWindow, ListWindow) -> Status<List>,
+    T: Fn(ManuallyDrop<ListWindow>, ManuallyDrop<ListWindow>) -> Status<List>,
 {
     let left = a.ranked(r[0] as usize)?;
     let right = b.ranked(r[1] as usize)?;
@@ -72,11 +82,20 @@ where
         return err!(Domain);
     }
 
-    let values = mapper
+    let mut values = mapper
         .iter()
         .zip(value.iter().cycle())
-        .map(|(&l, &r)| if no_swap { f(l, r) } else { f(r, l) })
+        .map(|(&l, &r)| {
+            let l = ManuallyDrop::new(l);
+            let r = ManuallyDrop::new(r);
+            if no_swap { f(l, r) } else { f(r, l) }
+        })
         .collect::<Status<Vec<List>>>()?;
+    if values.len() == 1 {
+        // See apply_loosem for explanation
+        std::hint::cold_path();
+        values = values.clone();
+    }
 
     let r = values[0].rank().to_owned();
     let mut boxit = false;
@@ -86,10 +105,7 @@ where
             break;
         }
     }
-
-    drop(a);
-    drop(b);
-    if boxit {
+    let res = if boxit {
         let mut boxes = Vec::with_capacity(values.len());
         for v in values {
             boxes.push(Scalar::boxed(arena, v)?);
@@ -97,5 +113,9 @@ where
         List::from_vec(boxes)
     } else {
         List::unranked(arena, values[0].dims() + 1, &[values.len()], values)
-    }
+    };
+    // See above
+    drop(a);
+    drop(b);
+    res
 }

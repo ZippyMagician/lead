@@ -91,6 +91,11 @@ impl List {
     }
 
     #[inline(always)]
+    pub unsafe fn as_list(self) -> Self {
+        self
+    }
+
+    #[inline(always)]
     pub fn dims(&self) -> usize {
         unsafe { std::hint::assert_unchecked(self.rk.len() == self.ds) };
         self.ds
@@ -476,6 +481,11 @@ impl ListWindow {
     #[inline(always)]
     pub fn list(&self) -> &[Scalar] {
         unsafe { std::slice::from_raw_parts(self.dt, self.ct) }
+    }
+
+    #[inline(always)]
+    pub fn list_mut(&mut self) -> &mut [Scalar] {
+        unsafe { &mut *slice_from_raw_parts_mut(self.dt, self.ct) }
     }
 
     #[inline(always)]

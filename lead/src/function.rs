@@ -1,4 +1,5 @@
 use std::fmt::{self, Debug};
+use std::ops::Deref;
 use std::rc::Rc;
 
 use crate::builtins::symbols::Symbol;
@@ -98,9 +99,10 @@ impl Function {
                     (m)(a, None, &o)
                 } else {
                     let a = a.to_list()?;
-                    Ok(apply_loosem(&o.a, a, o.rm, |a|
-                        (m)(Type::from(a.to_owned()?), None, &o)?.to_list())?.into()
-                    )
+                    Ok(apply_loosem(&o.a, a, o.rm, |a| {
+                        (m)(Type::from(a.deref().to_owned()?), None, &o)?.to_list()
+                    })?
+                    .into())
                 }
             });
             self.fl |= APPLIED_MONADIC;
@@ -125,7 +127,12 @@ impl Function {
                         (d)(a, Some(b), &o)
                     } else {
                         Ok(apply_loosed(&o.a, a.to_list()?, b.to_list()?, o.rd, |a, b| {
-                            (d)(Type::from(a.to_owned()?), Some(Type::from(b.to_owned()?)), &o)?.to_list()
+                            (d)(
+                                Type::from(a.deref().to_owned()?),
+                                Some(Type::from(b.deref().to_owned()?)),
+                                &o,
+                            )?
+                            .to_list()
                         })?
                         .into())
                     }
@@ -196,4 +203,3 @@ macro_rules! function {
 }
 
 pub(crate) use function;
-
