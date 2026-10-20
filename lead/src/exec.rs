@@ -568,14 +568,21 @@ impl Exec {
                 let right = self.right.take().ok_or(Error::Argument)?;
                 if right.is_map() {
                     self.right = Some(List::string("[:]").into());
-                } else if right.is_list() {
-                    let right = unsafe { right.to_list_unchecked() };
-                    if right.is_empty() {
-                        self.right = Some(List::string("()").into());
-                        return Ok(());
-                    }
+                } else if right.is_function() {
+                    self.right = Some(List::string("{}").into());
+                } else {
+                    let s = if right.is_scalar() {
+                        unsafe { right.to_scalar_unchecked() }
+                    } else {
+                        let right = unsafe { right.to_list_unchecked() };
+                        if right.is_empty() {
+                            self.right = Some(List::string("()").into());
+                            return Ok(());
+                        }
+                        right.take_list()[0]
+                    };
                     self.right = Some(
-                        match right.list()[0] {
+                        match s {
                             Scalar::Number(_) | Scalar::Float(_) => List::string("N"),
                             Scalar::Boolean(_) => List::string("B"),
                             Scalar::Char(_) => List::string("C"),
@@ -583,8 +590,6 @@ impl Exec {
                         }
                         .into(),
                     )
-                } else {
-                    self.right = Some(List::string("{}").into());
                 }
             }
             (TokenTag::Symbol, ">") => {
@@ -592,9 +597,13 @@ impl Exec {
                 if right.is_empty() || right.is_map() {
                     return err!(Value);
                 }
-                // SAFETY: `is_empty` returns tru for functions
-                let right = unsafe { right.to_list_unchecked() };
-                let obj = unsafe { right.list()[0].steal_box() };
+                // SAFETY: `is_empty` returns true for functions
+                let obj = if right.is_scalar() {
+                    unsafe { right.to_scalar_unchecked().steal_box() }
+                } else {
+                    let right = unsafe { right.to_list_unchecked() };
+                    unsafe { right.list()[0].steal_box() }
+                };
                 // Can treat a stolen function as an actual function
                 self.right = Some(obj);
             }

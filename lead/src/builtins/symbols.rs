@@ -768,12 +768,12 @@ pub(crate) fn mold(a: List, _: &Opts) -> Status<List> {
         }
     }
 
-    if lists.iter().any(|v| v.list()[0].is_box()) {
+    if lists.iter().any(|v| !v.is_empty() && v.list()[0].is_box()) {
         return err!(ValueS, "No fill character exists for boxes");
     }
     let flattened: Vec<Scalar> =
         lists.iter().map(|v| pad_rank((v.list(), v.rank()), &rank).unwrap()).flatten().collect();
-    rank.push(flattened.len());
+    rank.push(flattened.len() / rank.iter().product::<usize>());
     List::mat(flattened, rank.len(), rank)
 }
 

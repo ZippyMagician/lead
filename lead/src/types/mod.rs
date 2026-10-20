@@ -137,6 +137,14 @@ impl Type {
     }
 
     #[inline]
+    pub unsafe fn to_scalar_unchecked(self) -> Scalar {
+        match self {
+            Self::Scalar(s) => s,
+            _ => unsafe { hint::unreachable_unchecked() },
+        }
+    }
+
+    #[inline]
     pub unsafe fn to_list_unchecked(self) -> List {
         match self {
             Self::List(l) => l,
