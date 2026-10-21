@@ -7,7 +7,7 @@ use std::ops::*;
 use super::Type;
 use super::list::List;
 use crate::utils::error::{Error, Status, err};
-use crate::utils::{Arena, display_boxed};
+use crate::utils::{Arena, display_boxed, fmt_float, fmt_num};
 
 use num_traits::{AsPrimitive, Zero};
 use ordered_float::OrderedFloat;
@@ -413,8 +413,8 @@ impl Display for Scalar {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Number(n) => write!(f, "{n}"),
-            Self::Float(n) => write!(f, "{n}"),
+            Self::Number(n) => write!(f, "{}", fmt_num(*n)),
+            Self::Float(n) => write!(f, "{}", fmt_float(*n)),
             Self::Boolean(b) => write!(f, "{}", *b as u8),
             Self::Char(c) => write!(f, "{c}"),
             Self::Box(l) => {

@@ -17,6 +17,8 @@ use super::types::list::List;
 use super::types::scalar::Scalar::{self as S};
 use function::apply_loose;
 
+use num_traits::Zero;
+use ordered_float::{FloatCore, OrderedFloat};
 use typed_arena;
 
 pub type Arena = Rc<RefCell<typed_arena::Arena<Type>>>;
@@ -186,6 +188,24 @@ pub(crate) fn display_boxed<T: AsRef<str>>(
     let lines = inner.split('\n');
 
     display_boxed_lines(lines.collect(), mx, my, 0b0000).map(|n| n.join("\n"))
+}
+
+#[inline]
+pub(crate) fn fmt_num(x: i64) -> String {
+    if x < 0 { format!("_{}", x * -1) } else { format!("{x}") }
+}
+
+#[inline]
+pub(crate) fn fmt_float(x: OrderedFloat<f64>) -> std::borrow::Cow<'static, str> {
+    if x == OrderedFloat::infinity() {
+        "_".into()
+    } else if x == OrderedFloat::neg_infinity() {
+        "__".into()
+    } else if x < OrderedFloat::zero() {
+        format!("_{}", x.abs()).into()
+    } else {
+        format!("{x}").into()
+    }
 }
 
 #[inline(always)]

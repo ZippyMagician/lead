@@ -204,6 +204,10 @@ impl<'a> Lexer<'a> {
                 '_' if self.input.chars().nth(start).unwrap() != 'e' || found_signs == 0 => {
                     found_signs += 1;
                     if found_signs == 2 && !found_e {
+                        if end - start == 1 {
+                            self.chars.next();
+                            end += 1;
+                        }
                         break;
                     }
                 }
