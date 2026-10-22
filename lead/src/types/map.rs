@@ -4,6 +4,7 @@ use std::fmt::{self, Display};
 use super::Type;
 use super::list::List;
 use super::scalar::Scalar;
+use crate::scope::Scope;
 use crate::function::Function;
 use crate::utils;
 use crate::utils::error::Status;
@@ -18,6 +19,18 @@ pub struct Map {
 }
 
 impl Map {
+    #[inline]
+    pub fn from_scope(s: Scope, a: &utils::Arena) -> Status<Self> {
+        let mut internal = HashMap::new();
+        for (key, t) in s.take().into_inner() {
+            let Scalar::Box(p) = Scalar::boxed_t(a, t)? else {
+                unsafe { std::hint::unreachable_unchecked() }
+            };
+            internal.insert(key, p);
+        }
+        Ok(Self { internal })
+    }
+
     #[inline]
     pub fn new() -> Self {
         Self { internal: HashMap::new() }

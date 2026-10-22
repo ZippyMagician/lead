@@ -17,7 +17,7 @@ pub fn new_scope() -> Scope {
     Rc::new(RefCell::new(ScopeInternal::new(internals)))
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ScopeInternal {
     parent: Option<Scope>,
     env: HashMap<String, Type>,
@@ -58,9 +58,13 @@ impl ScopeInternal {
     pub fn set_function(&mut self, name: &str, f: Function) {
         self.env.insert(name.to_string(), Type::Function(f));
     }
+
+    pub fn into_inner(self) -> HashMap<String, Type> {
+        self.env
+    }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct Internals {
     map: HashMap<String, Type>,
     uniq: HashSet<String>,
@@ -83,6 +87,7 @@ impl Internals {
             uniq.insert("link".to_string());
         }
         uniq.insert("time".to_string());
+        uniq.insert("import".to_string());
         Self { map, uniq }
     }
 
@@ -123,6 +128,21 @@ impl Internals {
         &self, name: &str, a: Type, b: Option<Type>, scope: &Scope, arena: &Arena,
     ) -> Status<Option<Type>> {
         match name.as_bytes() {
+            // Import file from within lead's path
+            b"import" => {
+                let name = format!("{}", a.to_list()?);
+                let contents = std::fs::read_to_string(&name).map_err(|_| Error::Scope)?;
+                let child = ScopeInternal::child(scope.clone());
+                let mut executor = crate::exec::Exec::new(arena.clone(), child.clone());
+                executor.silent = true;
+                let mut l = crate::lex::Lexer::new(&contents);
+                l.tokenize()?;
+                let mut p = crate::parse::Parser::new(arena.clone(), child.clone(), l.tokens());
+                p.parse()?;
+                executor.exec(p.nodes())?;
+                crate::types::map::Map::from_scope(child, arena).map(Type::Map).map(Some)
+            }
+            // Timing function, evaluates string input. Optional left arg is iterations
             b"time" => {
                 use std::time::Instant;
                 let iterations = b
@@ -154,6 +174,7 @@ impl Internals {
                 acc /= iterations as u32;
                 Ok(Some(List::string(&format!("{acc:?}")).into()))
             }
+            // Extern declaration of shared object library
             #[cfg(feature = "ffi")]
             b"extern" => {
                 use std::path::{Path, absolute};
@@ -165,6 +186,9 @@ impl Internals {
                 crate::ffi::internal::load_library(&path)?;
                 Ok(None)
             }
+            // Yields a function pointer to the specified external function symbol. Searches
+            // through all currently declared shared object libraries. Expects specific
+            // signature to be valid.
             #[cfg(feature = "ffi")]
             b"link" => {
                 if b.is_some() {

@@ -286,8 +286,11 @@ impl Exec {
     ) -> Status<Option<Function>> {
         let s = self.scope.clone();
         let sc = s.borrow();
-        let it = sc.internals.borrow();
+        let itc = sc.internals.clone();
+        let it = itc.borrow();
+        drop(sc);
         if !it.has(name) {
+            drop(it);
             return err!(Scope);
         }
 
