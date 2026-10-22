@@ -1,5 +1,5 @@
 [build]
-rustflags = ["-C", "target-cpu=native"]
+rustflags = ["-C", "target-cpu=native", "-C", "llvm-args=-enable-dfa-jump-thread"]
 
 [source.crates-io]
 replace-with = "vendored-sources"
