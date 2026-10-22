@@ -1056,3 +1056,72 @@ pub(crate) fn dec(mut a: List, o: &Opts) -> Status<List> {
     for_0!(a; [v] = v.add(1)?);
     Ok(a)
 }
+
+// rightcurlyd | } | 1, 99 | Drop
+pub(crate) fn drop(a: List, b: List, o: &Opts) -> Status<List> {
+    let nums = a.take_list().iter().map(|n| n.to_num()).collect::<Status<Vec<i64>>>()?;
+    let mut rank: SmallVec<[usize; 4]> = SmallVec::from_slice(b.rank());
+    let sizes = [1]
+        .into_iter()
+        .chain(rank.iter().scan(1, |acc, x| {
+            *acc = *acc * *x;
+            Some(*acc)
+        }))
+        .collect::<Vec<usize>>();
+    let dims = b.dims();
+    let values = b.take_list();
+
+    if nums.len() > usize::max(dims, 1) {
+        cold_path();
+        return err!(Domain);
+    }
+
+    let mut dropped: SmallVec<[i64; 3]> = smallvec![0i64; dims];
+    for (i, n) in nums.iter().enumerate() {
+        dropped[i] = *n * (sizes[dims - i - 1] as i64);
+        rank[dims - i - 1] -= n.abs() as usize;
+    }
+
+    let size = rank.iter().product::<usize>();
+    if size > values.len() {
+        return Ok(List::empty());
+    }
+
+    let mut bucket: Vec<Scalar> = Vec::with_capacity(size);
+    let mut start = 0;
+    let mut end = values.len();
+
+    let ignore_last = dropped.len() == dims;
+    if dims > 1 {
+        for &drop in
+            dropped.iter().take(if ignore_last { dropped.len() - 1 } else { dropped.len() })
+        {
+            if drop < 0 {
+                end -= drop.abs() as usize;
+            } else {
+                start += drop as usize;
+            }
+        }
+    }
+
+    let mut indices: SmallVec<[(usize, usize); 2]> = smallvec![];
+    if ignore_last || dims < 2 {
+        let last = *dropped.last().unwrap();
+        let row_len = sizes[1];
+        let mut i = start;
+        while i < end {
+            if last < 0 {
+                indices.push((i, i + row_len - (last.abs() as usize)));
+            } else {
+                indices.push((i + (last as usize), i + row_len));
+            }
+            i += row_len;
+        }
+    }
+
+    for (start, end) in indices {
+        bucket.extend(&values[start..end]);
+    }
+
+    List::mat(bucket, rank.len(), rank)
+}
