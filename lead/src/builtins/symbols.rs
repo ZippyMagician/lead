@@ -13,7 +13,7 @@ use crate::utils::function::*;
 use crate::utils::symbols::{for_0, for_1, for_n, for_n2, maybe_apply, pad_rank, scalar_op};
 use scalar::Scalar::{self, Boolean, Char, Float, Number};
 
-use num_traits::AsPrimitive;
+use num_traits::{AsPrimitive, Zero};
 use ordered_float::{Float as OrderFloat, OrderedFloat};
 use smallvec::{SmallVec, smallvec};
 
@@ -334,14 +334,44 @@ pub(crate) fn shape(a: List, o: &Opts) -> Status<List> {
     })
 }
 
+// For dyadic '$'
+macro_rules! calc_shape {
+    ($a:ident, $b:ident) => {{
+        let r = $a
+            .list()
+            .iter()
+            .map(|n| n.to_float())
+            .collect::<Status<SmallVec<[OrderedFloat<f64>; 4]>>>()?;
+        // Check for interpreted rank values
+        let mut rank: SmallVec<[usize; 4]> = SmallVec::with_capacity(r.len());
+        let mut prod = 1;
+        let mut i = None;
+        for (j, &r) in r.iter().enumerate() {
+            if r != OrderedFloat::infinity() && r != OrderedFloat::neg_infinity() && r != -1. {
+                let r: usize = num_traits::Float::max(OrderedFloat::<f64>::zero(), r).as_();
+                rank.push(r);
+                prod *= r;
+            } else {
+                rank.push(0);
+                i = Some(j);
+            }
+        }
+        i.map_or(Ok(()), |i| {
+            if $b.len() % prod != 0 {
+                err!(Domain)
+            } else {
+                rank[i] = $b.len() / prod;
+                Ok(())
+            }
+        })?;
+        rank
+    }};
+}
+
 // dollard | $ | 1, 99 | Reshape
 pub(crate) fn reshape(a: List, b: List, o: &Opts) -> Status<List> {
     if a.dims() <= o.rd[0] as usize {
-        let mut rank = a
-            .list()
-            .iter()
-            .map(|n| n.to_num().map(|n| n as usize))
-            .collect::<Status<SmallVec<[usize; 4]>>>()?;
+        let mut rank = calc_shape!(a, b);
         if b.dims() <= o.rd[1] as usize {
             return b.with_rank(&rank);
         } else {
@@ -359,11 +389,7 @@ pub(crate) fn reshape(a: List, b: List, o: &Opts) -> Status<List> {
     }
 
     apply_loosed(&o.a, a, b, o.rd, |a, b| {
-        let rank = a
-            .list()
-            .iter()
-            .map(|n| n.to_num().map(|n| n as usize))
-            .collect::<Status<SmallVec<[usize; 4]>>>()?;
+        let rank = calc_shape!(a, b);
         b.with_rank(&rank)
     })
 }
