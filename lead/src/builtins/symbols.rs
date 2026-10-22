@@ -696,6 +696,9 @@ pub(crate) fn ravel(a: Type, o: &Opts) -> Status<Type> {
         return m.values().map(Type::from);
     }
 
+    if a.is_scalar() {
+        return Ok(unsafe { a.to_scalar_unchecked() }.into());
+    }
     let mut a = unsafe { a.to_list_unchecked() };
     if a.is_scalar() {
         return Ok(a.into());
