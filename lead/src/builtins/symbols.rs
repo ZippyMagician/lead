@@ -637,7 +637,7 @@ pub(super) fn range(mut a: List, o: &Opts) -> Status<List> {
 pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
     apply_loosed(&o.a, a, b, o.rd, |a, b| {
         if a.is_empty() {
-            std::hint::cold_path();
+            cold_path();
             return err!(Domain);
         }
 

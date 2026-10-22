@@ -80,6 +80,11 @@ where
     let right = b.ranked(r[1] as usize)?;
     let no_swap = left.len() >= right.len();
     let (mapper, value) = if no_swap { (left, right) } else { (right, left) };
+    let from = if no_swap {
+        (a.dims(), a.rank(), r[0] as usize)
+    } else {
+        (b.dims(), b.rank(), r[1] as usize)
+    };
 
     if mapper.len() % value.len() != 0 {
         return err!(Domain);
@@ -115,7 +120,7 @@ where
         }
         List::from_vec(boxes)
     } else {
-        List::unranked(arena, values[0].dims() + 1, &[values.len()], values)
+        List::unranked(arena, from.0 + 1, &from.1[from.2 + 1..], values)
     };
     // See above
     drop(ManuallyDrop::into_inner(a));
