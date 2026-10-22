@@ -12,7 +12,7 @@ cargo install --path lead-cli --features ffi
 ```
 to compile with the supporting FFI linking internals `[]extern` and `[]link`.
 
-Alternatively, you can comment out the vendor specifications in `.build/cargo.toml` and simply use the second command.
+Alternatively, you can comment out the vendor specifications in `.cargo/config.toml` and simply use the second command.
 
 ### Notes
 Based off some of my ideas when rewriting `ayr` in typescript.
