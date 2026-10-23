@@ -39,6 +39,8 @@ impl Exec {
         let mut current = Vec::new();
         node_lines.push(Node::Line);
         if self.block && self.reference.is_none() {
+            // SAFETY: Nodes lifetimes refer to &'a str, which are slices of a leaked input string.
+            // Therefore, they will always point to data that exists until the end of the program.
             self.reference = Some(unsafe {
                 std::mem::transmute::<Vec<Node<'a>>, Vec<Node<'static>>>(node_lines.clone())
             });
@@ -73,11 +75,7 @@ impl Exec {
                 PrimitiveString(list) => self.right = Some(list.into()),
                 PrimitiveBoxes(list) => self.right = Some(list.into()),
                 Literal(l) => self.right = Some(self.exec_literal(l, &mut line, &mut i)?),
-                LiteralInternal(l) => {
-                    if let Some(_) = self.exec_internal(l, &mut line, &mut i)? {
-                        return err!(Syntax, "Illegal dangling function");
-                    }
-                }
+                LiteralInternal(l) => self.right = self.exec_internal(l, &mut line, &mut i)?,
                 Tag(t) => self.exec_tag(t, &mut line, &mut i)?,
                 Function(f) => self.right = Some(self.exec_function(&f, &mut line, &mut i)?),
                 Op(o, l, r) => {
@@ -283,7 +281,7 @@ impl Exec {
     #[inline]
     fn exec_internal<'a>(
         &mut self, name: &'a str, list: &mut Vec<Node<'a>>, i: &mut usize,
-    ) -> Status<Option<Function>> {
+    ) -> Status<Option<Type>> {
         let s = self.scope.clone();
         let sc = s.borrow();
         let itc = sc.internals.clone();
@@ -295,7 +293,7 @@ impl Exec {
         }
 
         if it.is_instant(name) {
-            self.right = Some(it.get(name)?.clone());
+            Ok(Some(it.get(name)?.clone()))
         } else {
             if self.right.is_none() {
                 return err!(Argument);
@@ -307,10 +305,8 @@ impl Exec {
                 *i -= 1;
             }
 
-            let ret = it.exec_internal(name, right, left, &self.scope, &self.arena)?;
-            self.right = ret;
+            it.exec_internal(name, right, left, &self.scope, &self.arena)
         }
-        Ok(None)
     }
 
     #[inline]

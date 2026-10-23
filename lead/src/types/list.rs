@@ -96,6 +96,11 @@ impl List {
     }
 
     #[inline(always)]
+    pub fn owned(self) -> Status<Self> {
+        Ok(self)
+    }
+
+    #[inline(always)]
     pub fn dims(&self) -> usize {
         unsafe { std::hint::assert_unchecked(self.rk.len() == self.ds) };
         self.ds

@@ -151,7 +151,7 @@ macro_rules! maybe_apply {
 
     ($cond:expr, $arena:expr, $a:ident, $rm:expr, $body:expr) => {
         if $cond {
-            { $body }
+            (|| { $body })()
         } else {
             #[allow(unused_mut)]
             $crate::utils::function::apply_loosem($arena, $a, $rm, |mut $a| $body)
@@ -174,7 +174,7 @@ macro_rules! maybe_apply {
     // Unique case for when mutating is unavailable i.e. copied slices
     ($cond:expr, $arena:expr, $a:ident, $b:ident, $rd:expr, $copy_deterministic:ident, $body:expr) => {
         if $cond {
-            { $body }
+            (|| { $body })()
         } else {
             #[allow(unused_mut)]
             $crate::utils::function::apply_loosed($arena, $a, $b, $rd, |mut $a, mut $b| {
@@ -198,7 +198,7 @@ macro_rules! maybe_apply {
     // The above but no mutation
     ($cond:expr, $arena:expr, $a:ident, $b:ident, $rd:expr, $body:expr) => {
         if $cond {
-            { $body }
+            (|| { $body })()
         } else {
             $crate::utils::function::apply_loosed($arena, $a, $b, $rd, |$a, $b| $body)
         }

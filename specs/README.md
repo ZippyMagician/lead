@@ -175,17 +175,22 @@ Partial trains, of course, support constants within them too.
 |  ```=``` | Transpose/Keys|2  |   Equality   |  0 0  |Yields list of keys of map|
 |  ```~``` |  One-Range |   0  |     Index    | 99 0  |\`C (monad): alphabet upto arg|
 |  ```,``` |Ravel/Values|  99  |  Concatenate |  1 1  |Yields values of map|
-|  ```;``` |    Mold    |   1  |     Table    | 99 99 |       |
+|  ```;``` |    Mold    |   1  |     Table    | 99 99 |Uses scalar fill char|
 |  ```#``` |   Tally    |  99  |    Replicate | 99 1  |Also tallies maps|
+|  ```{``` |    Inc     |   0  |      Take    |  1 99 |Uses scalar fill char for out of bounds|
+|  ```}``` |    Dec     |   0  |      Drop    |  1 99 |Drops from leading axis descending, negative starts from back|
 
 ## Binders
 |  Binder |   Usage   | Monadic | Rank | Dyadic | Rank |        Notes       |
 |:-------:|:---------:|:-------:|:----:|:------:|:----:|:------------------:|
 | ```&``` | ```u&v``` | Compose |  N/A |  Atop  |  N/A | Binds if imm.      |
 | ```&:```| ```u&:v```|   Hook  |  N/A |  Hook  |  N/A | Binds as default if imm. |
-| ```/``` |  ```u/``` |  Reduce |   1  | N-wise Reduce | 0 99 |              |
+| ```/``` |  ```u/``` |   Fold  |   1  | N-wise Reduce | 0 99 |              |
+| ```\\```|  ```u\\```|   Scan  |  99  |  Table |99 99 | TODO: Move monad `/` to leading axis?|
 | ```@``` | ```u@v``` | Compose |  N/A |  Over  |  N/A | Rank if right arg is immediate |
 | ``` ` ```| ```u` ```|   Tie   |  N/A | Commute|  N/A | Flips operands if attached to dyadic operator|
+| ```"``` |  ```u"``` |   Each  |  99  |  Each  |99 99 | Each of leading axis |
+| ```":```|  ```u":```|  Atoms  |   0  |  Atoms |   0  | Equivalent to `u@0` |
 
 ## Library Builtins
 TODO. Old(er):

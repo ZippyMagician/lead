@@ -131,7 +131,18 @@ impl Type {
             Self::Scalar(s) => Ok(s),
             _ => {
                 hint::cold_path();
-                err!(ValueS, "Cannot treat as map.")
+                err!(ValueS, "Cannot treat as scalar.")
+            }
+        }
+    }
+
+    #[inline]
+    pub fn as_scalar(&self) -> Status<&Scalar> {
+        match &self {
+            Self::Scalar(s) => Ok(s),
+            _ => {
+                hint::cold_path();
+                err!(ValueS, "Cannot treat as scalar.")
             }
         }
     }
