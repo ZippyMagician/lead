@@ -1,6 +1,6 @@
 extern crate libloading;
 
-use super::{ScalarExtern, Window};
+use super::{ExternTypes, ScalarExtern, Window};
 use crate::types::list::List;
 use crate::utils::Arena;
 use crate::utils::error::{Error, Status, err};
@@ -10,7 +10,7 @@ use std::sync::RwLock;
 
 use libloading::Library;
 
-type InnerLink = unsafe extern "C" fn(*mut Window, *mut Window) -> *mut Window;
+type InnerLink = unsafe extern "C" fn(...) -> *mut Window;
 #[cfg(unix)]
 pub type LinkedFunction = libloading::os::unix::Symbol<InnerLink>;
 #[cfg(windows)]
@@ -18,7 +18,7 @@ pub type LinkedFunction = libloading::os::windows::Symbol<InnerLink>;
 
 pub static CTX_LIBS: RwLock<Vec<Library>> = RwLock::new(Vec::new());
 
-pub fn load_library(lib: &Path) -> Status {
+pub(crate) fn load_library(lib: &Path) -> Status {
     let mut lock = CTX_LIBS
         .write()
         .ok()
@@ -30,7 +30,7 @@ pub fn load_library(lib: &Path) -> Status {
     Ok(())
 }
 
-pub fn link_symbol(name: &str) -> Status<LinkedFunction> {
+pub(crate) fn link_symbol(name: &str, _vars: Option<Vec<ExternTypes>>) -> Status<LinkedFunction> {
     let lock =
         CTX_LIBS.read().ok().ok_or(Error::Internal("Failed to acquire shared libraries".into()))?;
     let mut res = Err(Error::Scope);
@@ -47,7 +47,7 @@ pub fn link_symbol(name: &str) -> Status<LinkedFunction> {
     res
 }
 
-pub fn call_symbol(
+pub(crate) fn call_symbol(
     symbol: LinkedFunction, arena: &Arena, a: List, b: Option<List>,
 ) -> Status<List> {
     let mut l1 = Vec::with_capacity(a.len());

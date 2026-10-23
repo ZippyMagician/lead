@@ -195,7 +195,8 @@ impl Internals {
                     return crate::err!(Domain);
                 }
                 let name = format!("{a}");
-                let sym = crate::ffi::internal::link_symbol(&name)?;
+                // TODO: Support other C ABI functions?
+                let sym = crate::ffi::internal::link_symbol(&name, None)?;
                 let ar = arena.clone();
                 Ok(Some(
                     function!(move |a, b, _| {

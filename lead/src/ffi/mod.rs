@@ -1,9 +1,32 @@
 pub mod internal;
 
+use std::mem::ManuallyDrop;
+
+use crate::function::Function;
 use crate::types::list::List;
+use crate::types::map::Map;
 use crate::types::scalar::Scalar;
 use crate::utils::Arena;
 use crate::utils::error::{Error, Status, err};
+
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
+#[repr(u8)]
+pub(crate) enum ExternTypes {
+    C_INT8,
+    C_INT16,
+    C_INT32,
+    C_INT64,
+    C_UINT8,
+    C_UINT16,
+    C_UINT32,
+    C_UINT64,
+    C_FLOAT,
+    C_DOUBLE,
+    C_BOOL,
+    C_CHAR,
+    C_STR,
+}
 
 #[repr(C)]
 pub struct Window {
@@ -27,14 +50,18 @@ pub enum ScalarExtern {
     Box(*mut Window),
 }
 
-struct ReprType {
-    tag: u8,
-    t: ReprValue,
+#[repr(C)]
+union TypeInner {
+    f: ManuallyDrop<Function>,
+    l: ManuallyDrop<List>,
+    s: Scalar,
+    m: ManuallyDrop<Map>,
 }
 
-struct ReprValue {
+#[repr(C)]
+struct ReprType {
     tag: u8,
-    v: List,
+    t: TypeInner,
 }
 
 impl ScalarExtern {
@@ -47,14 +74,11 @@ impl ScalarExtern {
             // SAFETY: Good luck
             Scalar::Box(t) => unsafe {
                 let r = t as *mut ReprType;
-                if (*r).tag != 0 {
+                if (*r).tag != 1 && (*r).tag != 2 {
                     return err!(Domain);
                 }
-                let v = &mut (*r).t as *mut ReprValue;
-                if (*v).tag != 0 {
-                    return err!(Domain);
-                }
-                let l = &mut (*v).v;
+
+                let l = if (*r).tag == 1 { &mut (*r).t.l } else { &mut List::scalar((*r).t.s) };
 
                 let mut alloc = l
                     .list()
@@ -68,7 +92,7 @@ impl ScalarExtern {
                     c: l.len(),
                     r: l.rank().as_ptr() as *mut usize,
                 };
-                Ok(Self::Box(Box::leak(Box::new(window))))
+                Ok(Self::Box(Box::into_raw(Box::new(window))))
             },
         }
     }

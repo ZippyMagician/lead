@@ -17,7 +17,7 @@ use scalar::Scalar;
 #[derive(Clone, Debug)]
 #[repr(C, u8)]
 pub enum Type {
-    Function(Function),
+    Function(Function) = 0,
     List(List),
     Scalar(Scalar),
     Map(Map),
