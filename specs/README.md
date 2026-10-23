@@ -186,7 +186,7 @@ Partial trains, of course, support constants within them too.
 | ```&``` | ```u&v``` | Compose |  N/A |  Atop  |  N/A | Binds if imm.      |
 | ```&:```| ```u&:v```|   Hook  |  N/A |  Hook  |  N/A | Binds as default if imm. |
 | ```/``` |  ```u/``` |   Fold  |   1  | N-wise Reduce | 0 99 |              |
-| ```\\```|  ```u\\```|   Scan  |  99  |  Table |99 99 | TODO: Move monad `/` to leading axis?|
+| ```\```|  ```u\```|   Scan  |  99  |  Table |99 99 | TODO: Move monad `/` to leading axis?|
 | ```@``` | ```u@v``` | Compose |  N/A |  Over  |  N/A | Rank if right arg is immediate |
 | ``` ` ```| ```u` ```|   Tie   |  N/A | Commute|  N/A | Flips operands if attached to dyadic operator|
 | ```"``` |  ```u"``` |   Each  |  99  |  Each  |99 99 | Each of leading axis |
