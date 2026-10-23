@@ -1,7 +1,8 @@
 # lead
-Redesign + rewrite of `ayr`
+Redesign + rewrite of `ayr`, a toy array language intended for code golfing. The rewrite takes a more general purpose approach, although most of the symbols will be lifted from the previous version.
 
 ## Building
+Clone the repository to a local location. Run
 ```sh
 cargo vendor
 cargo install --path lead-cli
@@ -13,30 +14,6 @@ cargo install --path lead-cli --features ffi
 to compile with the supporting FFI linking internals `[]extern` and `[]link`.
 
 Alternatively, you can comment out the vendor specifications in `.cargo/config.toml` and simply use the second command.
-
-### Notes
-Based off some of my ideas when rewriting `ayr` in typescript.
-
-Intention is for this to be relatively fast. TODO: Mark notes on more optimized operations here when possible.
-
-Handling ranked operations?
-Ideas:
-  - Stick with what I did for ayr, generally function that applies to rank
-  - Create more specialized functions for some ranks + generic for higher rank operations
-  - No generic function, fully specialize?
-
-  - Some symbol builtins will have more optimized rank support
-	  - General rank functions will be applied otherwise
-	  - Create some sort of distinction via flags? `@` will note and wrap when necessary
-
-  - How to handle multiple scalar types within list? Should I support?
-  - Should I overload operators more, like in some K impls?
-    - Harder to support if lists can hold multiple types..
-  - Keep `Scalar` types copyable for speed. Should I overload most arithmetic ops?
-  - Dicts?
-
-Best way to avoid some of the performance issues?
-- Apply functions don't need to reallocate for calls.. maybe some hacky solution to borrow data instead?
 
 ### Syntax (tentative)
 ```
@@ -60,5 +37,4 @@ map.('b')    -- 'second'
 - [x] Maps
 - [ ] Support variadic accessors?
 - [x] Accessors
-- [ ] Redesign/remove Internals
 - [ ] Tables?
