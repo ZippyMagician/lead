@@ -570,7 +570,7 @@ impl Exec {
                 } else if right.is_function() {
                     self.right = Some(List::string("{}").into());
                 } else {
-                    let s = if right.is_scalar() {
+                    let s = if right.is_scalar_strict() {
                         unsafe { right.to_scalar_unchecked() }
                     } else {
                         let right = unsafe { right.to_list_unchecked() };
