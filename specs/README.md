@@ -262,7 +262,7 @@ As I think of them
 
     -- equiv. to J's dyadic `;`.
     -- First separator between if/else is literal tab, since it is within a group.
-    laminate:{{((`X=[?]x):x <x),(`Y=[?]y):y)<y}}
+    cmb:{{((`X=[?]x):x <x),(`X=[?]y):y)<y}}
 
     -- comparison
     enc:{{(y):(x,`2|y)v y%2)x}}@1 0&`()
@@ -271,3 +271,15 @@ As I think of them
 enc is a version of `#:` I implemented in `ayr`. Not only does `enc2` represent `B:` / `ENC` (see above), which is a matrix output of binary representations of
 each inputted integer, it is also ~*15x* faster.. thought that was an interesting example to include. Sometimes I forget how useful array languages can be for
 certain calculations
+
+Some notes
+
+    A ([,@>@0`#":&:(id#)) n -- lead
+    A (],`"\:]:#":i:&#) n  DS. ayr
+
+Originally ayr featured implicit unboxing in practically any case, which differs from current lead design. Theoretically,
+```
+[,":`]:#":id&#
+```
+would be possible should `":` and `"` support implicit unboxing, as well as the train modifiers such as `]:` be reimplemented. I could see a valid argument
+for the case of each indeed supporting this feature, especially each atom. Or perhaps some kind of depth operator? I recall something similar in `ayr`
