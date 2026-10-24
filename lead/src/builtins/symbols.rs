@@ -765,7 +765,7 @@ pub(crate) fn concat(mut a: List, mut b: List, o: &Opts) -> Status<List> {
             v.extend(a.list());
             v.extend(b.list());
             return List::mat(v, r.len(), r);
-        } else if b.dims() <= o.rd[1] as usize {
+        } else if b.dims() <= o.rd[1] as usize && o.rd[0] == 1 {
             let mut r = SmallVec::from(a.rank());
             let last = b.dims() - 1;
             if r[0..last].iter().zip(&b.rank()[0..last]).any(|(a, b)| a != b) {
@@ -779,7 +779,7 @@ pub(crate) fn concat(mut a: List, mut b: List, o: &Opts) -> Status<List> {
                 v.extend(b.list());
             });
             return List::mat(v, a.dims(), r);
-        } else if a.dims() <= o.rd[0] as usize {
+        } else if a.dims() <= o.rd[0] as usize && o.rd[1] == 1 {
             let mut r = SmallVec::from(b.rank());
             let last = a.dims() - 1;
             if r[0..last].iter().zip(&a.rank()[0..last]).any(|(a, b)| a != b) {
@@ -825,10 +825,19 @@ pub(crate) fn concat(mut a: List, mut b: List, o: &Opts) -> Status<List> {
     });
 
     let ldim = usize::max(ad, bd);
-    let r = if a.dims() < b.dims() { b.rank() } else { a.rank() };
+    let r = if a.dims() < b.dims() {
+        b.rank()
+    } else if a.dims() == b.dims() {
+        if a.len() > b.len() { a.rank() } else { b.rank() }
+    } else {
+        a.rank()
+    };
     let mut rank: SmallVec<[usize; 4]> = smallvec![];
-    if ad == 0 && bd == 0 {
+
+    if ad == 0 || bd == 0 {
         rank.push(2);
+    }
+    if ad == 0 && bd == 0 {
         rank.extend(r.iter().copied());
     } else {
         for i in 0..usize::max(ldim, r.len()) {
