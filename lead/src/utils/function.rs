@@ -118,7 +118,7 @@ where
         for v in values {
             boxes.push(Scalar::boxed(arena, v)?);
         }
-        List::from_vec(boxes)
+        List::mat(boxes, from.0, SmallVec::from_slice(from.1))
     } else {
         List::unranked(arena, from.0 + 1, &from.1[from.2 + 1..], values)
     };
