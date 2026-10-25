@@ -6,7 +6,7 @@ use std::ops::*;
 
 use crate::function::Opts;
 use crate::types::Type;
-use crate::types::list::List;
+use crate::types::list::{INLINE_SIZE, List};
 use crate::types::scalar;
 use crate::utils::error::{Error, Status, err};
 use crate::utils::function::*;
@@ -342,9 +342,10 @@ macro_rules! calc_shape {
             .list()
             .iter()
             .map(|n| n.to_float())
-            .collect::<Status<SmallVec<[OrderedFloat<f64>; 4]>>>()?;
+            .collect::<Status<SmallVec<[OrderedFloat<f64>; $crate::types::list::INLINE_SIZE]>>>()?;
         // Check for interpreted rank values
-        let mut rank: SmallVec<[usize; 4]> = SmallVec::with_capacity(r.len());
+        let mut rank: SmallVec<[usize; $crate::types::list::INLINE_SIZE]> =
+            SmallVec::with_capacity(r.len());
         let mut prod = 1;
         let mut i = None;
         for (j, &r) in r.iter().enumerate() {
@@ -829,7 +830,7 @@ pub(crate) fn concat(mut a: List, mut b: List, o: &Opts) -> Status<List> {
     } else {
         a.rank()
     };
-    let mut rank: SmallVec<[usize; 4]> = smallvec![];
+    let mut rank: SmallVec<[usize; INLINE_SIZE]> = smallvec![];
 
     if ad == 0 || bd == 0 {
         rank.push(2);
@@ -863,7 +864,7 @@ pub(crate) fn mold(a: List, _: &Opts) -> Status<List> {
         .map(|b| unsafe { b.as_unboxed_unchecked() }.as_list())
         .collect::<Status<Vec<&List>>>()?;
 
-    let mut rank: SmallVec<[usize; 4]> = SmallVec::new();
+    let mut rank: SmallVec<[usize; INLINE_SIZE]> = SmallVec::new();
     for list in &lists {
         for i in 0..list.dims() {
             if i == rank.len() {
@@ -1069,7 +1070,7 @@ pub(crate) fn dec(mut a: List, o: &Opts) -> Status<List> {
 // rightcurlyd | } | 1, 99 | Drop
 pub(crate) fn drop(a: List, b: List, o: &Opts) -> Status<List> {
     let nums = a.take_list().iter().map(|n| n.to_num()).collect::<Status<Vec<i64>>>()?;
-    let mut rank: SmallVec<[usize; 4]> = SmallVec::from_slice(b.rank());
+    let mut rank: SmallVec<[usize; INLINE_SIZE]> = SmallVec::from_slice(b.rank());
     let sizes = [1]
         .into_iter()
         .chain(rank.iter().scan(1, |acc, x| {

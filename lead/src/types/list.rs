@@ -13,7 +13,7 @@ use crate::utils::Arena;
 use crate::utils::error::{Status, err};
 use crate::utils::{compatible, display_boxed_lines};
 
-const INLINE_SIZE: usize = 4;
+pub(crate) const INLINE_SIZE: usize = 2;
 
 #[derive(Clone, Debug, Hash)]
 pub struct List {
@@ -69,11 +69,7 @@ impl List {
     #[inline]
     pub fn string(data: &str) -> Self {
         let size = data.chars().count();
-        Self {
-            dt: data.chars().map(Scalar::Char).collect::<EcoVec<Scalar>>().into(),
-            ds: 1,
-            rk: smallvec![size],
-        }
+        unsafe { Self::alloc_iter(&[size], data.chars().map(Scalar::Char)).unwrap() }
     }
 
     #[inline(always)]
@@ -161,6 +157,20 @@ impl List {
         Self { dt: self.dt.sliced(start, end), ds: r.len(), rk: SmallVec::from_slice(r) }
     }
 
+    #[inline(always)]
+    pub(crate) unsafe fn try_alloc_iter<T>(r: &[usize], bucket: T) -> Status<List>
+    where
+        T: Iterator<Item = Status<Scalar>>,
+    {
+        let count: usize = r.iter().product();
+        let dims = r.len();
+        if dims == 0 {
+            return Ok(List::empty());
+        }
+        let rank = SmallVec::from_slice(r);
+        Ok(unsafe { Self::new(Scalars::try_from_iter(bucket, count)?, dims, rank) })
+    }
+
     // SAFETY: Assumes called has provided valid sizes
     #[inline(always)]
     pub(crate) unsafe fn alloc_iter<T>(r: &[usize], bucket: T) -> Status<List>
@@ -173,7 +183,6 @@ impl List {
             return Ok(List::empty());
         }
         let rank = SmallVec::from_slice(r);
-
         let bucket = SizedScalars::new(bucket, count);
         Ok(unsafe { Self::new(Scalars::from_iter(bucket, count), dims, rank) })
     }
@@ -222,30 +231,30 @@ impl List {
         }
 
         if box_it {
-            List::mat(
-                lists
-                    .into_iter()
-                    .map(|n| Scalar::boxed(&arena, n))
-                    .collect::<Status<EcoVec<Scalar>>>()?,
-                trailing_rank.len(),
-                trailing_rank.into(),
-            )
+            unsafe {
+                Self::try_alloc_iter(
+                    trailing_rank,
+                    lists.into_iter().map(|n| Scalar::boxed(&arena, n)),
+                )
+            }
         } else {
             let mut build: EcoVec<Scalar> =
                 EcoVec::with_capacity(rank.iter().product::<usize>() * lists.len());
             for list in lists.iter() {
-                build.extend(list.list().iter().copied());
+                build.extend_from_slice(list.list());
             }
 
-            let mut rank: SmallVec<[usize; 4]> =
+            let mut rank: SmallVec<[usize; INLINE_SIZE]> =
                 if eq_rank(rank, &[1]) { smallvec![] } else { rank.into() };
-            rank.extend(trailing_rank.iter().copied());
+            rank.extend_from_slice(trailing_rank);
 
             let diff = build.len() / rank.iter().product::<usize>();
             if diff != 1 {
                 rank.push(diff);
             }
-            List::mat(build, rank.len(), rank)
+            unsafe {
+                Self::alloc_iter(&rank, lists.into_iter().flat_map(|n| n.take_list().into_iter()))
+            }
         }
     }
 }
@@ -486,7 +495,7 @@ impl Scalars {
 
     #[inline(always)]
     pub(crate) fn sliced(&self, start: usize, end: usize) -> Self {
-        Self { v: self.v.clone(), s: start, e: end }
+        Self { v: self.v.clone(), s: self.s + start, e: self.s + end }
     }
 
     // SAFETY: What an incredible function
@@ -495,12 +504,12 @@ impl Scalars {
     where
         T: Iterator<Item = Scalar>,
     {
-        let mut v = EcoVec::with_capacity(it.size_hint().0);
+        let mut v = EcoVec::with_capacity(end);
         // SAFETY: Ptr is checked for null
         // as for the casting, well lol
         unsafe {
             let ptr = v.as_ptr() as *mut Scalar;
-            for (i, s) in it.enumerate() {
+            for (i, s) in it.take(end).enumerate() {
                 ptr.add(i).write(s);
             }
             // SAFETY: lmao
@@ -509,6 +518,25 @@ impl Scalars {
             v = std::mem::transmute(temp);
         }
         Self { v, s: 0, e: end }
+    }
+
+    #[inline(always)]
+    pub(crate) unsafe fn try_from_iter<T>(it: T, end: usize) -> Status<Self>
+    where
+        T: Iterator<Item = Status<Scalar>>,
+    {
+        let mut v = EcoVec::with_capacity(end);
+        // SAFETY: See above
+        unsafe {
+            let ptr = v.as_ptr() as *mut Scalar;
+            for (i, s) in it.take(end).enumerate() {
+                ptr.add(i).write(s?);
+            }
+            let mut temp: EcoVecInternal<Scalar> = std::mem::transmute(v);
+            temp.len = end;
+            v = std::mem::transmute(temp);
+        }
+        Ok(Self { v, s: 0, e: end })
     }
 }
 
