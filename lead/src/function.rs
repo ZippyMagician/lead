@@ -98,10 +98,8 @@ impl Function {
                     (m)(a, None, &o)
                 } else {
                     let a = a.to_list()?;
-                    Ok(apply_loosem(&o.a, a, o.rm, |a| {
-                        (m)(Type::from(a), None, &o)?.to_list()
-                    })?
-                    .into())
+                    Ok(apply_loosem(&o.a, a, o.rm, |a| (m)(Type::from(a), None, &o)?.to_list())?
+                        .into())
                 }
             });
             self.fl |= APPLIED_MONADIC;

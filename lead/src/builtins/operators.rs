@@ -341,9 +341,7 @@ pub(crate) fn scan_table(f: Type, a: Arena, s: Scope) -> Status<Function> {
                     r.clear();
                 }
                 r.push(runs.len());
-                unsafe {
-                    List::alloc_iter(&r, b.into_iter().flat_map(|n| n.take_list().into_iter()))
-                }
+                unsafe { List::alloc_iter(&r, b.iter().flat_map(|n| n.list().iter()).copied()) }
             }
         })
         .map(Type::List)
@@ -409,8 +407,7 @@ pub(crate) fn scan_table(f: Type, a: Arena, s: Scope) -> Status<Function> {
             unsafe {
                 List::alloc_iter(
                     &r,
-                    v.into_iter()
-                        .flat_map(|l| l.to_list().unwrap_unchecked().take_list().into_iter()),
+                    v.iter().flat_map(|l| l.as_list().unwrap_unchecked().list().iter().copied()),
                 )
             }
         }

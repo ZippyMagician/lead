@@ -1,6 +1,7 @@
 use super::error::Status;
 use crate::types::scalar::Scalar;
 
+use ecow::EcoVec;
 use smallvec::{SmallVec, smallvec};
 
 macro_rules! for_0 {
@@ -151,7 +152,7 @@ macro_rules! maybe_apply {
 
     ($cond:expr, $arena:expr, $a:ident, $rm:expr, $body:expr) => {
         if $cond {
-            (|| { $body })()
+            (|| $body)()
         } else {
             #[allow(unused_mut)]
             $crate::utils::function::apply_loosem($arena, $a, $rm, |mut $a| $body)
@@ -172,7 +173,7 @@ macro_rules! maybe_apply {
 
     ($cond:expr, $arena:expr, $a:ident, $b:ident, $rd:expr, $body:expr) => {
         if $cond {
-            (|| { $body })()
+            (|| $body)()
         } else {
             #[allow(unused_mut)]
             $crate::utils::function::apply_loosed($arena, $a, $b, $rd, |mut $a, mut $b| $body)
@@ -273,4 +274,58 @@ pub(crate) fn pad_rank((v, vr): (&[Scalar], &[usize]), r: &[usize]) -> Status<Ve
     }
 
     Ok(b)
+}
+
+#[repr(C)]
+pub(crate) struct EcoView {
+    ptr: *mut Scalar,
+    pub(crate) i: usize,
+}
+
+// SAFETY: EcoVec is created and used without cloning. Assumes `f` does *not* clone and pass along
+// the vec, nor drop it immediately. `EcoVecInternal` matches the layout of `EcoVec`, allowing
+// mutation. Cannot build `EcoVec` directly from a pointer, as it's header is preallocated to
+// preserve reference counting within the `ecow` crate.
+pub(crate) fn with_eco(
+    capacity: usize, f: impl FnOnce(&mut EcoView) -> Status,
+) -> Status<EcoVec<Scalar>> {
+    let mut eco = EcoVec::with_capacity(capacity);
+    let ptr = eco.as_ptr() as *mut Scalar;
+    let mut view = EcoView { ptr, i: 0 };
+    f(&mut view)?;
+    // SAFETY: lmao
+    unsafe {
+        let mut temp: crate::types::list::EcoVecInternal<Scalar> = std::mem::transmute(eco);
+        temp.len = capacity;
+        eco = std::mem::transmute(temp);
+    };
+    assert!(view.i == capacity);
+    Ok(eco)
+}
+
+impl EcoView {
+    #[inline(always)]
+    pub(crate) fn extend(&mut self, t: &[Scalar]) {
+        for item in t {
+            self.push(*item);
+        }
+    }
+
+    #[inline(always)]
+    pub(crate) fn extend_iter<T>(&mut self, t: T)
+    where
+        T: IntoIterator<Item = Scalar>,
+    {
+        for item in t.into_iter() {
+            self.push(item);
+        }
+    }
+
+    #[inline(always)]
+    pub(crate) fn push(&mut self, t: Scalar) {
+        unsafe {
+            self.ptr.add(self.i).write(t);
+            self.i += 1;
+        }
+    }
 }

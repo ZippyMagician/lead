@@ -7,7 +7,6 @@ use crate::types::scalar::Scalar;
 use super::Arena;
 use super::error::{Status, err};
 
-use ecow::EcoVec;
 use smallvec::{SmallVec, smallvec};
 
 // Returns a vector of `ListView`s, i.e. mutable slices pointing to adjacent values of rank `n`.
@@ -53,14 +52,8 @@ where
     let dims = l.dims();
     let rank = l.rank().to_vec();
     let lists = l.ranked(r as usize)?;
-    let single = lists.len() == 1;
     let result = lists.into_iter().map(|a| f(a)).collect::<Status<Vec<List>>>()?;
-    let mut res = List::unranked(arena, dims, &rank[r as usize..], result);
-    // Avoid issues with single length windows being dropped
-    if single {
-        std::hint::cold_path();
-        res = res.clone();
-    }
+    let res = List::unranked(arena, dims, &rank[r as usize..], result);
     // Drop after windows are collected and memcpy'd
     drop(l);
     res
@@ -86,7 +79,7 @@ where
         return err!(Domain);
     }
 
-    let mut values = mapper
+    let values = mapper
         .iter()
         .zip(value.iter().cycle())
         .map(|(l, r)| {
@@ -95,30 +88,20 @@ where
             if no_swap { f(l, r) } else { f(r, l) }
         })
         .collect::<Status<Vec<List>>>()?;
-    if values.len() == 1 {
-        // See apply_loosem for explanation
-        std::hint::cold_path();
-        values[0] = values[0].clone();
-    }
 
     let r = values[0].rank().to_owned();
     let mut boxit = false;
     for v in values.iter().skip(1) {
-        if v.rank() != r {
+        if v.rank() != r || values[0].get_type() != v.get_type() {
             boxit = true;
             break;
         }
     }
     let res = if boxit {
-        let mut boxes = EcoVec::with_capacity(values.len());
-        for v in values {
-            boxes.push(Scalar::boxed(arena, v)?);
-        }
-        List::mat(boxes, from.0, SmallVec::from_slice(from.1))
+        unsafe { List::try_alloc_iter(from.1, values.into_iter().map(|v| Scalar::boxed(arena, v))) }
     } else {
-        List::unranked(arena, from.0 + 1, &from.1[from.2 + 1..], values)
+        List::unranked_unchecked(&from.1[from.2 + 1..], values)
     };
-    // See above
     drop(a);
     drop(b);
     res

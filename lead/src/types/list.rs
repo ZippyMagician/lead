@@ -78,11 +78,6 @@ impl List {
     }
 
     #[inline(always)]
-    pub fn take_list(self) -> EcoVec<Scalar> {
-        self.dt.take_list()
-    }
-
-    #[inline(always)]
     pub fn list_mut(&mut self) -> &mut [Scalar] {
         self.dt.list_mut()
     }
@@ -111,6 +106,16 @@ impl List {
     #[inline(always)]
     pub fn is_scalar(&self) -> bool {
         self.len() == 1
+    }
+
+    #[inline(always)]
+    pub fn get_type(&self) -> u8 {
+        if self.is_empty() {
+            std::hint::cold_path();
+            4
+        } else {
+            self.list()[0].repr()
+        }
     }
 
     #[inline]
@@ -199,13 +204,13 @@ impl List {
         } else if dims >= self.dims() {
             Ok(vec![self.clone()])
         } else {
-            let ct: usize = self.rank().iter().product();
+            let ct: usize = self.rank().iter().take(dims).product();
             unsafe { std::hint::assert_unchecked(self.len() % ct == 0) }
 
             let size = self.len() / ct;
             let mut v = Vec::with_capacity(size);
             for i in 0..size {
-                v.push(unsafe { self.sliced(i * size, i * size + size, &self.rank()[0..dims]) });
+                v.push(unsafe { self.sliced(i * ct, i * ct + ct, &self.rank()[0..dims]) });
             }
             return Ok(v);
         }
@@ -238,24 +243,39 @@ impl List {
                 )
             }
         } else {
-            let mut build: EcoVec<Scalar> =
-                EcoVec::with_capacity(rank.iter().product::<usize>() * lists.len());
-            for list in lists.iter() {
-                build.extend_from_slice(list.list());
-            }
-
             let mut rank: SmallVec<[usize; INLINE_SIZE]> =
                 if eq_rank(rank, &[1]) { smallvec![] } else { rank.into() };
             rank.extend_from_slice(trailing_rank);
 
-            let diff = build.len() / rank.iter().product::<usize>();
+            let diff = lists[0].rank().iter().product::<usize>() * lists.len()
+                / rank.iter().product::<usize>();
             if diff != 1 {
                 rank.push(diff);
             }
-            unsafe {
-                Self::alloc_iter(&rank, lists.into_iter().flat_map(|n| n.take_list().into_iter()))
-            }
+            unsafe { Self::alloc_iter(&rank, lists.iter().flat_map(|n| n.list()).copied()) }
         }
+    }
+
+    // Assumes lists have already been checked to match
+    #[inline]
+    pub fn unranked_unchecked(trailing_rank: &[usize], mut lists: Vec<List>) -> Status<Self> {
+        if lists.is_empty() {
+            return Ok(List::empty());
+        } else if lists.len() == 1 {
+            return Ok(std::mem::take(&mut lists[0]));
+        }
+
+        let rank = lists[0].rank();
+        let mut rank: SmallVec<[usize; INLINE_SIZE]> =
+            if eq_rank(rank, &[1]) { smallvec![] } else { rank.into() };
+        rank.extend_from_slice(trailing_rank);
+
+        let diff = lists[0].rank().iter().product::<usize>() * lists.len()
+            / rank.iter().product::<usize>();
+        if diff != 1 {
+            rank.push(diff);
+        }
+        unsafe { Self::alloc_iter(&rank, lists.iter().flat_map(|n| n.list()).copied()) }
     }
 }
 
@@ -474,12 +494,7 @@ pub struct Scalars {
 impl Scalars {
     #[inline(always)]
     pub(crate) fn list(&self) -> &[Scalar] {
-        &self.v
-    }
-
-    #[inline(always)]
-    pub(crate) fn take_list(self) -> EcoVec<Scalar> {
-        self.v
+        &self.v[self.s..self.e]
     }
 
     #[inline(always)]
@@ -540,8 +555,9 @@ impl Scalars {
     }
 }
 
+// ecow::EcoVec copy for mutating len
 #[repr(C)]
-struct EcoVecInternal<T> {
+pub(crate) struct EcoVecInternal<T> {
     ptr: std::ptr::NonNull<T>,
     pub(crate) len: usize,
     phantom: std::marker::PhantomData<T>,

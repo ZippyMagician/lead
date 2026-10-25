@@ -578,7 +578,7 @@ impl Exec {
                             self.right = Some(List::string("()").into());
                             return Ok(());
                         }
-                        right.take_list()[0]
+                        right.list()[0]
                     };
                     self.right = Some(
                         match s {
