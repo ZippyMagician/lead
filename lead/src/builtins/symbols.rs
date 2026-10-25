@@ -13,6 +13,7 @@ use crate::utils::function::*;
 use crate::utils::symbols::{for_0, for_1, for_n, for_n2, maybe_apply, pad_rank, scalar_op};
 use scalar::Scalar::{self, Boolean, Char, Float, Number};
 
+use ecow::{EcoVec, eco_vec};
 use num_traits::{AsPrimitive, Zero};
 use ordered_float::{Float as OrderFloat, OrderedFloat};
 use smallvec::{SmallVec, smallvec};
@@ -376,7 +377,7 @@ pub(crate) fn reshape(a: List, b: List, o: &Opts) -> Status<List> {
             return b.with_rank(&rank);
         } else {
             let r = &b.rank()[0..o.rd[1] as usize];
-            let mut v = Vec::with_capacity(
+            let mut v = EcoVec::with_capacity(
                 b.len() / r.iter().product::<usize>() * rank.iter().product::<usize>(),
             );
             for_n!(b, o.rd[1] as usize; [(b, r)] {
@@ -420,7 +421,7 @@ pub(super) fn left(a: Type, b: Type, o: &Opts) -> Status<Type> {
             a,
             b,
             o.rd,
-            Ok(unsafe { a.as_list() })
+            Ok(a)
         )
         .map(Type::List)
     }
@@ -447,7 +448,7 @@ pub(super) fn right(a: Type, b: Type, o: &Opts) -> Status<Type> {
             a,
             b,
             o.rd,
-            Ok(unsafe { b.as_list() })
+            Ok(b)
         )
         .map(Type::List)
     }
@@ -457,7 +458,7 @@ pub(super) fn right(a: Type, b: Type, o: &Opts) -> Status<Type> {
 pub(super) fn dedup_sieve(a: List, o: &Opts) -> Status<List> {
     if o.rm == 0 {
         let mut m = HashSet::new();
-        let mut new = Vec::with_capacity(a.len());
+        let mut new = EcoVec::with_capacity(a.len());
         for s in a.list() {
             if m.contains(s) {
                 continue;
@@ -472,10 +473,7 @@ pub(super) fn dedup_sieve(a: List, o: &Opts) -> Status<List> {
         let runs = a.ranked(ldims)?;
         let mut m = HashSet::new();
         let mut new = Vec::with_capacity(runs.len());
-        for run in runs.iter() {
-            // SAFETY: I call List::unranked after, which will ensure these do not
-            // outlive the actual allocation, which is in `runs`.
-            let l = unsafe { run.as_list() };
+        for l in runs.into_iter() {
             if m.contains(&l) {
                 continue;
             }
@@ -526,7 +524,7 @@ pub(super) fn group(a: List, b: List, o: &Opts) -> Status<List> {
         }
         build.push(List::from_vec(construct.into_iter().map(
             |n| Scalar::boxed(&o.a, n)
-        ).collect::<Status<Vec<Scalar>>>()?)?);
+        ).collect::<Status<EcoVec<Scalar>>>()?)?);
     });
 
     List::unranked(&o.a, dims, &rank, build)
@@ -583,7 +581,7 @@ pub(super) fn transpose_keys(a: Type, o: &Opts) -> Status<Type> {
                 .iter()
                 .zip(0..)
                 .flat_map(|(_, i)| trailing.iter().map(move |v| v.list()[i]))
-                .collect::<Vec<Scalar>>(),
+                .collect::<EcoVec<Scalar>>(),
             leading,
             rank.into(),
         )
@@ -627,8 +625,7 @@ pub(super) fn range(mut a: List, o: &Opts) -> Status<List> {
                     }
                 }, *v)?)?
             );
-            // SAFETY: Underlying `apply_loosem` will take ownership if necessary
-            Ok(unsafe { a.as_list() })
+            Ok(a)
         }
     })
 }
@@ -653,8 +650,8 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
             if i >= unsafe { *a.rank().last().unwrap_unchecked() } {
                 return err!(Domain);
             }
-            let values = a.list()[i * r..i * r + r].to_vec();
-            List::mat(values, a.dims() - 1, rank)
+            let values = unsafe { a.sliced(i * r, i * r + r, &rank) };
+            Ok(values)
         } else {
             let index = unsafe { index.unbox_unchecked() }
                 .to_list()?
@@ -675,13 +672,13 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
                 prefix *= rank[rank.len() - j - 1];
             }
 
-            let rank: SmallVec<[usize; 4]> =
-                rank.iter().copied().take(a.dims() - index.len()).collect();
+            let rank = &rank[0..a.dims() - index.len()];
             let ct: usize = rank.iter().copied().product();
             if ct == 0 {
                 Ok(List::scalar(a.list()[i]))
             } else {
-                List::mat(a.list()[i..i + ct].to_vec(), a.dims() - index.len(), rank)
+                let values = unsafe { a.sliced(i, i + ct, &rank) };
+                Ok(values)
             }
         }
     })
@@ -729,26 +726,26 @@ pub(crate) fn concat(mut a: List, mut b: List, o: &Opts) -> Status<List> {
 
     if o.rd[0] == 1 && o.rd[1] == 1 {
         if a.dims() < 2 && b.dims() < 2 {
-            let mut v = Vec::with_capacity(a.len() + b.len());
-            v.extend(a.list());
-            v.extend(b.list());
+            let mut v = EcoVec::with_capacity(a.len() + b.len());
+            v.extend_from_slice(a.list());
+            v.extend_from_slice(b.list());
             return List::from_vec(v);
         } else if b.dims() < 2 {
             let mut rank = SmallVec::from(a.rank());
             rank[0] += b.len();
-            let mut build = Vec::with_capacity(rank.iter().product());
+            let mut build = EcoVec::with_capacity(rank.iter().product());
             for_1!(a; [l, rk] {
-                build.extend(l);
-                build.extend(b.list());
+                build.extend_from_slice(l);
+                build.extend_from_slice(b.list());
             });
             return List::mat(build, a.dims(), rank);
         } else if a.dims() < 2 {
             let mut rank = SmallVec::from(b.rank());
             rank[0] += a.len();
-            let mut build = Vec::with_capacity(rank.iter().product());
+            let mut build = EcoVec::with_capacity(rank.iter().product());
             for_1!(b; [r, rk] {
-                build.extend(a.list());
-                build.extend(r);
+                build.extend_from_slice(a.list());
+                build.extend_from_slice(r);
             });
             return List::mat(build, b.dims(), rank);
         }
@@ -761,9 +758,9 @@ pub(crate) fn concat(mut a: List, mut b: List, o: &Opts) -> Status<List> {
             }
             r[last] += b.rank()[last];
 
-            let mut v = Vec::with_capacity(a.len() + b.len());
-            v.extend(a.list());
-            v.extend(b.list());
+            let mut v = EcoVec::with_capacity(a.len() + b.len());
+            v.extend_from_slice(a.list());
+            v.extend_from_slice(b.list());
             return List::mat(v, r.len(), r);
         } else if b.dims() <= o.rd[1] as usize && o.rd[0] == 1 {
             let mut r = SmallVec::from(a.rank());
@@ -773,10 +770,10 @@ pub(crate) fn concat(mut a: List, mut b: List, o: &Opts) -> Status<List> {
             }
             r[last] += b.rank()[last];
 
-            let mut v = Vec::with_capacity(r.iter().product());
+            let mut v = EcoVec::with_capacity(r.iter().product());
             for_1!(a; [l, rk] {
-                v.extend(l);
-                v.extend(b.list());
+                v.extend_from_slice(l);
+                v.extend_from_slice(b.list());
             });
             return List::mat(v, a.dims(), r);
         } else if a.dims() <= o.rd[0] as usize && o.rd[1] == 1 {
@@ -787,10 +784,10 @@ pub(crate) fn concat(mut a: List, mut b: List, o: &Opts) -> Status<List> {
             }
             r[last] += a.rank()[last];
 
-            let mut v = Vec::with_capacity(r.iter().product());
+            let mut v = EcoVec::with_capacity(r.iter().product());
             for_1!(b; [r, rk] {
-                v.extend(a.list());
-                v.extend(r);
+                v.extend_from_slice(a.list());
+                v.extend_from_slice(r);
             });
             return List::mat(v, b.dims(), r);
         }
@@ -814,14 +811,14 @@ pub(crate) fn concat(mut a: List, mut b: List, o: &Opts) -> Status<List> {
         return err!(Domain);
     }
 
-    let mut v: Vec<Scalar> = Vec::with_capacity(counter * (size_a + size_b));
+    let mut v: EcoVec<Scalar> = EcoVec::with_capacity(counter * (size_a + size_b));
     for_n2!(ad, a, bd, b; [(l, lk), (r, rk)] {
         if lk.is_empty() && rk.len() > 1 || rk.is_empty() && lk.len() > 1 {
             std::hint::cold_path();
             return err!(Domain);
         }
-        v.extend(l);
-        v.extend(r);
+        v.extend_from_slice(l);
+        v.extend_from_slice(r);
     });
 
     let ldim = usize::max(ad, bd);
@@ -879,7 +876,7 @@ pub(crate) fn mold(a: List, _: &Opts) -> Status<List> {
     if lists.iter().any(|v| !v.is_empty() && v.list()[0].is_box()) {
         return err!(ValueS, "No fill character exists for boxes");
     }
-    let flattened: Vec<Scalar> =
+    let flattened: EcoVec<Scalar> =
         lists.iter().map(|v| pad_rank((v.list(), v.rank()), &rank).unwrap()).flatten().collect();
     rank.push(flattened.len() / rank.iter().product::<usize>());
     List::mat(flattened, rank.len(), rank)
@@ -894,11 +891,11 @@ pub(crate) fn table(a: List, b: List, o: &Opts) -> Status<List> {
     }
 
     if a.list()[0].repr() != b.list()[0].repr() {
-        return List::from_vec(vec![Scalar::boxed(&o.a, a)?, Scalar::boxed(&o.a, b)?]);
+        return List::from_vec(eco_vec![Scalar::boxed(&o.a, a)?, Scalar::boxed(&o.a, b)?]);
     } else if a.rank() == b.rank() {
-        let mut v = Vec::with_capacity(a.len() + b.len());
-        v.extend(a.list());
-        v.extend(b.list());
+        let mut v = EcoVec::with_capacity(a.len() + b.len());
+        v.extend_from_slice(a.list());
+        v.extend_from_slice(b.list());
         let mut r = SmallVec::from(a.rank());
         r.push(2);
         return List::mat(v, a.dims() + 1, r);
@@ -911,7 +908,7 @@ pub(crate) fn table(a: List, b: List, o: &Opts) -> Status<List> {
     }
 
     let size: usize = rank.iter().product();
-    let mut v = Vec::with_capacity(size * 2);
+    let mut v = EcoVec::with_capacity(size * 2);
     v.extend(pad_rank((a.list(), a.rank()), &rank).unwrap());
     v.extend(pad_rank((b.list(), b.rank()), &rank).unwrap());
     rank.push(2);
@@ -934,7 +931,7 @@ pub(crate) fn tally(a: Type, o: &Opts) -> Status<Type> {
         Ok(Scalar::Number(unsafe { *a.rank().last().unwrap_unchecked() } as i64).into())
     } else {
         let (windows, r) = applym(&mut a, o.rm);
-        let v = vec![Scalar::Number(*r.last().unwrap_or(&1) as i64); windows.len()];
+        let v = eco_vec![Scalar::Number(*r.last().unwrap_or(&1) as i64); windows.len()];
         List::from_vec(v).map(Type::from)
     }
 }
@@ -969,11 +966,11 @@ pub(crate) fn replicate(a: List, b: List, o: &Opts) -> Status<List> {
         }
 
         let total = counts.iter().sum::<i64>() as usize;
-        let mut v: Vec<Scalar> = Vec::with_capacity(total * size);
+        let mut v: EcoVec<Scalar> = EcoVec::with_capacity(total * size);
         let mut tallies = counts.into_iter();
-        for window in a.list().chunks(size) {
+        for window in a.list().chunks_exact(size) {
             for _ in 0..tallies.next().unwrap() {
-                v.extend(window);
+                v.extend_from_slice(window);
             }
         }
 
@@ -1010,8 +1007,8 @@ pub(crate) fn take(a: List, b: List, o: &Opts) -> Status<List> {
             if size <= count {
                 return b.with_rank(&[size]);
             } else {
-                let mut v = Vec::with_capacity(count);
-                v.extend(b.list().iter().copied());
+                let mut v = EcoVec::with_capacity(count);
+                v.extend_from_slice(b.list());
                 for _ in 0..size - count {
                     v.push(fill);
                 }
@@ -1027,11 +1024,11 @@ pub(crate) fn take(a: List, b: List, o: &Opts) -> Status<List> {
             }))
             .collect::<Vec<usize>>();
         let total = indices.iter().product::<usize>() as usize;
-        let mut v = Vec::with_capacity(total);
+        let mut v = EcoVec::with_capacity(total);
         let min = usize::min(indices.len(), rank.len());
 
         for i in 0..total {
-            let mut idx: SmallVec<[usize; 3]> = smallvec::SmallVec::with_capacity(indices.len());
+            let mut idx: SmallVec<[usize; 3]> = SmallVec::with_capacity(indices.len());
             let mut k = i;
             for j in 0..indices.len() {
                 idx.push(k % indices[j]);
@@ -1099,7 +1096,7 @@ pub(crate) fn drop(a: List, b: List, o: &Opts) -> Status<List> {
         return Ok(List::empty());
     }
 
-    let mut bucket: Vec<Scalar> = Vec::with_capacity(size);
+    let mut bucket: EcoVec<Scalar> = EcoVec::with_capacity(size);
     let mut start = 0;
     let mut end = values.len();
 
@@ -1132,7 +1129,7 @@ pub(crate) fn drop(a: List, b: List, o: &Opts) -> Status<List> {
     }
 
     for (start, end) in indices {
-        bucket.extend(&values[start..end]);
+        bucket.extend_from_slice(&values[start..end]);
     }
 
     List::mat(bucket, rank.len(), rank)

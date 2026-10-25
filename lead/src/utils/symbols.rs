@@ -166,41 +166,16 @@ macro_rules! maybe_apply {
             $a,
             $b,
             $o.rd,
-            true,
             $body
         )
     };
 
-    // Unique case for when mutating is unavailable i.e. copied slices
-    ($cond:expr, $arena:expr, $a:ident, $b:ident, $rd:expr, $copy_deterministic:ident, $body:expr) => {
-        if $cond {
-            (|| { $body })()
-        } else {
-            #[allow(unused_mut)]
-            $crate::utils::function::apply_loosed($arena, $a, $b, $rd, |mut $a, mut $b| {
-                if $copy_deterministic {
-                    if $a.len() >= $b.len() {
-                        let mut $a = $a.owned()?;
-                        { $body }
-                    } else {
-                        let mut $b = $b.owned()?;
-                        { $body }
-                    }
-                } else {
-                    let mut $a = $a.owned()?;
-                    let mut $b = $b.owned()?;
-                    { $body }
-                }
-            })
-        }
-    };
-
-    // The above but no mutation
     ($cond:expr, $arena:expr, $a:ident, $b:ident, $rd:expr, $body:expr) => {
         if $cond {
             (|| { $body })()
         } else {
-            $crate::utils::function::apply_loosed($arena, $a, $b, $rd, |$a, $b| $body)
+            #[allow(unused_mut)]
+            $crate::utils::function::apply_loosed($arena, $a, $b, $rd, |mut $a, mut $b| $body)
         }
     };
 }
@@ -228,11 +203,11 @@ macro_rules! scalar_op {
             for ($l, $r) in values.iter_mut().zip($b.list()) {
                 *$l = $e1;
             }
-            Ok(unsafe { $a.as_list() })
+            Ok($a)
         } else if $a.is_empty() {
-            Ok(unsafe { $b.as_list() })
+            Ok($b)
         } else if $b.is_empty() {
-            Ok(unsafe { $a.as_list() })
+            Ok($a)
         } else if $a.is_scalar() {
             // And now it's fucking slower?? what the fuck
             /*for (l, r) in $b.list_mut().iter_mut().zip(
@@ -242,25 +217,25 @@ macro_rules! scalar_op {
             }*/
             let $l = $a.list()[0];
             for_0!($b; [$r] = $e2);
-            Ok(unsafe { $b.as_list() })
+            Ok($b)
         } else if $b.is_scalar() {
             let $r = $b.list()[0];
             for_0!($a; [$l] = $e3);
-            Ok(unsafe { $a.as_list() })
+            Ok($a)
         } else if $a.len() % $b.len() == 0 {
             let m = $a.list_mut();
             let o = $b.list();
             for ($l, $r) in m.iter_mut().zip(o.iter().cycle()) {
                 *$l = $e1;
             }
-            Ok(unsafe { $a.as_list() })
+            Ok($a)
         } else if $b.len() % $a.len() == 0 {
             let m = $b.list_mut();
             let o = $a.list();
             for ($r, $l) in m.iter_mut().zip(o.iter().cycle()) {
                 *$r = $e1;
             }
-            Ok(unsafe { $b.as_list() })
+            Ok($b)
         } else {
             err!(Domain)
         }

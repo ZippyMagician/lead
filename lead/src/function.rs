@@ -99,7 +99,7 @@ impl Function {
                 } else {
                     let a = a.to_list()?;
                     Ok(apply_loosem(&o.a, a, o.rm, |a| {
-                        (m)(Type::from(a.owned()?), None, &o)?.to_list()
+                        (m)(Type::from(a), None, &o)?.to_list()
                     })?
                     .into())
                 }
@@ -126,7 +126,7 @@ impl Function {
                         (d)(a, Some(b), &o)
                     } else {
                         Ok(apply_loosed(&o.a, a.to_list()?, b.to_list()?, o.rd, |a, b| {
-                            (d)(Type::from(a.owned()?), Some(Type::from(b.owned()?)), &o)?.to_list()
+                            (d)(Type::from(a), Some(Type::from(b)), &o)?.to_list()
                         })?
                         .into())
                     }

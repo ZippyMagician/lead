@@ -155,7 +155,7 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
         apply_loosem(&o.a, a, o.rm, |a| {
             if a.is_scalar() {
                 std::hint::cold_path();
-                return a.owned();
+                return Ok(a);
             }
 
             if o.rm == 1 && a.dims() == 1 {
@@ -234,9 +234,9 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
 
             let d = a.dims();
             let mut items = a.ranked(d - 1)?.into_iter();
-            let mut acc = Type::from(items.next().unwrap().owned()?);
+            let mut acc = Type::from(items.next().unwrap());
             for item in items {
-                acc = f.dyadic_call(acc, Type::from(item.owned()?))?;
+                acc = f.dyadic_call(acc, Type::from(item))?;
             }
             acc.to_list()
         })
@@ -264,18 +264,18 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
             };
 
             let dims = b.dims();
-            let arr = b.ranked(dims - 1)?;
+            let mut arr = b.ranked(dims - 1)?;
             let jump = if unique { window } else { 1 };
 
             let mut cells = vec![List::empty(); 1 + (arr.len() - window) / jump];
             let mut j = 0;
             while j <= arr.len() - window {
                 let i = j / jump;
-                cells[i] = arr[j].owned()?;
+                cells[i] = std::mem::take(&mut arr[j]);
                 for k in j + 1..j + window {
                     let previous = std::mem::take(&mut cells[i]);
                     cells[i] = f
-                        .dyadic_call(Type::from(previous), Type::from(arr[k].owned()?))?
+                        .dyadic_call(Type::from(previous), Type::from(arr[k].clone()))?
                         .to_list()?;
                 }
                 j += jump;
@@ -308,20 +308,21 @@ pub(crate) fn scan_table(f: Type, a: Arena, s: Scope) -> Status<Function> {
         let a = unsafe { a.to_list_unchecked() };
         maybe_apply!(a.dims() <= o.rm as usize, &o.a, a, o.rm, {
             if a.len() == 1 {
-                return a.owned();
+                return Ok(a);
             }
-            let runs = a.ranked(a.dims() - 1)?;
+            let mut runs = a.ranked(a.dims() - 1)?;
             if runs.len() == 1 {
-                return runs[0].owned();
+                return Ok(runs.into_iter().next().unwrap());
             }
 
             let mut b = Vec::with_capacity(runs.len());
-            b.push(runs[0].owned()?);
+            b.push(std::mem::take(&mut runs[0]));
             let mut boxit = false;
             let mut r: SmallVec<[usize; 3]> = SmallVec::from_slice(b[0].rank());
             for i in 1..runs.len() {
-                let res =
-                    f.dyadic_call(b[i - 1].clone().into(), runs[i].owned()?.into())?.to_list()?;
+                let res = f
+                    .dyadic_call(b[i - 1].clone().into(), std::mem::take(&mut runs[i]).into())?
+                    .to_list()?;
                 if res.rank() != &*r {
                     boxit = true;
                 }
@@ -368,7 +369,7 @@ pub(crate) fn scan_table(f: Type, a: Arena, s: Scope) -> Status<Function> {
         let mut r = None;
         for a in a {
             for b in b.iter() {
-                let res = f.dyadic_call(a.owned()?.into(), b.owned()?.into())?;
+                let res = f.dyadic_call(a.clone().into(), b.clone().into())?;
                 if !res.is_list() && !boxit {
                     boxit = true;
                 } else if res.is_scalar() {

@@ -4,11 +4,12 @@ use std::fmt::{self, Display};
 use super::Type;
 use super::list::List;
 use super::scalar::Scalar;
-use crate::scope::Scope;
 use crate::function::Function;
+use crate::scope::Scope;
 use crate::utils;
 use crate::utils::error::Status;
 
+use ecow::EcoVec;
 use smallvec::smallvec;
 use typed_arena::Arena;
 
@@ -92,7 +93,7 @@ impl Map {
         if self.is_empty() {
             return List::empty();
         }
-        let mut pairs = Vec::new();
+        let mut pairs = EcoVec::with_capacity(self.internal.len() * 2);
         let mut arena = Arena::new();
         for (key, value) in &self.internal {
             pairs.push(Scalar::boxed_custom(&mut arena, List::string(key).into()).unwrap());
@@ -107,7 +108,7 @@ impl Map {
             return Ok(List::empty());
         }
 
-        let mut keys = Vec::with_capacity(self.internal.len());
+        let mut keys = EcoVec::with_capacity(self.internal.len());
         for key in self.internal.keys() {
             keys.push(Scalar::boxed(a, List::string(key))?);
         }
@@ -120,7 +121,7 @@ impl Map {
             return Ok(List::empty());
         }
 
-        let mut values = Vec::with_capacity(self.internal.len());
+        let mut values = EcoVec::with_capacity(self.internal.len());
         for value in self.internal.values() {
             values.push(Scalar::Box(*value));
         }
@@ -133,7 +134,7 @@ impl Map {
             return Ok(List::empty());
         }
 
-        let mut pairs = Vec::with_capacity(self.internal.len() * 2);
+        let mut pairs = EcoVec::with_capacity(self.internal.len() * 2);
         for (key, value) in &self.internal {
             pairs.push(Scalar::boxed(a, List::string(key))?);
             pairs.push(Scalar::Box(*value));
@@ -172,7 +173,6 @@ impl Ord for Map {
 impl Display for Map {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut pairs = Vec::new();
         let mut arena = Arena::new();
         if self.internal.is_empty() {
             let mut formatted =
@@ -183,12 +183,7 @@ impl Display for Map {
             formatted.replace_range(..first.len_utf8(), ":");
             return write!(f, "{formatted}");
         }
-        for (key, value) in &self.internal {
-            pairs.push(Scalar::boxed_custom(&mut arena, List::string(key).into()).unwrap());
-            pairs.push(Scalar::Box(*value));
-        }
-
-        let list = List::mat(pairs, 2, smallvec![2, self.internal.len()]).unwrap();
+        let list = self.as_repr();
         let mut formatted = format!("{list}");
         let Some(first) = formatted.chars().next() else {
             unsafe { std::hint::unreachable_unchecked() }

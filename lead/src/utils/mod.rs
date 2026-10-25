@@ -109,10 +109,7 @@ pub fn generate_block(nodes: Vec<Node<'_>>, scope: Scope, arena: Arena) -> Funct
             if cond {
                 Ok(run_block!(true, a, b, o, n))
             } else {
-                apply_loose(&o, a, b, |a, b| run_block!(false,
-                    a.owned()?,
-                    b.as_ref().map(|&b| b.owned()).transpose()?,
-                o, n)).map(Type::from)
+                apply_loose(&o, a, b, |a, b| run_block!(false, a, b, o, n)).map(Type::from)
             }
         };
         arena,

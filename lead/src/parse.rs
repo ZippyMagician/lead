@@ -13,6 +13,8 @@ use crate::utils::error::{Error, Status, err};
 use crate::utils::number::*;
 use crate::utils::{Arena, generate_block};
 
+use ecow::EcoVec;
+
 #[derive(Clone)]
 pub enum Assignment<'a> {
     Literal(&'a str),
@@ -227,7 +229,7 @@ impl<'a> Parser<'a> {
         if tokens.len() == 1 {
             Ok(Node::Primitive(List::scalar(tokens[0])))
         } else {
-            List::from_vec(tokens).map(Node::Primitive)
+            List::from_vec(tokens.into()).map(Node::Primitive)
         }
     }
 
@@ -244,7 +246,7 @@ impl<'a> Parser<'a> {
                 strings
                     .iter()
                     .map(|s| Scalar::boxed(&self.arena, List::string(s)))
-                    .collect::<Status<Vec<Scalar>>>()?,
+                    .collect::<Status<EcoVec<Scalar>>>()?,
             )
             .map(Node::PrimitiveBoxes)
         }
