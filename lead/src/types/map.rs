@@ -89,9 +89,9 @@ impl Map {
     }
 
     #[inline]
-    fn as_repr(&self) -> List {
+    fn as_repr(&self) -> (Option<Arena<Type>>, List) {
         if self.is_empty() {
-            return List::empty();
+            return (None, List::empty());
         }
         let mut pairs = EcoVec::with_capacity(self.internal.len() * 2);
         let mut arena = Arena::new();
@@ -99,7 +99,7 @@ impl Map {
             pairs.push(Scalar::boxed_custom(&mut arena, List::string(key).into()).unwrap());
             pairs.push(Scalar::Box(*value));
         }
-        List::mat(pairs, 2, smallvec![2, self.internal.len()]).unwrap()
+        (Some(arena), List::mat(pairs, 2, smallvec![2, self.internal.len()]).unwrap())
     }
 
     #[inline]
@@ -166,7 +166,9 @@ impl PartialOrd for Map {
 impl Ord for Map {
     #[inline]
     fn cmp(&self, o: &Self) -> std::cmp::Ordering {
-        self.as_repr().cmp(&o.as_repr())
+        let (_a, r) = self.as_repr();
+        let (_a, r2) = o.as_repr();
+        r.cmp(&r2)
     }
 }
 
@@ -183,8 +185,9 @@ impl Display for Map {
             formatted.replace_range(..first.len_utf8(), ":");
             return write!(f, "{formatted}");
         }
-        let list = self.as_repr();
+        let (a, list) = self.as_repr();
         let mut formatted = format!("{list}");
+        drop(a);
         let Some(first) = formatted.chars().next() else {
             unsafe { std::hint::unreachable_unchecked() }
         };
