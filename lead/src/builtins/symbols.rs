@@ -33,6 +33,10 @@ pub enum Symbol {
     Percent,
     /// `|`
     Pipe,
+    /// `|:`
+    PipeColon,
+    /// `|.`
+    PipeDot,
     /// `!`
     Exclamation,
     /// `<`
@@ -247,6 +251,109 @@ pub(super) fn residue(mut a: List, mut b: List, o: &Opts) -> Status<List> {
     } else {
         maybe_apply!([scalar] o, a, b, scalar_op!(b, a, rem))
     }
+}
+
+// pipecolonm | |: | 0 | Descend
+pub(super) fn descend(mut a: List, o: &Opts) -> Status<List> {
+    maybe_apply!([scalar] o, a, {
+        if a.is_scalar() {
+            let end = a.list()[0];
+            if end.is_char() {
+                List::range(if end.to_num()? < 97 { Scalar::Char('A') } else { Scalar::Char('a') }, end, true)
+            } else {
+                List::range(Scalar::Number(1), end, true)
+            }
+        } else {
+            for_0!(a; [v] = Scalar::boxed(
+                &o.a, List::range({
+                    if v.is_char() {
+                        if v.to_num()? < 97 { Scalar::Char('A') } else { Scalar::Char('a') }
+                    } else {
+                        Scalar::Number(1)
+                    }
+                }, *v, true)?)?
+            );
+            Ok(a)
+        }
+    })
+}
+
+// pipecolond | |: | 1, 99 | Axes
+pub(super) fn axes(a: List, b: List, o: &Opts) -> Status<List> {
+    maybe_apply!(o.rd[0] as usize >= a.dims() && o.rd[1] as usize >= b.dims(), &o.a, a, b, o.rd, {
+        let rank = b.rank();
+        let mut f = Vec::with_capacity(a.len());
+        let indices = a.list().iter().map(|n| n.to_num());
+        for (i, idx) in indices.enumerate() {
+            let idx = idx?;
+            if i >= b.dims() || idx < 0 {
+                return err!(Domain);
+            }
+            let idx = idx as usize;
+            f.push(rank[idx]);
+        }
+        b.with_rank(&f)
+    })
+}
+
+// pipedotm | |. | 99 | Reverse
+pub(super) fn rev(mut a: List, o: &Opts) -> Status<List> {
+    maybe_apply!(o.rm as usize >= a.dims(), &o.a, a, o.rm, {
+        if a.is_scalar() {
+            std::hint::cold_path();
+            return Ok(a);
+        }
+        let dims = a.dims();
+        let (mut runs, r) = applym(&mut a, dims as u8 - 1);
+        let size: usize = r.iter().product();
+        while !runs.is_empty() {
+            let Some(left) = runs.pop_front() else {
+                return err!(Domain);
+            };
+            if let Some(right) = runs.pop_back() {
+                unsafe {
+                    let l = left.as_mut_ptr();
+                    let r = right.as_mut_ptr();
+                    // SAFETY: chunks_exact_mut returns non-overlapping mutable slices of size based
+                    // on provided rank, this is calculated from the returned `r`, ensuring the size
+                    // is correct.
+                    std::ptr::swap_nonoverlapping(l, r, size);
+                }
+            }
+        }
+        Ok(a)
+    })
+}
+
+// pipedotd | |. | 0, 99 | Rotate
+pub(super) fn rot(a: List, mut b: List, o: &Opts) -> Status<List> {
+    maybe_apply!(o.rd[1] as usize >= b.dims(), &o.a, b, o.rd[1], {
+        let trailing_rank = a.rank();
+        let dims = b.dims() as u8;
+        let v = with_eco(a.len() * b.len(), |v| {
+            let (runs, r) = applym(&mut b, dims - 1);
+            let size: usize = r.iter().product();
+            for_0!(a; [c] {
+                let c = c.to_num()?;
+                let rev = c < 0;
+                let l = runs.len();
+                let i = c.abs() as usize % l;
+                if !rev {
+                    for j in (i..l).chain(0..i) {
+                        v.extend(runs[j]);
+                    }
+                } else {
+                    for j in (l - i..l).chain(0..l - i) {
+                        v.extend(runs[j])
+                    }
+                }
+            });
+            Ok(())
+        })?;
+        let mut rank = SmallVec::from_slice(b.rank());
+        rank.extend_from_slice(trailing_rank);
+        List::mat(v, rank.len(), rank)
+    })
 }
 
 // exclamationm | ! | 0 | Factorial
@@ -619,9 +726,9 @@ pub(super) fn range(mut a: List, o: &Opts) -> Status<List> {
         if a.is_scalar() {
             let end = a.list()[0];
             if end.is_char() {
-                List::range(if end.to_num()? < 97 { Scalar::Char('A') } else { Scalar::Char('a') }, end)
+                List::range(if end.to_num()? < 97 { Scalar::Char('A') } else { Scalar::Char('a') }, end, false)
             } else {
-                List::range(Scalar::Number(1), end)
+                List::range(Scalar::Number(1), end, false)
             }
         } else {
             for_0!(a; [v] = Scalar::boxed(
@@ -631,7 +738,7 @@ pub(super) fn range(mut a: List, o: &Opts) -> Status<List> {
                     } else {
                         Scalar::Number(1)
                     }
-                }, *v)?)?
+                }, *v, false)?)?
             );
             Ok(a)
         }

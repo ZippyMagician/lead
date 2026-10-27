@@ -164,6 +164,8 @@ Partial trains, of course, support constants within them too.
 |  ```*``` |Sign / Case |   0  | Mul / Bool AND|  0 0 |Cases: (`1 _1 0 = *'Ab '`)|
 |  ```%``` | Reciprocal |   0  |    Div       |  0 0  |       |
 |   `\|`   | Boolean Not|   0  |    Residue   |  0 0  |TODO: Update monadic?|
+|   `\|:`  |   Descend  |   0  |     Axes     | 1 99  |(dyad): reorder axes based on indices|
+|   `\|.`  |   Reverse  |  99  |    Rotate    | 0 99  |       |
 |  ```!``` |  Factorial |   0  |   Bit OR     |  0 0  |Binomial?|
 |  ```<``` |    Box     |  99  |   Less Than  |  0 0  |       |
 |  ```>``` |   Unbox    |  99  | Greater Than |  0 0  |       |

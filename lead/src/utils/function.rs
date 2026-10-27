@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::hint;
 
 use crate::function::Opts;
@@ -12,20 +13,23 @@ use smallvec::{SmallVec, smallvec};
 // Returns a vector of `ListView`s, i.e. mutable slices pointing to adjacent values of rank `n`.
 // Assumes the result is rank equivalent to the input
 #[inline]
-pub fn applym<'a>(l: &'a mut List, r: u8) -> (Vec<&'a mut [Scalar]>, SmallVec<[usize; 4]>) {
+pub fn applym<'a>(l: &'a mut List, r: u8) -> (VecDeque<&'a mut [Scalar]>, SmallVec<[usize; 4]>) {
     if l.is_empty() {
         hint::cold_path();
-        return (vec![], smallvec![0]);
+        return (vec![].into(), smallvec![0]);
     }
 
-    let r = usize::min(r as usize, l.rank().len());
-    let rank: SmallVec<[usize; 4]> = l.rank()[..r].into();
-    let skip: usize = l.rank()[r..].iter().product();
+    let r = usize::min(r as usize, l.dims());
+    let mut rank: SmallVec<[usize; 4]> = l.rank()[..r].into();
+    if r == 0 {
+        rank.push(1);
+    }
+    let skip: usize = rank.iter().product();
 
     let l = l.list_mut();
-    let mut v = Vec::with_capacity(l.len() / skip);
+    let mut v = VecDeque::with_capacity(l.len() / skip);
     for chunk in l.chunks_exact_mut(skip) {
-        v.push(chunk);
+        v.push_back(chunk);
     }
     (v, rank)
 }

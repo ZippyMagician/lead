@@ -119,7 +119,7 @@ impl List {
     }
 
     #[inline]
-    pub fn range(start: Scalar, end: Scalar) -> Status<Self> {
+    pub fn range(start: Scalar, end: Scalar, rev: bool) -> Status<Self> {
         let chars = start.is_char() && end.is_char();
         let start = start.to_num()?;
         let end = end.to_num()?;
@@ -129,9 +129,19 @@ impl List {
         let count: usize = (end - start + 1) as usize;
         unsafe {
             if chars {
-                Self::alloc_iter(&[count], (start..=end).map(|i| Scalar::Char(i as u8 as char)))
+                let iter = (start..=end).map(|i| Scalar::Char(i as u8 as char));
+                if rev {
+                    Self::alloc_iter(&[count], iter.rev())
+                } else {
+                    Self::alloc_iter(&[count], iter)
+                }
             } else {
-                Self::alloc_iter(&[count], (start..=end).map(Scalar::Number))
+                let iter = (start..=end).map(Scalar::Number);
+                if rev {
+                    Self::alloc_iter(&[count], iter.rev())
+                } else {
+                    Self::alloc_iter(&[count], iter)
+                }
             }
         }
     }
