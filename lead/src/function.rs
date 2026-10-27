@@ -25,7 +25,7 @@ pub struct Function {
     // Underlying symbol
     pub(crate) s: Option<Symbol>,
     // Opts
-    op: Opts,
+    pub(crate) op: Opts,
 }
 
 macro_rules! f {

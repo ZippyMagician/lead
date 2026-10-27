@@ -9,7 +9,7 @@ use crate::types::scalar::Scalar;
 use crate::utils::Arena;
 use crate::utils::error::{Status, err};
 use crate::utils::function::*;
-use crate::utils::symbols::maybe_apply;
+use crate::utils::symbols::{maybe_apply, with_eco};
 
 use smallvec::SmallVec;
 
@@ -34,6 +34,8 @@ pub enum Operator {
     Each,
     /// `":`
     EachAtom,
+    /// `".`
+    RepeatUntil,
 }
 
 #[inline]

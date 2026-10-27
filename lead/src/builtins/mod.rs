@@ -129,5 +129,6 @@ define_op! {
     TieCommute => (b"`", true, operators::tie_commute);
     Each => (b"\"", true, operators::each);
     EachAtom => (b"\":", true, operators::eachatom);
+    RepeatUntil => (b"\".", false, operators::repeat_until);
     ScanTable => (b"\\", true, operators::scan_table);
 }

@@ -191,7 +191,33 @@ Partial trains, of course, support constants within them too.
 | ``` ` ```| ```u` ```|   Tie   |  N/A | Commute|  N/A | Flips operands if attached to dyadic operator|
 | ```"``` |  ```u"``` |   Each  |  99  |  Each  |99 99 | Each of leading axis |
 | ```":```|  ```u":```|  Atoms  |   0  |  Atoms |   0  | Equivalent to `u@0` |
+| ```".```|```u".v```, ```u".A```| Repeat/Until| 99 | Repeat/Until | 99, 99| Dyadic until described below |
 
+##### Monad vs. Dyad ```u".v```
+For instance, in the case of:
+```
+(2*)".(8<) 2
+```
+It is calculated as thus:
+1. `2 * 2` ⇒ `4`
+2. `2 (8<) 4` ⇒ `8 < 4` ⇒ `0`
+3. `2 * 4` ⇒ `8`
+4. `4 (8<) 8` ⇒ `8 < 8` ⇒ `0`
+5. `2 * 8` ⇒ `16`
+6. `8 (8<) 16` ⇒ `8 < 16` ⇒ `1`
+7. `16`
+While for the case of:
+```
+2 *". (40<) 4
+```
+It is calculated as:
+1. `2 * 4` ⇒ `8`
+2. `(40<) 8` ⇒ `0`
+3. `8 * 4` ⇒ `32`
+4. `(40<) 32` ⇒ `0`
+5. `32 * 4` ⇒ `128`
+6. `(40<) 128` ⇒ `1`
+7. `128`
 ## Library Builtins
 TODO. Old(er):
 
