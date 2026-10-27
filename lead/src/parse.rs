@@ -159,7 +159,10 @@ impl<'a> Parser<'a> {
         let sym =
             symbols::Symbol::get_symbol("[").unwrap().getfn(self.arena.clone(), self.scope.clone());
 
-        if let Some(next) = self.tokens.next() {
+        // A bit of a hack, but whatever
+        if let Some(next) =
+            self.tokens.next_if(|(t, _)| *t != TokenTag::CloseParen && *t != TokenTag::CloseCurly)
+        {
             match next {
                 (TokenTag::CloseBracket, _) => self.consume_internal(),
                 (TokenTag::Newline, _) => {

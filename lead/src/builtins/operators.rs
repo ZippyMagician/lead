@@ -448,7 +448,7 @@ pub(crate) fn each(f: Type, a: Arena, s: Scope) -> Status<Function> {
             f.apply_rd([da as u8 - 1, db as u8 - 1]);
             f.dyadic_call(Type::List(keys_a), Type::List(keys_b))
         } else {
-            let da = usize::max(1, usize::min(o.rd[0] as usize, keys_a.dims()));
+            let da = usize::max(1, usize::min(o.rm as usize, keys_a.dims()));
             f.apply_rm(da as u8 - 1);
             f.monadic_call(Type::List(keys_a))
         }
@@ -461,4 +461,112 @@ pub(crate) fn eachatom(f: Type, a: Arena, s: Scope) -> Status<Function> {
     f.apply_rm(0);
     f.apply_rd([0, 0]);
     Ok(f)
+}
+
+#[inline]
+pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Function> {
+    let f = l.to_function(a.clone(), s.clone())?;
+
+    if r.is_scalar() {
+        let count = if r.is_scalar_strict() {
+            unsafe { r.to_scalar_unchecked() }.to_num()?
+        } else {
+            unsafe { r.to_list_unchecked() }.list()[0].to_num()?
+        };
+        Ok(function!(99, [99, 99], true, true, move |mut a, b, o| {
+            let mut f = f.clone();
+            if let Some(mut b) = b {
+                if o.rd != [99, 99] {
+                    f.apply_rd(o.rd);
+                }
+                for _ in 0..count {
+                    b = f.dyadic_call(a.clone(), b)?;
+                }
+                Ok(b)
+            } else {
+                if o.rm != 99 { 
+                    f.apply_rm(o.rm);
+                }
+                for _ in 0..count {
+                    a = f.monadic_call(a)?;
+                }
+                Ok(a)
+            }
+        }; a, s))
+    } else if r.is_list() {
+        let counts = unsafe { r.to_list_unchecked() }
+            .list()
+            .into_iter()
+            .map(|n| n.to_num())
+            .collect::<Status<Vec<i64>>>()?;
+        Ok(function!(99, [99, 99], true, true, move |a, b, o| {
+            let mut f = f.clone();
+            if let Some(b) = b {
+                if o.rd != [99, 99] {
+                    f.apply_rd(o.rd);
+                }
+                let v = with_eco(counts.len(), |v| {
+                    for &count in counts.iter() {
+                        let mut b = b.clone();
+                        for _ in 0..count {
+                            b = f.dyadic_call(a.clone(), b)?;
+                        }
+                        v.push(Scalar::boxed_t(&o.a, b)?);
+                    }
+                    Ok(())
+                })?;
+                List::from_vec(v).map(Type::List)
+            } else {
+                if o.rm != 99 { 
+                    f.apply_rm(o.rm);
+                }
+                let v = with_eco(counts.len(), |v| {
+                    for &count in counts.iter() {
+                        let mut a = a.clone();
+                        for _ in 0..count {
+                            a = f.monadic_call(a)?;
+                        }
+                        v.push(Scalar::boxed_t(&o.a, a)?);
+                    }
+                    Ok(())
+                })?;
+                List::from_vec(v).map(Type::List)
+            }
+        }; a, s))
+    } else if r.is_function() {
+        let cond = unsafe { r.as_function_unchecked().clone() };
+        Ok(function!(99, [99, 99], true, true, move |mut a, b, o| {
+            let mut f = f.clone();
+            if let Some(b) = b {
+                let mut p = f.dyadic_call(a, b.clone())?;
+                if o.rd != [99, 99] {
+                    f.apply_rd(o.rd);
+                }
+                loop {
+                    let list = cond.monadic_call(p.clone())?.to_list()?;
+                    if list.is_empty() || list.list()[0].to_bool()? {
+                        break;
+                    }
+                    p = f.dyadic_call(p, b.clone())?;
+                }
+                Ok(p)
+            } else {
+                let mut p;
+                if o.rm != 99 {
+                    f.apply_rm(o.rm);
+                }
+                loop {
+                    p = a.clone();
+                    a = f.monadic_call(a)?;
+                    let list = cond.dyadic_call(p, a.clone())?.to_list()?;
+                    if list.is_empty() || list.list()[0].to_bool()? {
+                        break;
+                    }
+                }
+                Ok(a)
+            }
+        }; a, s))
+    } else {
+        err!(Domain)
+    }
 }
