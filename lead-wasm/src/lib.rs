@@ -3,7 +3,6 @@ use std::rc::Rc;
 
 use typed_arena::Arena;
 use wasm_bindgen::prelude::*;
-use web_sys::*;
 
 use lead_core::*;
 

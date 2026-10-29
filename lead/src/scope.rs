@@ -76,6 +76,7 @@ impl Internals {
     pub(crate) fn new() -> Self {
         let mut uniq = HashSet::new();
         let mut map = HashMap::new();
+        #[cfg(not(feature = "wasm"))]
         map.insert("I".to_string(), Type::from(List::empty())); // TODO: Initialize I
         let boxes = List::from_vec(
             unsafe { crate::utils::BOXES }.into_iter().map(|c| Scalar::Char(c)).collect(),
