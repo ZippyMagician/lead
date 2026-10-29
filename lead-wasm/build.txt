@@ -1,0 +1,2 @@
+RUSTFLAGS='--cfg=getrandom_backend="wasm_js"' cargo build --package lead-wasm --target=wasm32-unknown-unknown --release
+wasm-bindgen --out-dir ./docs/pkg ./target/wasm32-unknown-unknown/release/lead_wasm.wasm --target web

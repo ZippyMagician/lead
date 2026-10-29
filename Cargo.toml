@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["lead", "lead-cli"]
+members = ["lead", "lead-cli", "lead-wasm"]
 default-members = ["lead", "lead-cli"]
 exclude = ["vendor"]
 

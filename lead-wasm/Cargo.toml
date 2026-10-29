@@ -1,0 +1,27 @@
+[package]
+name = "lead-wasm"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "lead_wasm"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+num-traits = "0.2.19"
+ordered-float = "5.5.0"
+typed-arena = "2.0.2"
+wasm-bindgen = "0.2.129"
+
+lead = { path = "../lead", features = ["wasm"] }
+
+[dependencies.web-sys]
+version = "0.3.4"
+features = [
+  'Document',
+  'Element',
+  'HtmlElement',
+  'Node',
+  'Window',
+]

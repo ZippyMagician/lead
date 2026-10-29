@@ -1,0 +1,206 @@
+<!-- https://github.com/NamesMark/apiel/blob/main/docs/index.html
+Copyright 2024 Mark Firman
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+-->
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>lead</title>
+        <style>
+            :root {
+                --bg: #181616;       
+                --surface: #1D1C19;  
+                --border: #393836;   
+                --text: #c5c9c5;     
+                --dim: #625e5a;      
+                --accent: #8ba4b0;   
+                --green: #87a987;    
+                --red: #c4746e;      
+                --mono:
+                    "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+            }
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+            body {
+                background: var(--bg);
+                color: var(--text);
+                font-family: var(--mono);
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+            }
+            header {
+                padding: 1.5rem 2rem 1rem;
+                border-bottom: 1px solid var(--border);
+            }
+            header h1 {
+                font-size: 1.4rem;
+                font-weight: 600;
+                color: var(--accent);
+            }
+            header h1 span {
+                color: var(--dim);
+                font-weight: 400;
+            }
+            header p {
+                color: var(--dim);
+                font-size: 0.8rem;
+                margin-top: 0.3rem;
+            }
+            #output {
+                flex: 1;
+                padding: 1rem 2rem;
+                overflow-y: auto;
+                font-size: 0.95rem;
+                line-height: 1.6;
+            }
+            .line {
+                white-space: pre-wrap;
+                word-break: break-all;
+            }
+            .input-line {
+                color: var(--dim);
+            }
+            .input-line .expr {
+                color: var(--text);
+            }
+            .result-line {
+                color: var(--green);
+            }
+            .error-line {
+                color: var(--red);
+            }
+            #input-area {
+                display: flex;
+                align-items: center;
+                padding: 0.8rem 2rem;
+                border-top: 1px solid var(--border);
+                background: var(--surface);
+            }
+            #prompt {
+                color: var(--accent);
+                font-size: 0.95rem;
+                margin-right: 0.5rem;
+                user-select: none;
+            }
+            #input {
+                flex: 1;
+                background: transparent;
+                border: none;
+                outline: none;
+                color: var(--text);
+                font-family: var(--mono);
+                font-size: 0.95rem;
+                caret-color: var(--accent);
+            }
+            #input::placeholder {
+                color: var(--border);
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <h1>lead <span>/ ayr rewrite</span></h1>
+        </header>
+        <div id="output"></div>
+        <div id="input-area">
+            <span id="prompt">&gt;&gt;&gt;</span>
+            <input
+                id="input"
+                type="text"
+                placeholder="Input Here"
+                autofocus
+                autocomplete="off"
+                spellcheck="false"
+            />
+        </div>
+
+        <script type="module">
+            import init, { exec_lead } from "./pkg/lead_wasm.js";
+
+            try {
+                await init();
+                console.log("LOADED!");
+            } catch (e) {
+                document.getElementById("output").textContent =
+                    "Failed to load WASM: " +
+                    e.message +
+                    "\n\nIf on GitHub Pages, make sure docs/pkg/ is committed and pushed.";
+                throw e;
+            }
+
+            const output = document.getElementById("output");
+            const input = document.getElementById("input");
+            const history = [];
+            let histIdx = -1;
+
+            function addLine(cls, text) {
+                const div = document.createElement("div");
+                div.className = "line " + cls;
+                div.textContent = text;
+                output.appendChild(div);
+                output.scrollTop = output.scrollHeight;
+            }
+
+            function addInputLine(expr) {
+                const div = document.createElement("div");
+                div.className = "line input-line";
+                div.innerHTML =
+                    '<span style="color:var(--accent)">>> </span><span class="expr">' +
+                    expr.replace(/&/g, "&amp;").replace(/</g, "&lt;") +
+                    "</span>";
+                output.appendChild(div);
+            }
+
+            // Welcome
+            addLine("", "");
+
+            input.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                    const expr = input.value;
+                    if (!expr.trim()) return;
+                    history.unshift(expr);
+                    histIdx = -1;
+                    addInputLine(expr);
+                    let result;
+                    result = exec_lead(expr);
+                    if (/^(?:SCOPE|INTERNAL|DOMAIN|SYNTAX|BOX|MEMORY|NUMERIC|VALUE|ARG|MEMORY) \[\-?\d\](?:\: )?/.exec(result)) {
+                        addLine("error-line", result);
+                    } else if (result) {
+                        addLine("result-line", result);
+                    }
+                    input.value = "";
+                } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    if (histIdx < history.length - 1) {
+                        histIdx++;
+                        input.value = history[histIdx];
+                    }
+                } else if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    if (histIdx > 0) {
+                        histIdx--;
+                        input.value = history[histIdx];
+                    } else {
+                        histIdx = -1;
+                        input.value = "";
+                    }
+                } else if (e.key === "l" && e.ctrlKey) {
+                    e.preventDefault();
+                    output.innerHTML = "";
+                    reset_env();
+                }
+            });
+        </script>
+    </body>
+</html>

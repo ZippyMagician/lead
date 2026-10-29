@@ -61,6 +61,17 @@ impl Exec {
         Ok(())
     }
 
+    #[cfg(feature = "wasm")]
+    pub fn exec_wasm<'a>(&mut self, mut node_line: Vec<Node<'a>>) -> Status<String> {
+        // node_line.push(Node::Line);
+        let mut s = String::new();
+        self.exec_line(take(&mut node_line))?;
+        if let Some(v) = self.right.take() {
+            s.push_str(&format!("{v}"));
+        }
+        Ok(s)
+    }
+
     #[inline]
     fn exec_line<'a>(&mut self, mut line: Vec<Node<'a>>) -> Status {
         if line.is_empty() {
@@ -111,6 +122,13 @@ impl Exec {
                         .ok_or(Error::Domain)?;
                     self.right = Some(self.exec_function(f, &mut line, &mut i)?);
                 }
+                #[cfg(feature = "wasm")]
+                Line => {
+                    if self.block {
+                        self.right = None;
+                    }
+                }
+                #[cfg(not(feature = "wasm"))]
                 Line => {
                     if !self.block {
                         return err!(Internal, "Unexpected node in line");
@@ -651,10 +669,7 @@ impl Exec {
             let sc = self.scope.clone();
             let s = sc.borrow();
             let map = s.get(head).ok_or(Error::Scope)?.to_map()?;
-            let t = map
-                .get_into(&body[0], &body[1..])
-                .ok_or(Error::Domain)?
-                .clone();
+            let t = map.get_into(&body[0], &body[1..]).ok_or(Error::Domain)?.clone();
             Ok(t)
         } else {
             err!(Syntax, "Unsupported node provided to operator")

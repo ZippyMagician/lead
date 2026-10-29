@@ -18,4 +18,5 @@ typed-arena = "2.0.2"
 
 [features]
 default = []
+wasm = []
 ffi = ["dep:libloading"]
