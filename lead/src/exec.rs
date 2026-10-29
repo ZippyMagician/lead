@@ -408,6 +408,15 @@ impl Exec {
                     .to_function(self.arena.clone(), self.scope.clone())?;
             } else if let Node::Group(g) = n {
                 f = self.exec_train(g)?;
+            } else if let Node::Accessor(head, body) = n {
+                let sc = self.scope.clone();
+                let s = sc.borrow();
+                let map = s.get(head).ok_or(Error::Scope)?.to_map()?;
+                f = map
+                    .get_into(&body[0], &body[1..])
+                    .map(|n| unsafe { n.as_function_unchecked() })
+                    .ok_or(Error::Domain)?
+                    .clone();
             } else {
                 return err!(Syntax, "Unexpected node in train");
             }
@@ -637,6 +646,15 @@ impl Exec {
             Ok(t)
         } else if let Node::LiteralInternal(name) = node {
             let t = self.scope.borrow().internals.borrow().get(name)?.clone();
+            Ok(t)
+        } else if let Node::Accessor(head, body) = node {
+            let sc = self.scope.clone();
+            let s = sc.borrow();
+            let map = s.get(head).ok_or(Error::Scope)?.to_map()?;
+            let t = map
+                .get_into(&body[0], &body[1..])
+                .ok_or(Error::Domain)?
+                .clone();
             Ok(t)
         } else {
             err!(Syntax, "Unsupported node provided to operator")

@@ -299,6 +299,7 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
 pub(crate) fn scan_table(f: Type, a: Arena, s: Scope) -> Status<Function> {
     let f = f.to_function(a.clone(), s.clone())?;
     let fr = f.clone();
+    // Scan
     let monad = move |a: Type, o: &Opts| {
         if !a.is_list() {
             return err!(Domain);
@@ -349,6 +350,7 @@ pub(crate) fn scan_table(f: Type, a: Arena, s: Scope) -> Status<Function> {
         .map(Type::List)
     };
     let f = fr;
+    // Table
     let dyad = move |a: Type, b: Type, o: &Opts| {
         if !b.is_list() || !a.is_list() {
             return err!(Domain);
@@ -369,7 +371,7 @@ pub(crate) fn scan_table(f: Type, a: Arena, s: Scope) -> Status<Function> {
         let mut r = None;
         for a in a {
             for b in b.iter() {
-                let res = f.dyadic_call(a.clone().into(), b.clone().into())?;
+                let mut res = f.dyadic_call(a.clone().into(), b.clone().into())?;
                 if !res.is_list() && !boxit {
                     boxit = true;
                 } else if res.is_scalar() {
@@ -378,6 +380,10 @@ pub(crate) fn scan_table(f: Type, a: Arena, s: Scope) -> Status<Function> {
                         r = Some(vec![1]);
                     } else if !boxit && r.as_ref().unwrap() != &[1] {
                         boxit = true;
+                        // for true scalars
+                        if res.is_scalar_strict() {
+                            res = Type::List(res.to_list().unwrap());
+                        }
                     }
                 } else {
                     let l = res.as_list()?;

@@ -74,9 +74,9 @@ where
     let no_swap = left.len() >= right.len();
     let (mapper, value) = if no_swap { (left, right) } else { (right, left) };
     let from = if no_swap {
-        (a.dims(), a.rank(), r[0] as usize)
+        (a.dims(), a.rank(), usize::min(r[0] as usize, a.dims()))
     } else {
-        (b.dims(), b.rank(), r[1] as usize)
+        (b.dims(), b.rank(), usize::min(r[1] as usize, b.dims()))
     };
 
     if mapper.len() % value.len() != 0 {
@@ -104,7 +104,7 @@ where
     let res = if boxit {
         unsafe { List::try_alloc_iter(from.1, values.into_iter().map(|v| Scalar::boxed(arena, v))) }
     } else {
-        List::unranked_unchecked(&from.1[from.2 + 1..], values)
+        List::unranked_unchecked(&from.1[from.2..], values)
     };
     drop(a);
     drop(b);

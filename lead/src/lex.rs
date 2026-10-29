@@ -130,8 +130,18 @@ impl<'a> Lexer<'a> {
             }
             '(' => tok!(OpenParen, &self.input[start..start + 1]),
             ')' => tok!(CloseParen, &self.input[start..start + 1]),
-            '[' => tok!(OpenBracket, &self.input[start..start + 1]),
-            ']' => tok!(CloseBracket, &self.input[start..start + 1]),
+            ']' => {
+                // Look behind for tags
+                if self.tokens.len() > 1
+                    && matches!(self.tokens[self.tokens.len() - 2], (TokenTag::Symbol, "["))
+                {
+                    let i = self.tokens.len() - 2;
+                    self.tokens.get_mut(i).unwrap().0 = TokenTag::OpenBracket;
+                } else if matches!(self.tokens.last(), Some((TokenTag::Symbol, "["))) {
+                    self.tokens.last_mut().unwrap().0 = TokenTag::OpenBracket;
+                }
+                tok!(CloseBracket, &self.input[start..start + 1])
+            }
             _ => self.consume_builtin(start),
         }
     }

@@ -302,12 +302,12 @@ certain calculations
 
 Some notes
 
-    A ([,@>@0`#":&:(id#)) n -- lead
+    n (],@>@0`#":&:(id#)) A -- lead
     A (],`"\:]:#":i:&#) n  DS. ayr
 
 Originally ayr featured implicit unboxing in practically any case, which differs from current lead design. Theoretically,
 ```
-[,":`]:#":id&#
+],`":]:#":id&#
 ```
 would be possible should `":` and `"` support implicit unboxing, as well as the train modifiers such as `]:` be reimplemented. I could see a valid argument
 for the case of each indeed supporting this feature, especially each atom. Or perhaps some kind of depth operator? I recall something similar in `ayr`

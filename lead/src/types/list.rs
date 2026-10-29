@@ -509,6 +509,12 @@ impl Scalars {
 
     #[inline(always)]
     pub(crate) fn list_mut(&mut self) -> &mut [Scalar] {
+        if self.len() != self.v.len() {
+            self.v = EcoVec::from(self.list());
+            self.s = 0;
+            self.e = self.v.len();
+        }
+
         self.v.make_mut()
     }
 
