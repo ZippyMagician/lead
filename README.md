@@ -4,7 +4,6 @@ Redesign + rewrite of `ayr`, a toy array language intended for code golfing. The
 ## Building
 Clone the repository to a local location. Run
 ```sh
-cargo vendor
 cargo install --path lead-cli
 ```
 Use
@@ -13,8 +12,12 @@ cargo install --path lead-cli --features ffi
 ```
 to compile with the supporting FFI linking internals `[]extern` and `[]link`.
 
-Alternatively, you can comment out the vendor specifications in `.cargo/config.toml` and simply use the second command.
-
+For building the webserver, ensure you have `wasm-bindgen` installed and accessible on the path. Use
+```
+RUSTFLAGS='--cfg=getrandom_backend="wasm_js"' cargo build --package lead-wasm --target=wasm32-unknown-unknown --release
+wasm-bindgen --out-dir ./docs/pkg ./target/wasm32-unknown-unknown/release/lead_wasm.wasm --target web
+```
+to build the files into the `./docs` directory
 ### Syntax (tentative)
 ```
 [~] 2 * ~e9    -- Don't print
