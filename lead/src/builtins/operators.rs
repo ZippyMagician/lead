@@ -9,7 +9,7 @@ use crate::types::scalar::Scalar;
 use crate::utils::Arena;
 use crate::utils::error::{Status, err};
 use crate::utils::function::*;
-use crate::utils::symbols::{maybe_apply, with_eco};
+use crate::utils::symbols::{for_0, maybe_apply, with_eco};
 
 use smallvec::SmallVec;
 
@@ -457,10 +457,63 @@ pub(crate) fn each(f: Type, a: Arena, s: Scope) -> Status<Function> {
 
 #[inline]
 pub(crate) fn eachatom(f: Type, a: Arena, s: Scope) -> Status<Function> {
-    let mut f = f.to_function(a.clone(), s.clone())?;
-    f.apply_rm(0);
-    f.apply_rd([0, 0]);
-    Ok(f)
+    let f = f.to_function(a.clone(), s.clone())?;
+    Ok(function!(0, [0, 0], true, true, move |a, b, o| {
+        let Ok(a) = a.to_list() else {
+            return err!(Domain);
+        };
+        if b.is_none() {
+            maybe_apply!([scalar] o, a, {
+                let trailing = a.rank();
+                let mut v = Vec::with_capacity(a.len());
+                for_0!(a; [a] {
+                    if a.is_box() {
+                        v.push(f.monadic_call(
+                            unsafe { a.unbox_unchecked() }
+                        )?.to_list()?);
+                    } else {
+                        v.push(f.monadic_call(Type::Scalar(*a))?.to_list()?);
+                    }
+                });
+                List::unranked(&o.a, a.dims(), trailing, v)
+            }).map(Type::List)
+        } else if let Some(Ok(b)) = b.map(Type::to_list) {
+            maybe_apply!([scalar] o, a, b, {
+                if a.is_empty() {
+                    return Ok(b);
+                } else if b.is_empty() {
+                    return Ok(a);
+                }
+
+                let a_maps = a.len() > b.len();
+                if a_maps && a.len() % b.len() != 0
+                    || !a_maps && b.len() % a.len() != 0
+                {
+                    return err!(Domain);
+                }
+
+                let trailing;
+                let size;
+                if a_maps {
+                    trailing = a.rank();
+                    size = a.len();
+                } else {
+                    trailing = b.rank();
+                    size = b.len();
+                }
+
+                let mut v = Vec::with_capacity(size);
+                for (a, b) in a.list().iter().cycle().zip(b.list().iter().cycle()).take(size) {
+                    let a = if a.is_box() { unsafe { a.unbox_unchecked() } } else { Type::Scalar(*a) };
+                    let b = if b.is_box() { unsafe { b.unbox_unchecked() } } else { Type::Scalar(*b) };
+                    v.push(f.dyadic_call(a, b)?.to_list()?);
+                }
+                List::unranked(&o.a, trailing.len(), trailing, v)
+            }).map(Type::List)
+        } else {
+            err!(Domain)
+        }
+    }; a, s))
 }
 
 #[inline]

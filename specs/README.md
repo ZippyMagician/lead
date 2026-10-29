@@ -192,7 +192,7 @@ Partial trains, of course, support constants within them too.
 | ```@``` | ```u@v``` | Compose |  N/A |  Over  |  N/A | Rank if right arg is immediate |
 | ``` ` ```| ```u` ```|   Tie   |  N/A | Commute|  N/A | Flips operands if attached to dyadic operator|
 | ```"``` |  ```u"``` |   Each  |  99  |  Each  |99 99 | Each of leading axis |
-| ```":```|  ```u":```|  Atoms  |   0  |  Atoms |   0  | Equivalent to `u@0` |
+| ```":```|  ```u":```|  Atoms  |   0  |  Atoms | 0 0  | Applies through boxed atoms |
 | ```".```|```u".v```, ```u".A```| Repeat/Until| 99 | Repeat/Until | 99, 99| Dyadic until described below |
 
 ##### Monad vs. Dyad ```u".v```
