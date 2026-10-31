@@ -160,7 +160,9 @@ Partial trains, of course, support constants within them too.
 |  Symbol  |   Monadic  | Rank |    Dyadic    |  Rank | Notes |
 |:--------:|:----------:|:----:|:------------:|:-----:|:-----:|
 |  ```+``` |Abs / Cast(`I)| 0  |      Add     |  0 0  |       |
+| ```+:``` |    Double  |   0  |   Abs Add    |  0 0  |       |
 |  ```-``` |\[`B]Neg / Swp case| 0  |Sub      |  0 0  |\`N: negate, \`B: boolean not, \`C: swap cases|
+| ```-:``` |    Halve   |   0  |   Abs Diff   |  0 0  |       |
 |  ```*``` |Sign / Case |   0  | Mul / Bool AND|  0 0 |Cases: (`1 _1 0 = *'Ab '`)|
 |  ```%``` | Reciprocal |   0  |    Div       |  0 0  |       |
 |   `\|`   | Boolean Not|   0  |    Residue   |  0 0  |TODO: Update monadic?|

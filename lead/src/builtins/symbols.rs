@@ -25,8 +25,12 @@ use smallvec::{SmallVec, smallvec};
 pub enum Symbol {
     /// `+`
     Plus,
+    /// `+:`
+    PlusColon,
     /// `-`
     Dash,
+    /// `-:`
+    DashColon,
     /// `*`
     Star,
     /// `%`
@@ -108,6 +112,37 @@ pub(super) fn add(mut a: List, mut b: List, o: &Opts) -> Status<List> {
     }
 }
 
+// pluscolonm | +: | 0 | Double
+pub(super) fn double(mut a: List, _: &Opts) -> Status<List> {
+    for_0!(a; [v] = match v {
+        Char(c) => Number(*c as u32 as i64 * 2),
+        Number(n) => Number(*n * 2),
+        Float(f) => Float(*f * 2.),
+        Boolean(false) => Number(0),
+        Boolean(true) => Number(2),
+        Scalar::Box(_) => return err!(Box),
+    });
+    Ok(a)
+}
+
+// pluscolond | +: | 0, 0 | Abs sum
+pub(super) fn abssum(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+    if a.is_empty() {
+        cold_path();
+        Ok(b)
+    } else if b.is_empty() {
+        cold_path();
+        Ok(a)
+    } else {
+        maybe_apply!([scalar] o, a, b, {
+            scalar_op!(a, b,
+                [l, r] = { (*l + *r)?.abs() };
+                { (l + *r)?.abs() }; { (*l + r)?.abs() };
+            )
+        })
+    }
+}
+
 // dashm | - | 0 | Negate / Swap case / Boolean not
 pub(super) fn negate(mut a: List, _: &Opts) -> Status<List> {
     for_0!(a; [v] = match v {
@@ -145,6 +180,33 @@ pub(super) fn sub(mut a: List, mut b: List, o: &Opts) -> Status<List> {
         })
     } else {
         maybe_apply!([scalar] o, a, b, scalar_op!(a, b, sub))
+    }
+}
+
+// dashcolonm | -: | 0 | Halve
+pub(super) fn halve(mut a: List, _: &Opts) -> Status<List> {
+    for_0!(a; [v] = match v {
+        Char(c) => Number(*c as u32 as i64 / 2),
+        Number(n) if *n % 2 == 0 => Number(*n / 2),
+        Number(n) => Float(OrderedFloat(*n as f64 / 2.)),
+        Float(f) => Float(*f / 2.),
+        Boolean(false) => Number(0),
+        Boolean(true) => Float(OrderedFloat(0.5)),
+        Scalar::Box(_) => return err!(Box),
+    });
+    Ok(a)
+}
+
+// dashcolond | -: | 0, 0 | Abs diff
+pub(super) fn absdiff(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+    if a.is_empty() {
+        cold_path();
+        Ok(b)
+    } else if b.is_empty() {
+        cold_path();
+        Ok(a)
+    } else {
+        maybe_apply!([scalar] o, a, b, scalar_op!(a, b, abs_diff))
     }
 }
 

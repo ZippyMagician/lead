@@ -100,7 +100,9 @@ macro_rules! define_op {
 
 define_syms! {
     Plus => (b"+", 0, true, false, symbols::abs; [0, 0], true, false, symbols::add);
+    PlusColon => (b"+:", 0, true, false, symbols::double; [0, 0], true, false, symbols::abssum);
     Dash => (b"-", 0, true, false, symbols::negate; [0, 0], true, false, symbols::sub);
+    DashColon => (b"-:", 0, true, false, symbols::halve; [0, 0], true, false, symbols::absdiff);
     Star => (b"*", 0, true, false, symbols::signum; [0, 0], true, false, symbols::mul);
     Percent => (b"%", 0, true, false, symbols::reciprocal; [0, 0], true, false, symbols::div);
     Pipe => (b"|", 0, true, false, symbols::not; [0, 0], true, false, symbols::residue);

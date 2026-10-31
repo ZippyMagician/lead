@@ -245,6 +245,43 @@ impl Scalar {
     }
 }
 
+impl Scalar {
+    #[inline(always)]
+    pub(crate) fn abs(self) -> Self {
+        match self {
+            Self::Number(n) => Self::Number(n.abs()),
+            _ => self,
+        }
+    }
+
+    #[inline(always)]
+    pub(crate) fn abs_diff(self, rhs: Self) -> Status<Self> {
+        if self.is_box() || rhs.is_box() {
+            err!(NaN)
+        } else if self.is_num() && rhs.is_num() {
+            unsafe {
+                let a = self.to_num_unchecked();
+                let b = rhs.to_num_unchecked();
+                n(a.abs_diff(b) as i64)
+            }
+        } else if self.is_float() && rhs.is_float() {
+            unsafe {
+                let a = self.to_float_unchecked();
+                let b = rhs.to_float_unchecked();
+                f(OrderedFloat((a - b).abs()))
+            }
+        } else if self.is_float() || rhs.is_float() {
+            let a = self.to_float()?;
+            let b = rhs.to_float()?;
+            f(OrderedFloat((a - b).abs()))
+        } else {
+            let a = self.to_num()?;
+            let b = rhs.to_num()?;
+            n(a.abs_diff(b) as i64)
+        }
+    }
+}
+
 use Scalar::*;
 
 #[inline(always)]
