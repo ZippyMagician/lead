@@ -22,10 +22,11 @@ jobs:
     - name: Add WASM build target
       run: |
         rustup target add wasm32-unknown-unknown
-    - name: Add wasm-bindgen cli
+    - name: cargo-install wasm-bindgen-cli
       continue-on-error: true
-      run: |
-        cargo install wasm-bindgen-cli
+      uses: baptiste0928/cargo-install@v3.5.0
+      with:
+        crate: wasm-bindgen-cli
     - name: Build WASM
       run: |
         RUSTFLAGS='--cfg=getrandom_backend="wasm_js"' cargo build --package lead-wasm --target=wasm32-unknown-unknown --release
