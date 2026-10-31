@@ -17,6 +17,7 @@ jobs:
           ~/.cargo/bin
           ~/.cargo/git
           ~/.cargo/registry
+          ~/.cargo-install
           target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Add WASM build target
