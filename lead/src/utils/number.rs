@@ -2,46 +2,19 @@ use super::error::{Status, err};
 
 use ordered_float::{FloatCore, OrderedFloat};
 
-pub fn is_number(string: &str) -> bool {
-    let count_ = string.matches('_').count();
-    if string.is_empty() || count_ > 2 {
-        return false;
-    }
-
-    let mut expos = None;
-
-    for (i, chr) in string.char_indices() {
-        match chr {
-            '_' => {
-                if i > 0 && Some(i - 1) != expos {
-                    return false;
-                }
-            }
-
-            'e' => {
-                if expos.is_some() {
-                    return false;
-                }
-
-                expos = Some(i);
-            }
-
-            '0'..='9' => {}
-
-            _ => return false,
-        }
-    }
-
-    if expos.is_some() { true } else { count_ <= 1 }
-}
-
 fn replace_chars(string: &str) -> String {
     let mut num = String::with_capacity(string.len() + 1);
-    if string.starts_with(|c| c == 'e' || c == '.') {
+    if string.starts_with(|c| c == 'e') {
         num.push('1');
         num.push_str(string);
-    } else if string.starts_with("_e") || string.starts_with("_.") {
+    } else if string.starts_with(|c| c == '.') {
+        num.push('0');
+        num.push_str(string);
+    } else if string.starts_with("_e") {
         num.push_str("-1");
+        num.push_str(&string[1..]);
+    } else if string.starts_with("_.") {
+        num.push_str("-0");
         num.push_str(&string[1..]);
     } else {
         num.push_str(string);
