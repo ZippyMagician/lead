@@ -143,7 +143,7 @@ pub(super) fn abssum(mut a: List, mut b: List, o: &Opts) -> Status<List> {
     }
 }
 
-// dashm | - | 0 | Negate / Swap case / Boolean not
+// dashm | - | 0 | Negate / Swap case / Boolean NOT
 pub(super) fn negate(mut a: List, _: &Opts) -> Status<List> {
     for_0!(a; [v] = match v {
         Char(c) if c.is_lowercase() => Char(c.to_ascii_uppercase()),
@@ -225,7 +225,7 @@ pub(super) fn signum(mut a: List, _: &Opts) -> Status<List> {
     Ok(a)
 }
 
-// stard | * | 0, 0 | Multiplication / Boolean And
+// stard | * | 0, 0 | Multiplication / Boolean AND
 pub(super) fn mul(mut a: List, mut b: List, o: &Opts) -> Status<List> {
     if a.is_empty() {
         cold_path();
@@ -433,11 +433,11 @@ pub(super) fn factorial(mut a: List, o: &Opts) -> Status<List> {
     Ok(a)
 }
 
-// exclamationd | ! | 0, 0 | Bitwise OR
+// exclamationd | ! | 0, 0 | Boolean OR
 pub(super) fn bitor(mut a: List, mut b: List, o: &Opts) -> Status<List> {
     maybe_apply!([scalar] o, a, b, {
         // SAFETY: Underlying `apply_loosem` will take ownership if necessary
-        scalar_op!(a, b, [l, r] = { Scalar::Number(l.to_num()? | r.to_num()?) })
+        scalar_op!(a, b, [l, r] = { Scalar::Boolean(l.to_bool()? || r.to_bool()?) })
     })
 }
 
@@ -492,10 +492,10 @@ pub(super) fn exp(mut a: List, o: &Opts) -> Status<List> {
     Ok(a)
 }
 
-// caretd | ^ | 0, 0 | Bitwise AND
+// caretd | ^ | 0, 0 | Pow
 pub(super) fn bitand(mut a: List, mut b: List, o: &Opts) -> Status<List> {
     maybe_apply!([scalar] o, a, b, {
-        scalar_op!(a, b, [l, r] = { Scalar::Number(l.to_num()? & r.to_num()?) })
+        scalar_op!(a, b, [l, r] = { Scalar::Float(l.to_float()?.powf(r.to_float()?)) })
     })
 }
 

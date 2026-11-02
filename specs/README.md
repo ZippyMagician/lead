@@ -165,13 +165,13 @@ Partial trains, of course, support constants within them too.
 | ```-:``` |    Halve   |   0  |   Abs Diff   |  0 0  |       |
 |  ```*``` |Sign / Case |   0  | Mul / Bool AND|  0 0 |Cases: (`1 _1 0 = *'Ab '`)|
 |  ```%``` | Reciprocal |   0  |    Div       |  0 0  |       |
-|   `\|`   | Boolean Not|   0  |    Residue   |  0 0  |TODO: Update monadic?|
+|   `\|`   | Bool NOT   |   0  |    Residue   |  0 0  |TODO: Update monadic?|
 |   `\|:`  |   Descend  |   0  |     Axes     | 1 99  |(dyad): reorder axes based on indices|
 |   `\|.`  |   Reverse  |  99  |    Rotate    | 0 99  |       |
-|  ```!``` |  Factorial |   0  |   Bit OR     |  0 0  |Binomial?|
+|  ```!``` |  Factorial |   0  |   Bool OR    |  0 0  |Binomial?|
 |  ```<``` |    Box     |  99  |   Less Than  |  0 0  |       |
 |  ```>``` |   Unbox    |  99  | Greater Than |  0 0  |       |
-|  ```^``` |     Exp    |   0  |    Bit AND   |  0 0  |Replace with pow?|
+|  ```^``` |     Exp    |   0  |    Pow       |  0 0  |       |
 |  ```$``` |    Shape   |  99  |    Reshape   | 1 99  |       |
 |  ```[``` |  Identity  |  99  |     Left     | 99 99 |       |
 |  ```]``` |  Identity  |  99  |     Right    | 99 99 |       |
