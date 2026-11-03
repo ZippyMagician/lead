@@ -154,7 +154,7 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
             return Ok(a.into());
         }
 
-        apply_loosem(&o.a, a, o.rm, |a| {
+        maybe_apply!([within] o, a, {
             if a.is_scalar() {
                 std::hint::cold_path();
                 return Ok(a);
@@ -248,7 +248,7 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
     let dyad = move |a: Type, b: Type, o: &Opts| {
         let a = a.to_list()?;
         let b = b.to_list()?;
-        apply_loosed(&o.a, a, b, o.rd, |a, b| {
+        maybe_apply!([within] o, a, b, {
             if b.is_scalar() {
                 return Ok(List::scalar(b.list()[0]));
             }
@@ -384,6 +384,8 @@ pub(crate) fn scan_table(f: Type, a: Arena, s: Scope) -> Status<Function> {
                         if res.is_scalar_strict() {
                             res = Type::List(res.to_list().unwrap());
                         }
+                    } else if !boxit && let Ok(Scalar::Box(_)) = res.as_scalar() {
+                        boxit = true;
                     }
                 } else {
                     let l = res.as_list()?;

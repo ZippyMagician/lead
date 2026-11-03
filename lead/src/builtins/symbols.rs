@@ -342,7 +342,7 @@ pub(super) fn descend(mut a: List, o: &Opts) -> Status<List> {
 
 // pipecolond | |: | 1, 99 | Axes
 pub(super) fn axes(a: List, b: List, o: &Opts) -> Status<List> {
-    maybe_apply!(o.rd[0] as usize >= a.dims() && o.rd[1] as usize >= b.dims(), &o.a, a, b, o.rd, {
+    maybe_apply!([within] o, a, b, {
         let rank = b.rank();
         let mut f = Vec::with_capacity(a.len());
         let indices = a.list().iter().map(|n| n.to_num());
@@ -360,7 +360,7 @@ pub(super) fn axes(a: List, b: List, o: &Opts) -> Status<List> {
 
 // pipedotm | |. | 99 | Reverse
 pub(super) fn rev(mut a: List, o: &Opts) -> Status<List> {
-    maybe_apply!(o.rm as usize >= a.dims(), &o.a, a, o.rm, {
+    maybe_apply!([within] o, a, {
         if a.is_scalar() {
             std::hint::cold_path();
             return Ok(a);

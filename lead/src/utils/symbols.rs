@@ -179,6 +179,21 @@ macro_rules! maybe_apply {
             $crate::utils::function::apply_loosed($arena, $a, $b, $rd, |mut $a, mut $b| $body)
         }
     };
+
+    ([within] $o:ident, $a:ident, $body:expr) => {
+        maybe_apply!($o.rm as usize >= $a.dims(), &$o.a, $a, $o.rm, $body)
+    };
+
+    ([within] $o:ident, $a:ident, $b:ident, $body:expr) => {
+        maybe_apply!(
+            $o.rd[0] as usize >= $a.dims() && $o.rd[1] as usize >= $b.dims(),
+            &$o.a,
+            $a,
+            $b,
+            $o.rd,
+            $body
+        )
+    };
 }
 
 pub(crate) use maybe_apply;
