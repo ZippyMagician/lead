@@ -575,9 +575,9 @@ impl Scalars {
 // ecow::EcoVec copy for mutating len
 #[repr(C)]
 pub(crate) struct EcoVecInternal<T> {
-    ptr: std::ptr::NonNull<T>,
+    pub(crate) ptr: std::ptr::NonNull<T>,
     pub(crate) len: usize,
-    phantom: std::marker::PhantomData<T>,
+    pub(crate) phantom: std::marker::PhantomData<T>,
 }
 
 impl From<EcoVec<Scalar>> for Scalars {

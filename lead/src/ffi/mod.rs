@@ -9,6 +9,8 @@ use crate::types::scalar::Scalar;
 use crate::utils::Arena;
 use crate::utils::error::{Error, Status, err};
 
+use ecow::EcoVec;
+
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]
 #[repr(u8)]
@@ -107,12 +109,11 @@ impl ScalarExtern {
             // (i.e. they are all correct)
             Self::Box(w) => unsafe {
                 let w: &mut Window = &mut *w;
-                let mut v = Vec::with_capacity(w.c);
+                let mut v = EcoVec::with_capacity(w.c);
                 for i in 0..w.c {
                     v.push((*w.i.add(i)).to_scalar(arena)?);
                 }
-                let list =
-                    List::new(v.into(), w.c, w.d, std::slice::from_raw_parts(w.r, w.d).into());
+                let list = List::new(v, w.d, std::slice::from_raw_parts(w.r, w.d).into());
                 drop(Box::from_raw(w)); // SAFETY: Assume allocation wasn't recreated by C
                 Ok(Scalar::boxed(arena, list)?)
             },

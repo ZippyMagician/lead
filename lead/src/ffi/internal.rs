@@ -1,13 +1,14 @@
 extern crate libloading;
 
+use std::path::Path;
+use std::sync::RwLock;
+
 use super::{ExternTypes, ScalarExtern, Window};
 use crate::types::list::List;
 use crate::utils::Arena;
 use crate::utils::error::{Error, Status, err};
 
-use std::path::Path;
-use std::sync::RwLock;
-
+use ecow::EcoVec;
 use libloading::Library;
 
 type InnerLink = unsafe extern "C" fn(...) -> *mut Window;
@@ -82,16 +83,12 @@ pub(crate) fn call_symbol(
         if !res.is_null() {
             let window = &mut *res; // SAFETY: Checked for null. Other assumptions up to external
             // function.
-            let mut v = Vec::with_capacity(window.c);
+            let mut v = EcoVec::with_capacity(window.c);
             for i in 0..window.c {
                 v.push((*window.i.add(i)).to_scalar(arena)?);
             }
-            let list = List::new(
-                v.into(),
-                window.c,
-                window.d,
-                std::slice::from_raw_parts(window.r, window.d).into(),
-            );
+            let list =
+                List::new(v, window.d, std::slice::from_raw_parts(window.r, window.d).into());
             Ok(list)
         } else {
             err!(MemoryFault, "Got null pointer from C FFI")
@@ -101,12 +98,6 @@ pub(crate) fn call_symbol(
 
 impl From<libloading::Error> for Error {
     fn from(f: libloading::Error) -> Self {
-        Self::Internal(format!("{f}").into())
-    }
-}
-
-impl From<std::io::Error> for Error {
-    fn from(f: std::io::Error) -> Self {
         Self::Internal(format!("{f}").into())
     }
 }
