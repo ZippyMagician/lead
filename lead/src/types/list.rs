@@ -376,11 +376,12 @@ impl Display for List {
                             .find(|(c, _)| *c == '\n')
                             .map_or_else(|| fm.chars().count(), |(_, i)| i),
                     );
+                    strings.push(fm.trim_end_matches('\n').split('\n').collect());
                 } else {
                     fm = push_and_get(&mut formatted, format!("{num}"));
                     x = usize::max(x, fm.chars().count());
+                    strings.push(vec![fm]);
                 }
-                strings.push(fm.trim_end_matches('\n').split('\n').collect());
             }
             for ys in strings.iter() {
                 y = usize::max(y, ys.len());

@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::error;
+use std::io;
 use std::fmt::{self, Display};
 use std::num::{ParseFloatError, ParseIntError};
 
@@ -70,14 +71,23 @@ pub fn print_error(error: Error) -> ! {
 impl error::Error for Error {}
 
 impl From<ParseIntError> for Error {
+    #[inline(always)]
     fn from(_: ParseIntError) -> Self {
         Self::NaN
     }
 }
 
 impl From<ParseFloatError> for Error {
+    #[inline(always)]
     fn from(_: ParseFloatError) -> Self {
         Self::NaN
+    }
+}
+
+impl From<io::Error> for Error {
+    #[inline(always)]
+    fn from(value: io::Error) -> Self {
+        Error::Internal(value.to_string().into())
     }
 }
 

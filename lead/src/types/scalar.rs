@@ -98,7 +98,7 @@ impl Scalar {
             'C' => match self {
                 Self::Box(p) => Self::Char(char::from_u32(p as u32).ok_or(Error::NaN)?),
                 Self::Char(_) => self,
-                _ => Self::Char(self.to_char().unwrap()),
+                _ => Self::Char(self.to_char()?),
             },
             'B' => match self {
                 Self::Box(_) => Self::Boolean(!unsafe { self.as_unboxed_unchecked() }.is_empty()),
@@ -145,6 +145,10 @@ impl Scalar {
     pub fn to_char(&self) -> Status<char> {
         match self {
             Self::Char(c) => Ok(*c),
+            Self::Number(n) if *n >= 0 => char::from_u32(*n as u64 as u32).ok_or(Error::Value),
+            Self::Float(f) if f.floor() == f.into_inner() => {
+                char::from_u32(f.floor().as_()).ok_or(Error::Value)
+            }
             _ => {
                 std::hint::cold_path();
                 err!(Value)

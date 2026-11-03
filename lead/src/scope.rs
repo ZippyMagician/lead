@@ -76,12 +76,18 @@ impl Internals {
     pub(crate) fn new() -> Self {
         let mut uniq = HashSet::new();
         let mut map = HashMap::new();
+        // Instants
         #[cfg(not(feature = "wasm"))]
-        map.insert("I".to_string(), Type::from(List::empty())); // TODO: Initialize I
+        {
+            map.insert("I".to_string(), Type::from(List::empty())); // TODO: Initialize I
+            uniq.insert("STDOUT".to_string());
+        }
         let boxes = List::from_vec(
             unsafe { crate::utils::BOXES }.into_iter().map(|c| Scalar::Char(c)).collect(),
         );
         map.insert("BOXC".to_string(), Type::from(boxes.unwrap()));
+
+        // Functions
         #[cfg(feature = "ffi")]
         {
             uniq.insert("extern".to_string());
@@ -209,6 +215,8 @@ impl Internals {
                     .into(),
                 ))
             }
+            #[cfg(not(feature = "wasm"))]
+            b"STDOUT" => err!(Domain),
             _ => self
                 .map
                 .get(name)
@@ -257,6 +265,11 @@ impl Internals {
             }
             self.map.insert("BOXC".to_string(), v.into());
 
+            return Ok(());
+        } else if name.as_bytes() == b"STDOUT" {
+            use std::io::Write;
+            let mut stdout = std::io::stdout();
+            write!(stdout, "{v}")?;
             return Ok(());
         }
 
