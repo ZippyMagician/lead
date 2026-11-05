@@ -170,7 +170,9 @@ Partial trains, of course, support constants within them too.
 |   `\|.`  |   Reverse  |  99  |    Rotate    | 0 99  |       |
 |  ```!``` |  Factorial |   0  |   Bool OR    |  0 0  |Binomial?|
 |  ```<``` |    Box     |  99  |   Less Than  |  0 0  |       |
+| ```<:``` |  Grade Up  |  99  |      LTE     |  0 0  |e.g.: `(-:]+/&~<:~&:floor 0 _1-:&+#)` finds median|
 |  ```>``` |   Unbox    |  99  | Greater Than |  0 0  |       |
+| ```>:``` |  Grade Down|  99  |      GTE     |  0 0  |`sdown:~&:>:`|
 |  ```^``` |     Exp    |   0  |    Pow       |  0 0  |       |
 |  ```$``` |    Shape   |  99  |    Reshape   | 1 99  |       |
 |  ```[``` |  Identity  |  99  |     Left     | 99 99 |       |

@@ -45,8 +45,12 @@ pub enum Symbol {
     Exclamation,
     /// `<`
     LeftArrow,
+    /// `<:`
+    LeftArrowColon,
     /// `>`
     RightArrow,
+    /// `>:`
+    RightArrowColon,
     /// `^`
     Caret,
     /// `$`
@@ -449,12 +453,55 @@ pub(crate) fn boxed(a: Type, o: &Opts) -> Status<Type> {
 // leftarrowd | < | 0, 0 | Less than
 pub(crate) fn lt(mut a: List, mut b: List, o: &Opts) -> Status<List> {
     maybe_apply!([scalar] o, a, b, {
-        // SAFETY: Underlying `apply_loosem` will take ownership if necessary
         scalar_op! {
             a, b, [l, r] =
             { Scalar::Boolean(*l < *r) };
             { Scalar::Boolean(l < *r)  };
             { Scalar::Boolean(*l < r)  };
+        }
+    })
+}
+
+// leftarrowcolonm | <: | 99 | Grade Up
+pub(crate) fn gradeup(a: List, o: &Opts) -> Status<List> {
+    maybe_apply!([within] o, a, {
+        if a.is_scalar() {
+            return Ok(a);
+        }
+        let len = a.rank()[a.dims() - 1];
+        let indices = with_eco(len, |v| {
+            for i in 0..len as i64 {
+                v.push(Scalar::Number(i));
+            }
+            Ok(())
+        })?;
+
+        // SAFETY: indices isn't shared, so this is fine (to the degree that is expected from this
+        // awful code)
+        let s = unsafe {
+            std::slice::from_raw_parts_mut(indices.as_ptr() as *mut Scalar, len)
+        };
+
+        let l = a.ranked(a.dims() - 1)?;
+        s.sort_by(|a, b| unsafe { 
+            let i = a.to_num_unchecked();
+            let j = b.to_num_unchecked();
+            std::hint::assert_unchecked(i >= 0 && j >= 0);
+            l[i as usize].cmp(&l[j as usize])
+        });
+
+        List::from_vec(indices)
+    })
+}
+
+// leftarrowcolond | <: | 0, 0 | LTE
+pub(crate) fn lte(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+    maybe_apply!([scalar] o, a, b, {
+        scalar_op! {
+            a, b, [l, r] =
+            { Scalar::Boolean(*l <= *r) };
+            { Scalar::Boolean(l <= *r)  };
+            { Scalar::Boolean(*l <= r)  };
         }
     })
 }
@@ -482,6 +529,50 @@ pub(crate) fn gt(mut a: List, mut b: List, o: &Opts) -> Status<List> {
             { Scalar::Boolean(*l > *r) };
             { Scalar::Boolean(l > *r) };
             { Scalar::Boolean(*l < r) };
+        }
+    })
+}
+
+// rightarrowcolonm | >: | 99 | Grade Down
+pub(crate) fn gradedown(a: List, o: &Opts) -> Status<List> {
+    maybe_apply!([within] o, a, {
+        if a.is_scalar() {
+            return Ok(a);
+        }
+        let len = a.rank()[a.dims() - 1];
+        let indices = with_eco(len, |v| {
+            for i in 0..len as i64 {
+                v.push(Scalar::Number(i));
+            }
+            Ok(())
+        })?;
+
+        // SAFETY: indices isn't shared, so this is fine (to the degree that is expected from this
+        // awful code)
+        let s = unsafe {
+            std::slice::from_raw_parts_mut(indices.as_ptr() as *mut Scalar, len)
+        };
+
+        let l = a.ranked(a.dims() - 1)?;
+        s.sort_by(|a, b| unsafe { 
+            let i = a.to_num_unchecked();
+            let j = b.to_num_unchecked();
+            std::hint::assert_unchecked(i >= 0 && j >= 0);
+            l[j as usize].cmp(&l[i as usize])
+        });
+
+        List::from_vec(indices)
+    })
+}
+
+// rightarrowcolond | >: | 0, 0 | GTE
+pub(crate) fn gte(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+    maybe_apply!([scalar] o, a, b, {
+        scalar_op! {
+            a, b, [l, r] =
+            { Scalar::Boolean(*l >= *r) };
+            { Scalar::Boolean(l >= *r)  };
+            { Scalar::Boolean(*l >= r)  };
         }
     })
 }
