@@ -1,31 +1,46 @@
-// NOTE: Lists should reject incompatible concatenations/contents
+// NOTE: Arrays should reject incompatible concatenations/contents
 // i.e., all internal scalars should be the same matching types.
 // That is, numeric / character / boxed
 // Maybe booleans as well?
 
 use std::fmt::{self, Display};
+use std::hash::Hash;
+use std::rc::Rc;
 
 use ecow::{EcoVec, eco_vec};
 use smallvec::{SmallVec, smallvec};
 
-use super::scalar::Scalar;
+use super::scalar::{self, Boxed, Scalar};
 use crate::utils::Arena;
+use crate::utils::display_boxed_lines;
 use crate::utils::error::{Status, err};
-use crate::utils::{compatible, display_boxed_lines};
+
+use ordered_float::OrderedFloat;
 
 pub(crate) const INLINE_SIZE: usize = 2;
 
 #[derive(Clone, Debug, Hash)]
-pub struct List {
-    // dt: Box<[Scalar]>,
-    dt: Scalars,
+#[repr(u8, C)]
+pub enum List {
+    Integers(Array<i64>),
+    Doubles(Array<OrderedFloat<f64>>),
+    Booleans(Array<bool>),
+    String(Array<u8>),
+    Boxes(Array<Boxed>),
+}
+
+// TODO: Various functions implemented for `List`
+
+#[derive(Clone, Debug, Hash)]
+pub struct Array<T: Scalar + Hash> {
+    dt: Scalars<T>,
     pub(crate) ds: usize,
     pub(crate) rk: SmallVec<[usize; INLINE_SIZE]>,
 }
 
-impl List {
+impl<T: Scalar + Hash> Array<T> {
     #[inline(always)]
-    pub fn new(dt: impl Into<Scalars>, ds: usize, rk: SmallVec<[usize; INLINE_SIZE]>) -> Self {
+    pub fn new(dt: impl Into<Scalars<T>>, ds: usize, rk: SmallVec<[usize; INLINE_SIZE]>) -> Self {
         Self { dt: dt.into(), ds, rk }
     }
 
@@ -35,50 +50,39 @@ impl List {
     }
 
     #[inline]
-    pub fn from_vec(data: EcoVec<Scalar>) -> Status<Self> {
-        if !compatible(&data) {
-            return err!(Domain);
-        }
+    pub fn from_vec(data: Vec<T>) -> Status<Self> {
         let size = data.len();
         Ok(Self { dt: data.into(), ds: 1, rk: smallvec![size] })
     }
 
     #[inline]
-    pub fn mat(
-        data: EcoVec<Scalar>, ds: usize, rk: SmallVec<[usize; INLINE_SIZE]>,
-    ) -> Status<Self> {
-        if !compatible(&data) {
-            return err!(Domain);
-        }
+    pub fn mat(data: Vec<T>, ds: usize, rk: SmallVec<[usize; INLINE_SIZE]>) -> Status<Self> {
         Ok(Self { dt: data.into(), ds, rk })
     }
 
     #[inline]
-    pub fn mat_ref(data: &[Scalar], ds: usize, rk: &[usize]) -> Status<Self> {
-        if !compatible(data) {
-            return err!(Domain);
-        }
+    pub fn mat_ref(data: &[T], ds: usize, rk: &[usize]) -> Status<Self> {
         Ok(Self { dt: data.into(), ds, rk: rk.into() })
     }
 
     #[inline]
-    pub fn scalar(data: Scalar) -> Self {
+    pub fn scalar(data: T) -> Self {
         Self { dt: data.into(), ds: 1, rk: smallvec![1] }
     }
 
     #[inline]
-    pub fn string(data: &str) -> Self {
-        let size = data.chars().count();
-        unsafe { Self::alloc_iter(&[size], data.chars().map(Scalar::Char)).unwrap() }
+    pub fn string(data: &str) -> List {
+        let size = data.len();
+        unsafe { Array::<u8>::alloc_iter(&[size], data.bytes()).unwrap() }
     }
 
     #[inline(always)]
-    pub fn list(&self) -> &[Scalar] {
+    pub fn list(&self) -> &[T] {
         self.dt.list()
     }
 
     #[inline(always)]
-    pub fn list_mut(&mut self) -> &mut [Scalar] {
+    pub fn list_mut(&mut self) -> &mut [T] {
         self.dt.list_mut()
     }
 
@@ -108,19 +112,8 @@ impl List {
         self.len() == 1
     }
 
-    #[inline(always)]
-    pub fn get_type(&self) -> u8 {
-        if self.is_empty() {
-            std::hint::cold_path();
-            4
-        } else {
-            self.list()[0].repr()
-        }
-    }
-
     #[inline]
-    pub fn range(start: Scalar, end: Scalar, rev: bool) -> Status<Self> {
-        let chars = start.is_char() && end.is_char();
+    pub fn range(start: T, end: T, rev: bool) -> Status<List> {
         let start = start.to_num()?;
         let end = end.to_num()?;
         if end < start || end < 0 || start < 0 {
@@ -128,27 +121,18 @@ impl List {
         }
         let count: usize = (end - start + 1) as usize;
         unsafe {
-            if chars {
-                let iter = (start..=end).map(|i| Scalar::Char(i as u8 as char));
-                if rev {
-                    Self::alloc_iter(&[count], iter.rev())
-                } else {
-                    Self::alloc_iter(&[count], iter)
-                }
+            let iter = (start..=end).map(T::from_usize);
+            if rev {
+                Self::alloc_iter(&[count], iter.rev())
             } else {
-                let iter = (start..=end).map(Scalar::Number);
-                if rev {
-                    Self::alloc_iter(&[count], iter.rev())
-                } else {
-                    Self::alloc_iter(&[count], iter)
-                }
+                Self::alloc_iter(&[count], iter)
             }
         }
     }
 
     // Swaps out rank. It is in place if possible
     #[inline]
-    pub fn with_rank(mut self, r: &[usize]) -> Status<Self> {
+    pub fn with_rank(mut self, r: &[usize]) -> Status<List> {
         let count: usize = r.iter().product();
         if count == self.len() {
             if INLINE_SIZE >= self.dims() || INLINE_SIZE < r.len() {
@@ -158,9 +142,9 @@ impl List {
                 self.rk.extend_from_slice(r);
             }
             self.ds = self.rk.len();
-            Ok(self)
+            Ok(T::wrap(self))
         } else if self.is_empty() {
-            Ok(self)
+            Ok(T::wrap(self))
         } else {
             let bucket = self.list().into_iter().copied().cycle();
             unsafe { Self::alloc_iter(r, bucket) }
@@ -173,14 +157,14 @@ impl List {
     }
 
     #[inline(always)]
-    pub(crate) unsafe fn try_alloc_iter<T>(r: &[usize], bucket: T) -> Status<List>
+    pub(crate) unsafe fn try_alloc_iter<U>(r: &[usize], bucket: U) -> Status<Self>
     where
-        T: Iterator<Item = Status<Scalar>>,
+        U: Iterator<Item = Status<T>>,
     {
         let count: usize = r.iter().product();
         let dims = r.len();
         if dims == 0 {
-            return Ok(List::empty());
+            return Ok(Array::empty());
         }
         let rank = SmallVec::from_slice(r);
         Ok(unsafe { Self::new(Scalars::try_from_iter(bucket, count)?, dims, rank) })
@@ -188,23 +172,23 @@ impl List {
 
     // SAFETY: Assumes called has provided valid sizes
     #[inline(always)]
-    pub(crate) unsafe fn alloc_iter<T>(r: &[usize], bucket: T) -> Status<List>
+    pub(crate) unsafe fn alloc_iter<U>(r: &[usize], bucket: U) -> Status<List>
     where
-        T: Iterator<Item = Scalar>,
+        U: Iterator<Item = T>,
     {
         let count: usize = r.iter().product();
         let dims = r.len();
         if dims == 0 {
-            return Ok(List::empty());
+            return Ok(T::wrap(Array::empty()));
         }
         let rank = SmallVec::from_slice(r);
         let bucket = SizedScalars::new(bucket, count);
-        Ok(unsafe { Self::new(Scalars::from_iter(bucket, count), dims, rank) })
+        Ok(T::wrap(unsafe { Self::new(Scalars::from_iter(bucket, count), dims, rank) }))
     }
 
     // SAFETY: Assumes all sizes within the struct are valid in respect to the data
     #[inline]
-    pub fn ranked(&self, dims: usize) -> Status<Vec<List>> {
+    pub fn ranked(&self, dims: usize) -> Status<Vec<Self>> {
         if dims == 0 {
             let mut v = Vec::with_capacity(self.len());
             for i in 0..self.len() {
@@ -229,11 +213,12 @@ impl List {
     #[inline]
     pub fn unranked(
         arena: &Arena, _original: usize, trailing_rank: &[usize], mut lists: Vec<List>,
-    ) -> Status<Self> {
+    ) -> Status<List> {
         if lists.is_empty() {
-            return Ok(List::empty());
+            return Ok(List::Integers(Array::empty()));
         } else if lists.len() == 1 {
-            return Ok(std::mem::take(&mut lists[0]));
+            let f = lists[0].clone();
+            return Ok(f);
         }
 
         let mut box_it = false;
@@ -247,10 +232,10 @@ impl List {
 
         if box_it {
             unsafe {
-                Self::try_alloc_iter(
+                Array::<Boxed>::try_alloc_iter(
                     trailing_rank,
-                    lists.into_iter().map(|n| Scalar::boxed(&arena, n)),
-                )
+                    lists.into_iter().map(|n| scalar::boxed(&arena, n)),
+                ).map(List::Boxes)
             }
         } else {
             let mut rank: SmallVec<[usize; INLINE_SIZE]> =
@@ -268,11 +253,12 @@ impl List {
 
     // Assumes lists have already been checked to match
     #[inline]
-    pub fn unranked_unchecked(trailing_rank: &[usize], mut lists: Vec<List>) -> Status<Self> {
+    pub fn unranked_unchecked(trailing_rank: &[usize], lists: Vec<Array<T>>) -> Status<List> {
         if lists.is_empty() {
-            return Ok(List::empty());
+            return Ok(T::wrap(Array::empty()));
         } else if lists.len() == 1 {
-            return Ok(std::mem::take(&mut lists[0]));
+            let f = lists[0].clone();
+            return Ok(T::wrap(f));
         }
 
         let rank = lists[0].rank();
@@ -297,36 +283,6 @@ fn eq_rank(a: &[usize], b: &[usize]) -> bool {
     a.iter().zip(b.iter()).all(|(l, r)| l == r)
 }
 
-impl PartialOrd for List {
-    fn partial_cmp(&self, o: &List) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(&o))
-    }
-}
-
-impl PartialEq for List {
-    fn eq(&self, o: &List) -> bool {
-        eq_rank(self.rank(), o.rank()) && self.list().iter().zip(o.list()).all(|(l, r)| *l == *r)
-    }
-}
-
-impl Ord for List {
-    fn cmp(&self, o: &List) -> std::cmp::Ordering {
-        self.dims().cmp(&o.dims()).then(self.len().cmp(&o.len())).then_with(|| {
-            let l = self.list();
-            let o = o.list();
-
-            for (l, r) in l.iter().zip(o) {
-                if l != r {
-                    return l.cmp(&r);
-                }
-            }
-            std::cmp::Ordering::Equal
-        })
-    }
-}
-
-impl Eq for List {}
-
 // SAFETY: Determined by called
 fn push_and_get<'a>(v: &mut Vec<String>, s: String) -> &'a str {
     v.push(s);
@@ -344,8 +300,10 @@ fn hmask(x: usize, mx: usize) -> u8 {
     ((x + 1 != mx) as u8) << 1 | ((x != 0) as u8) << 3
 }
 
-// TODO: impl Display for List
-impl Display for List {
+// TODO: Implement for each Array type separately
+/*
+// TODO: impl Display for Array
+impl<T: Scalar> Display for Array<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.is_scalar() {
             write!(f, "{}", self.list()[0])?;
@@ -459,29 +417,22 @@ impl Display for List {
 
         Ok(())
     }
-}
+}*/
 
-impl Default for List {
-    #[inline(always)]
-    fn default() -> Self {
-        Self::empty()
-    }
-}
-
-pub struct SizedScalars<T: Iterator<Item = Scalar>> {
+pub struct SizedScalars<T: Iterator<Item = K>, K: Scalar> {
     iter: T,
     size: usize,
     c: usize,
 }
 
-impl<T: Iterator<Item = Scalar>> SizedScalars<T> {
+impl<T: Iterator<Item = K>, K: Scalar> SizedScalars<T, K> {
     pub fn new(iter: T, size: usize) -> Self {
         Self { iter, size, c: 0 }
     }
 }
 
-impl<T: Iterator<Item = Scalar>> Iterator for SizedScalars<T> {
-    type Item = Scalar;
+impl<T: Iterator<Item = K>, K: Scalar> Iterator for SizedScalars<T, K> {
+    type Item = K;
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         self.c += 1;
@@ -496,27 +447,29 @@ impl<T: Iterator<Item = Scalar>> Iterator for SizedScalars<T> {
 }
 
 #[derive(Clone, Debug, Default, Hash)]
-pub struct Scalars {
-    v: EcoVec<Scalar>,
+pub struct Scalars<T: Scalar> {
+    v: Rc<[T]>,
     s: usize,
     e: usize,
 }
 
-impl Scalars {
+impl<T: Scalar> Scalars<T> {
     #[inline(always)]
-    pub(crate) fn list(&self) -> &[Scalar] {
+    pub(crate) fn list(&self) -> &[T] {
+        // SAFETY: Creator must guarantee boundaries
         &self.v[self.s..self.e]
     }
 
     #[inline(always)]
-    pub(crate) fn list_mut(&mut self) -> &mut [Scalar] {
-        if self.len() != self.v.len() {
-            self.v = EcoVec::from(self.list());
+    pub(crate) fn list_mut(&mut self) -> &mut [T] {
+        if Rc::get_mut(&mut self.v).is_none() {
+            self.v = self.v[self.s..self.e].iter().copied().collect();
+            self.e -= self.s;
             self.s = 0;
-            self.e = self.v.len();
         }
 
-        self.v.make_mut()
+        let all = Rc::get_mut(&mut self.v).unwrap();
+        &mut all[self.s..self.e]
     }
 
     #[inline(always)]
@@ -530,74 +483,41 @@ impl Scalars {
         Self { v: self.v.clone(), s: self.s + start, e: self.s + end }
     }
 
-    // SAFETY: What an incredible function
     #[inline(always)]
-    pub(crate) unsafe fn from_iter<T>(it: SizedScalars<T>, end: usize) -> Self
+    pub(crate) unsafe fn from_iter<U>(it: SizedScalars<U, T>, end: usize) -> Scalars<T>
     where
-        T: Iterator<Item = Scalar>,
+        U: Iterator<Item = T>,
     {
-        let mut v = EcoVec::with_capacity(end);
-        // SAFETY: Ptr is checked for null
-        // as for the casting, well lol
-        unsafe {
-            let ptr = v.as_ptr() as *mut Scalar;
-            for (i, s) in it.take(end).enumerate() {
-                ptr.add(i).write(s);
-            }
-            // SAFETY: lmao
-            let mut temp: EcoVecInternal<Scalar> = std::mem::transmute(v);
-            temp.len = end;
-            v = std::mem::transmute(temp);
-        }
-        Self { v, s: 0, e: end }
+        Self { v: it.take(end).collect(), s: 0, e: end }
     }
 
     #[inline(always)]
-    pub(crate) unsafe fn try_from_iter<T>(it: T, end: usize) -> Status<Self>
+    pub(crate) unsafe fn try_from_iter<U>(it: U, end: usize) -> Status<Scalars<T>>
     where
-        T: Iterator<Item = Status<Scalar>>,
+        U: Iterator<Item = Status<T>>,
     {
-        let mut v = EcoVec::with_capacity(end);
-        // SAFETY: See above
-        unsafe {
-            let ptr = v.as_ptr() as *mut Scalar;
-            for (i, s) in it.take(end).enumerate() {
-                ptr.add(i).write(s?);
-            }
-            let mut temp: EcoVecInternal<Scalar> = std::mem::transmute(v);
-            temp.len = end;
-            v = std::mem::transmute(temp);
-        }
-        Ok(Self { v, s: 0, e: end })
+        Ok(Self { v: it.take(end).collect::<Status<Rc<[T]>>>()?, s: 0, e: end })
     }
 }
 
-// ecow::EcoVec copy for mutating len
-#[repr(C)]
-pub(crate) struct EcoVecInternal<T> {
-    pub(crate) ptr: std::ptr::NonNull<T>,
-    pub(crate) len: usize,
-    pub(crate) phantom: std::marker::PhantomData<T>,
-}
-
-impl From<EcoVec<Scalar>> for Scalars {
+impl<T: Scalar> From<Vec<T>> for Scalars<T> {
     #[inline(always)]
-    fn from(e: EcoVec<Scalar>) -> Self {
+    fn from(e: Vec<T>) -> Self {
         let size = e.len();
-        Self { v: e, s: 0, e: size }
+        Self { v: e.into(), s: 0, e: size }
     }
 }
 
-impl From<Scalar> for Scalars {
+impl<T: Scalar> From<T> for Scalars<T> {
     #[inline(always)]
-    fn from(s: Scalar) -> Self {
-        Self { v: eco_vec![s], s: 0, e: 1 }
+    fn from(s: T) -> Self {
+        Self { v: Rc::new([s]), s: 0, e: 1 }
     }
 }
 
-impl From<&[Scalar]> for Scalars {
+impl<T: Scalar> From<&[T]> for Scalars<T> {
     #[inline(always)]
-    fn from(s: &[Scalar]) -> Self {
+    fn from(s: &[T]) -> Self {
         let size = s.len();
         Self { v: s.into(), s: 0, e: size }
     }
