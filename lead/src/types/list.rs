@@ -32,13 +32,13 @@ pub enum List {
 // TODO: Various functions implemented for `List`
 
 #[derive(Clone, Debug, Hash)]
-pub struct Array<T: Scalar + Hash> {
+pub struct Array<T: Scalar> {
     dt: Scalars<T>,
     pub(crate) ds: usize,
     pub(crate) rk: SmallVec<[usize; INLINE_SIZE]>,
 }
 
-impl<T: Scalar + Hash> Array<T> {
+impl<T: Scalar> Array<T> {
     #[inline(always)]
     pub fn new(dt: impl Into<Scalars<T>>, ds: usize, rk: SmallVec<[usize; INLINE_SIZE]>) -> Self {
         Self { dt: dt.into(), ds, rk }
