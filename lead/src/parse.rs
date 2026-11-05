@@ -365,8 +365,13 @@ impl<'a> Parser<'a> {
         self.upto_store.push(tag);
         let mut nodes = Vec::new();
         std::mem::swap(&mut nodes, &mut self.nodes);
-        while let Some(tok) = self.tokens.next_if(|(t, _)| self.upto_store.iter().all(|g| *g != *t))
-        {
+        // If we are looking for a newline, it is a definition, which groups and blocks can override
+        // the one line restriction.
+        while let Some(tok) = self.tokens.next_if(|(t, _)| {
+            self.upto_store
+                .iter()
+                .all(|g| *g == TokenTag::Newline && tag != TokenTag::Newline || *g != *t)
+        }) {
             let node = self.consume_node(tok);
             Self::unpack_node(&mut self.nodes, node)?;
         }

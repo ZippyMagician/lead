@@ -133,7 +133,8 @@ impl Exec {
                     if !self.block {
                         return err!(Internal, "Unexpected node in line");
                     }
-                    self.right = None;
+                    // On second thought, blocks shouldn't drop values
+                    // self.right = None;
                 }
                 node => return err!(Internal, format!("TODO: Execute node {node:?}.")),
             }
