@@ -21,7 +21,7 @@ pub struct Exec {
     pub silent: bool,
     pub(crate) block: bool,
     pub(crate) reference: Option<Vec<Node<'static>>>,
-    pub(crate) right: Option<Type>,
+    pub right: Option<Type>,
 }
 
 impl Exec {

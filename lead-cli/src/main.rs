@@ -55,6 +55,7 @@ fn main() -> io::Result<()> {
 
         if let Err(e) = exec.exec(parser.nodes()) {
             println!("{e}");
+            exec.right = None;
             continue;
         }
     }

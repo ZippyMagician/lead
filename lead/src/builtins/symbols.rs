@@ -1263,7 +1263,7 @@ pub(crate) fn take(a: List, b: List, o: &Opts) -> Status<List> {
 
 // rightcurlym | } | 0 | Decrement
 pub(crate) fn dec(mut a: List, o: &Opts) -> Status<List> {
-    for_0!(a; [v] = v.add(1)?);
+    for_0!(a; [v] = v.sub(1)?);
     Ok(a)
 }
 
