@@ -11,14 +11,14 @@ use std::rc::Rc;
 use super::scalar::{self, Boxed, Scalar};
 use crate::utils::Arena;
 use crate::utils::display_boxed_lines;
-use crate::utils::error::{Status, err};
+use crate::utils::error::Status;
 
 use ordered_float::OrderedFloat;
 use smallvec::{SmallVec, smallvec};
 
 pub(crate) const INLINE_SIZE: usize = 2;
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, PartialOrd, Eq, Ord)]
 #[repr(u8, C)]
 pub enum List {
     Integers(Array<i64>),
@@ -39,6 +39,17 @@ struct Repr {
 
 impl List {
     #[inline(always)]
+    pub fn empty() -> Self {
+        Self::Integers(Array::empty())
+    }
+
+    #[inline]
+    pub fn string(data: &str) -> Self {
+        let size = data.len();
+        unsafe { Array::<u8>::alloc_iter(&[size], data.bytes()).unwrap() }
+    }
+
+    #[inline(always)]
     pub fn get_type(&self) -> u8 {
         match &self {
             Self::Integers(_) => b'I',
@@ -46,6 +57,32 @@ impl List {
             Self::Booleans(_) => b'B',
             Self::String(_) => b'C',
             Self::Boxes(_) => b'X',
+        }
+    }
+
+    #[inline(always)]
+    pub fn to_cast(self, t: u8) -> Status<Self> {
+        match self {
+            Self::Integers(l) => l.to_cast(t),
+            Self::Doubles(l) => l.to_cast(t),
+            Self::Booleans(l) => l.to_cast(t),
+            Self::String(l) => l.to_cast(t),
+            Self::Boxes(l) => l.to_cast(t),
+        }
+    }
+
+    #[inline(always)]
+    pub fn is_truthy(&self) -> bool {
+        if self.is_empty() {
+            return true;
+        }
+
+        match &self {
+            Self::Integers(l) => l.list()[0].to_bool().unwrap(),
+            Self::Doubles(l) => l.list()[0].to_bool().unwrap(),
+            Self::Booleans(l) => l.list()[0],
+            Self::String(l) => l.list()[0].to_bool().unwrap(),
+            Self::Boxes(_) => false,
         }
     }
 
@@ -105,6 +142,74 @@ impl List {
     pub fn is_scalar(&self) -> bool {
         self.len() == 1
     }
+
+    #[inline]
+    pub fn unranked(
+        arena: &Arena, _original: usize, trailing_rank: &[usize], lists: Vec<List>,
+    ) -> Status<List> {
+        if lists.is_empty() {
+            return Ok(List::Integers(Array::empty()));
+        } else if lists.len() == 1 {
+            let f = lists[0].clone();
+            return Ok(f);
+        }
+
+        let mut box_it = false;
+        let rank = lists[0].rank();
+        let t = lists[0].get_type();
+        for list in lists.iter().skip(1) {
+            if !eq_rank(rank, list.rank()) || t != list.get_type() {
+                box_it = true;
+                break;
+            }
+        }
+
+        if box_it {
+            unsafe {
+                Array::<Boxed>::try_alloc_iter(
+                    trailing_rank,
+                    lists.into_iter().map(|n| scalar::boxed(&arena, n)),
+                )
+                .map(List::Boxes)
+            }
+        } else {
+            let mut rank: SmallVec<[usize; INLINE_SIZE]> =
+                if eq_rank(rank, &[1]) { smallvec![] } else { rank.into() };
+            rank.extend_from_slice(trailing_rank);
+
+            let diff = lists[0].rank().iter().product::<usize>() * lists.len()
+                / rank.iter().product::<usize>();
+            if diff != 1 {
+                rank.push(diff);
+            }
+            // Same type
+            unsafe {
+                match t {
+                    b'I' => Array::<i64>::alloc_iter(
+                        &rank,
+                        lists.iter().flat_map(|n| n.listi_unchecked()).copied(),
+                    ),
+                    b'F' => Array::<OrderedFloat<f64>>::alloc_iter(
+                        &rank,
+                        lists.iter().flat_map(|n| n.listf_unchecked()).copied(),
+                    ),
+                    b'B' => Array::<bool>::alloc_iter(
+                        &rank,
+                        lists.iter().flat_map(|n| n.listb_unchecked()).copied(),
+                    ),
+                    b'C' => Array::<u8>::alloc_iter(
+                        &rank,
+                        lists.iter().flat_map(|n| n.listc_unchecked()).copied(),
+                    ),
+                    b'X' => Array::<Boxed>::alloc_iter(
+                        &rank,
+                        lists.iter().flat_map(|n| n.listx_unchecked()).copied(),
+                    ),
+                    _ => hint::unreachable_unchecked(),
+                }
+            }
+        }
+    }
 }
 
 // TODO: Various functions implemented for `List`
@@ -114,7 +219,7 @@ impl List {
 pub struct Array<T: Scalar> {
     pub(crate) ds: usize,
     pub(crate) rk: SmallVec<[usize; INLINE_SIZE]>,
-    dt: Scalars<T>,
+    pub(crate) dt: Scalars<T>,
 }
 
 impl<T: Scalar> Array<T> {
@@ -129,30 +234,24 @@ impl<T: Scalar> Array<T> {
     }
 
     #[inline]
-    pub fn from_vec(data: Vec<T>) -> Status<Self> {
+    pub fn from_vec(data: Rc<[T]>) -> List {
         let size = data.len();
-        Ok(Self { dt: data.into(), ds: 1, rk: smallvec![size] })
+        T::wrap(Self { dt: data.into(), ds: 1, rk: smallvec![size] })
     }
 
     #[inline]
-    pub fn mat(data: Vec<T>, ds: usize, rk: SmallVec<[usize; INLINE_SIZE]>) -> Status<Self> {
-        Ok(Self { dt: data.into(), ds, rk })
+    pub fn mat(data: Vec<T>, ds: usize, rk: SmallVec<[usize; INLINE_SIZE]>) -> List {
+        T::wrap(Self { dt: data.into(), ds, rk })
     }
 
     #[inline]
-    pub fn mat_ref(data: &[T], ds: usize, rk: &[usize]) -> Status<Self> {
-        Ok(Self { dt: data.into(), ds, rk: rk.into() })
+    pub fn mat_ref(data: &[T], ds: usize, rk: &[usize]) -> List {
+        T::wrap(Self { dt: data.into(), ds, rk: rk.into() })
     }
 
     #[inline]
-    pub fn scalar(data: T) -> Self {
-        Self { dt: data.into(), ds: 1, rk: smallvec![1] }
-    }
-
-    #[inline]
-    pub fn string(data: &str) -> List {
-        let size = data.len();
-        unsafe { Array::<u8>::alloc_iter(&[size], data.bytes()).unwrap() }
+    pub fn scalar(data: T) -> List {
+        T::wrap(Self { dt: data.into(), ds: 1, rk: smallvec![1] })
     }
 
     #[inline(always)]
@@ -296,80 +395,42 @@ impl<T: Scalar> Array<T> {
 }
 
 #[inline]
-pub fn unranked(
-    arena: &Arena, _original: usize, trailing_rank: &[usize], lists: Vec<List>,
-) -> Status<List> {
-    if lists.is_empty() {
-        return Ok(List::Integers(Array::empty()));
-    } else if lists.len() == 1 {
-        let f = lists[0].clone();
-        return Ok(f);
-    }
-
-    let mut box_it = false;
-    let rank = lists[0].rank();
-    let t = lists[0].get_type();
-    for list in lists.iter().skip(1) {
-        if !eq_rank(rank, list.rank()) || t != list.get_type() {
-            box_it = true;
-            break;
-        }
-    }
-
-    if box_it {
-        unsafe {
-            Array::<Boxed>::try_alloc_iter(
-                trailing_rank,
-                lists.into_iter().map(|n| scalar::boxed(&arena, n)),
-            )
-            .map(List::Boxes)
-        }
-    } else {
-        let mut rank: SmallVec<[usize; INLINE_SIZE]> =
-            if eq_rank(rank, &[1]) { smallvec![] } else { rank.into() };
-        rank.extend_from_slice(trailing_rank);
-
-        let diff = lists[0].rank().iter().product::<usize>() * lists.len()
-            / rank.iter().product::<usize>();
-        if diff != 1 {
-            rank.push(diff);
-        }
-        // Same type
-        unsafe {
-            match t {
-                b'I' => Array::<i64>::alloc_iter(
-                    &rank,
-                    lists.iter().flat_map(|n| n.listi_unchecked()).copied(),
-                ),
-                b'F' => Array::<OrderedFloat<f64>>::alloc_iter(
-                    &rank,
-                    lists.iter().flat_map(|n| n.listf_unchecked()).copied(),
-                ),
-                b'B' => Array::<bool>::alloc_iter(
-                    &rank,
-                    lists.iter().flat_map(|n| n.listb_unchecked()).copied(),
-                ),
-                b'C' => Array::<u8>::alloc_iter(
-                    &rank,
-                    lists.iter().flat_map(|n| n.listc_unchecked()).copied(),
-                ),
-                b'X' => Array::<Boxed>::alloc_iter(
-                    &rank,
-                    lists.iter().flat_map(|n| n.listx_unchecked()).copied(),
-                ),
-                _ => hint::unreachable_unchecked(),
-            }
-        }
-    }
-}
-
-#[inline]
 fn eq_rank(a: &[usize], b: &[usize]) -> bool {
     if a.len() != b.len() {
         return false;
     }
     a.iter().zip(b.iter()).all(|(l, r)| l == r)
 }
+
+impl<T: Scalar> PartialOrd for Array<T> {
+    fn partial_cmp(&self, o: &Array<T>) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(&o))
+    }
+}
+
+impl<T: Scalar> PartialEq for Array<T> {
+    fn eq(&self, o: &Array<T>) -> bool {
+        eq_rank(self.rank(), o.rank()) && self.list().iter().zip(o.list()).all(|(l, r)| *l == *r)
+    }
+}
+
+impl<T: Scalar> Ord for Array<T> {
+    fn cmp(&self, o: &Array<T>) -> std::cmp::Ordering {
+        self.dims().cmp(&o.dims()).then(self.rank().cmp(&o.rank())).then_with(|| {
+            let l = self.list();
+            let o = o.list();
+
+            for (l, r) in l.iter().zip(o) {
+                if l != r {
+                    return l.cmp(&r);
+                }
+            }
+            std::cmp::Ordering::Equal
+        })
+    }
+}
+
+impl<T: Scalar> Eq for Array<T> {}
 
 // SAFETY: Determined by called
 fn push_and_get<'a, T>(v: &mut Vec<T>, s: T) -> &'a str
@@ -407,7 +468,7 @@ impl Display for Array<Boxed> {
             for b in self.list().iter() {
                 // SAFETY: formatted is not dropped until strings
                 let fm;
-                fm = push_and_get(&mut formatted, format!("{}", unsafe { &*b }));
+                fm = push_and_get(&mut formatted, format!("{}", b));
                 // Oh rust strs, how you fuck with me
                 x = usize::max(
                     x,
@@ -488,7 +549,7 @@ macro_rules! impl_display {
 
                     let mut x = 0;
                     let mut y = 1;
-                    let is_str = self.list()[0].get_type() == b'C';
+                    let is_str = <$t>::get_type() == b'C';
                     for num in self.list().iter() {
                         let fm = push_and_get(&mut formatted, num.fmt_lead());
                         x = usize::max(x, fm.chars().count());
@@ -573,9 +634,9 @@ impl<T: Iterator<Item = K>, K: Scalar> Iterator for SizedScalars<T, K> {
 #[derive(Clone, Debug, Default, Hash)]
 #[repr(C)]
 pub struct Scalars<T: Scalar> {
-    s: usize,
-    e: usize,
-    v: Rc<[T]>,
+    pub(crate) s: usize,
+    pub(crate) e: usize,
+    pub(crate) v: Rc<[T]>,
 }
 
 impl<T: Scalar> Scalars<T> {
@@ -630,6 +691,14 @@ impl<T: Scalar> From<Vec<T>> for Scalars<T> {
     fn from(e: Vec<T>) -> Self {
         let size = e.len();
         Self { v: e.into(), s: 0, e: size }
+    }
+}
+
+impl<T: Scalar> From<Rc<[T]>> for Scalars<T> {
+    #[inline(always)]
+    fn from(e: Rc<[T]>) -> Self {
+        let size = e.len();
+        Self { v: e, s: 0, e: size }
     }
 }
 

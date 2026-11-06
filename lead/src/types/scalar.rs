@@ -21,14 +21,16 @@ pub trait Scalar:
     Display + PartialEq + PartialOrd + Eq + Ord + Clone + Copy + Hash + Default
 {
     fn size(&self) -> usize;
-
-    fn get_type(&self) -> u8;
-
-    fn cast_to<T: Scalar>(v: Rc<Self>, l: usize) -> Status<Rc<T>>;
-
+    fn get_type() -> u8;
     fn wrap(s: Array<Self>) -> List;
 
     fn fmt_lead(&self) -> Cow<'static, str>;
+
+    fn cast_to<T: Scalar>(v: Rc<Self>, l: usize) -> Status<Rc<T>>;
+    fn to_num(&self) -> Status<i64>;
+    fn to_float(&self) -> Status<OrderedFloat<f64>>;
+    fn to_bool(&self) -> Status<bool>;
+    fn to_char(&self) -> Status<u8>;
 }
 
 impl Scalar for i64 {
@@ -38,7 +40,7 @@ impl Scalar for i64 {
     }
 
     #[inline(always)]
-    fn get_type(&self) -> u8 {
+    fn get_type() -> u8 {
         b'I'
     }
 
@@ -55,6 +57,30 @@ impl Scalar for i64 {
     fn fmt_lead(&self) -> Cow<'static, str> {
         fmt_num(*self).into()
     }
+
+    #[inline(always)]
+    fn to_num(&self) -> Status<i64> {
+        Ok(*self)
+    }
+
+    #[inline(always)]
+    fn to_float(&self) -> Status<OrderedFloat<f64>> {
+        Ok(OrderedFloat(self.as_()))
+    }
+
+    #[inline(always)]
+    fn to_bool(&self) -> Status<bool> {
+        Ok(*self != 0)
+    }
+
+    #[inline(always)]
+    fn to_char(&self) -> Status<u8> {
+        if *self >= 0 && *self < 256 {
+            Ok(*self as u8)
+        } else {
+            err!(ValueS, "Invalid character.")
+        }
+    }
 }
 
 impl Scalar for OrderedFloat<f64> {
@@ -64,7 +90,7 @@ impl Scalar for OrderedFloat<f64> {
     }
 
     #[inline(always)]
-    fn get_type(&self) -> u8 {
+    fn get_type() -> u8 {
         b'F'
     }
 
@@ -81,6 +107,35 @@ impl Scalar for OrderedFloat<f64> {
     fn fmt_lead(&self) -> Cow<'static, str> {
         fmt_float(*self)
     }
+
+    #[inline(always)]
+    fn to_num(&self) -> Status<i64> {
+        Ok(self.as_())
+    }
+
+    #[inline(always)]
+    fn to_float(&self) -> Status<OrderedFloat<f64>> {
+        Ok(*self)
+    }
+
+    #[inline(always)]
+    fn to_bool(&self) -> Status<bool> {
+        Ok(*self != 0.)
+    }
+
+    #[inline(always)]
+    fn to_char(&self) -> Status<u8> {
+        if self.fract() == 0. {
+            let u: i32 = self.floor().as_();
+            if u >= 0 && u < 256 {
+                Ok(u as u8)
+            } else {
+                err!(ValueS, "Invalid character.")
+            }
+        } else {
+            err!(ValueS, "Float is not a whole number, cannot convert to character.")
+        }
+    }
 }
 
 impl Scalar for bool {
@@ -90,7 +145,7 @@ impl Scalar for bool {
     }
 
     #[inline(always)]
-    fn get_type(&self) -> u8 {
+    fn get_type() -> u8 {
         b'B'
     }
 
@@ -111,6 +166,26 @@ impl Scalar for bool {
             Cow::Borrowed("0")
         }
     }
+
+    #[inline(always)]
+    fn to_num(&self) -> Status<i64> {
+        Ok(*self as u8 as i64)
+    }
+
+    #[inline(always)]
+    fn to_float(&self) -> Status<OrderedFloat<f64>> {
+        Ok(OrderedFloat(*self as u8 as f64))
+    }
+
+    #[inline(always)]
+    fn to_bool(&self) -> Status<bool> {
+        Ok(*self)
+    }
+
+    #[inline(always)]
+    fn to_char(&self) -> Status<u8> {
+        Ok(*self as u8)
+    }
 }
 
 // Strings
@@ -121,7 +196,7 @@ impl Scalar for u8 {
     }
 
     #[inline(always)]
-    fn get_type(&self) -> u8 {
+    fn get_type() -> u8 {
         b'C'
     }
 
@@ -139,6 +214,26 @@ impl Scalar for u8 {
     fn fmt_lead(&self) -> Cow<'static, str> {
         unreachable!()
     }
+
+    #[inline(always)]
+    fn to_num(&self) -> Status<i64> {
+        Ok(*self as i64)
+    }
+
+    #[inline(always)]
+    fn to_float(&self) -> Status<OrderedFloat<f64>> {
+        Ok(OrderedFloat(*self as f64))
+    }
+
+    #[inline(always)]
+    fn to_bool(&self) -> Status<bool> {
+        Ok(*self != 0)
+    }
+
+    #[inline(always)]
+    fn to_char(&self) -> Status<u8> {
+        Ok(*self)
+    }
 }
 
 impl Scalar for Boxed {
@@ -148,7 +243,7 @@ impl Scalar for Boxed {
     }
 
     #[inline(always)]
-    fn get_type(&self) -> u8 {
+    fn get_type() -> u8 {
         b'X'
     }
 
@@ -166,11 +261,38 @@ impl Scalar for Boxed {
     fn fmt_lead(&self) -> Cow<'static, str> {
         format!("{}", *self).into()
     }
+
+    #[inline(always)]
+    fn to_num(&self) -> Status<i64> {
+        err!(ValueS, "Cannot convert from boxed value.")
+    }
+
+    #[inline(always)]
+    fn to_float(&self) -> Status<OrderedFloat<f64>> {
+        err!(ValueS, "Cannot convert from boxed value.")
+    }
+
+    #[inline(always)]
+    fn to_bool(&self) -> Status<bool> {
+        err!(ValueS, "Cannot convert from boxed value.")
+    }
+
+    #[inline(always)]
+    fn to_char(&self) -> Status<u8> {
+        err!(ValueS, "Cannot convert from boxed value.")
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash, Default)]
 #[repr(transparent)]
-pub struct Boxed(*const Type);
+pub struct Boxed(*mut Type);
+
+impl Boxed {
+    #[inline]
+    pub(crate) unsafe fn steal_box(&self) -> Type {
+        std::mem::take(unsafe { &mut **&self.0 })
+    }
+}
 
 impl Display for Boxed {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

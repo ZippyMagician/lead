@@ -10,7 +10,7 @@ use crate::scope::Scope;
 use crate::utils::Arena;
 use crate::utils::error::{Status, err};
 
-use list::List;
+use list::{Array, List};
 use map::Map;
 use scalar::Scalar;
 
@@ -19,7 +19,6 @@ use scalar::Scalar;
 pub enum Type {
     Function(Function) = 0,
     List(List),
-    Scalar(Scalar),
     Map(Map),
 }
 
@@ -36,7 +35,7 @@ impl Type {
 
     #[inline]
     pub fn is_list(&self) -> bool {
-        matches!(self, Self::List(_) | Self::Scalar(_))
+        matches!(self, Self::List(_))
     }
 
     #[inline]
@@ -46,17 +45,7 @@ impl Type {
 
     #[inline]
     pub fn is_scalar(&self) -> bool {
-        matches!(self, Self::Scalar(_)) || self.is_list() && self.as_list().unwrap().is_scalar()
-    }
-
-    #[inline]
-    pub fn is_scalar_strict(&self) -> bool {
-        matches!(self, Self::Scalar(_))
-    }
-
-    #[inline]
-    pub fn is_list_strict(&self) -> bool {
-        matches!(self, Self::List(_))
+        self.is_list() && self.as_list().unwrap().is_scalar()
     }
 
     #[inline]
@@ -85,7 +74,6 @@ impl Type {
     pub fn to_list(self) -> Status<List> {
         match self {
             Self::List(l) => Ok(l),
-            Self::Scalar(s) => Ok(List::scalar(s)),
             _ => err!(ValueS, "Cannot treat as list"),
         }
     }
@@ -126,36 +114,6 @@ impl Type {
     }
 
     #[inline]
-    pub fn to_scalar(self) -> Status<Scalar> {
-        match self {
-            Self::Scalar(s) => Ok(s),
-            _ => {
-                hint::cold_path();
-                err!(ValueS, "Cannot treat as scalar.")
-            }
-        }
-    }
-
-    #[inline]
-    pub fn as_scalar(&self) -> Status<&Scalar> {
-        match &self {
-            Self::Scalar(s) => Ok(s),
-            _ => {
-                hint::cold_path();
-                err!(ValueS, "Cannot treat as scalar.")
-            }
-        }
-    }
-
-    #[inline]
-    pub unsafe fn to_scalar_unchecked(self) -> Scalar {
-        match self {
-            Self::Scalar(s) => s,
-            _ => unsafe { hint::unreachable_unchecked() },
-        }
-    }
-
-    #[inline]
     pub unsafe fn to_list_unchecked(self) -> List {
         match self {
             Self::List(l) => l,
@@ -177,14 +135,13 @@ impl Type {
             Self::Function(_) => true,
             Self::List(l) => l.is_empty(),
             Self::Map(m) => m.is_empty(),
-            Self::Scalar(_) => false,
         }
     }
 }
 
-impl From<Scalar> for Type {
-    fn from(s: Scalar) -> Self {
-        Self::Scalar(s)
+impl<T: Scalar> From<T> for Type {
+    fn from(s: T) -> Self {
+        Self::List(Array::scalar(s))
     }
 }
 
