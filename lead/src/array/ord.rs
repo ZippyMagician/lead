@@ -1,48 +1,57 @@
 use std::cmp::Ordering;
 
-use crate::types::list::Array;
+use crate::types::list::{Array, List, with_list};
 use crate::types::scalar::{Boxed, Scalar};
 
 use ordered_float::OrderedFloat;
 
-impl<T: Scalar> PartialOrd for Array<T>
+impl<T, U> PartialOrd<Array<U>> for Array<T>
 where
-    T: OrderedScalar<T>,
+    T: Scalar + OrderedScalar + OrderedScalar<U>,
+    U: Scalar,
 {
-    fn partial_cmp(&self, o: &Array<T>) -> Option<Ordering> {
-        Some(self.cmp(&o))
-    }
-}
-
-impl<T: Scalar> PartialEq for Array<T>
-where
-    T: OrderedScalar<T>,
-{
-    fn eq(&self, o: &Array<T>) -> bool {
-        self.rank() == o.rank() && self.list().iter().zip(o.list()).all(|(l, r)| l.eq_scalar(r))
-    }
-}
-
-impl<T: Scalar> Ord for Array<T>
-where
-    T: OrderedScalar<T>,
-{
-    fn cmp(&self, o: &Array<T>) -> Ordering {
-        self.dims().cmp(&o.dims()).then(self.rank().cmp(&o.rank())).then_with(|| {
+    fn partial_cmp(&self, o: &Array<U>) -> Option<Ordering> {
+        Some(self.dims().cmp(&o.dims()).then(self.rank().cmp(&o.rank())).then_with(|| {
             let l = self.list();
             let o = o.list();
 
             for (l, r) in l.iter().zip(o) {
-                if l != r {
-                    return l.cmp_scalar(&r);
+                if !l.eq_scalar(r) {
+                    return l.cmp_scalar(r);
                 }
             }
             Ordering::Equal
-        })
+        }))
     }
 }
 
-impl<T: Scalar + OrderedScalar<T>> Eq for Array<T> {}
+impl<T: Scalar, U: Scalar> PartialEq<Array<U>> for Array<T>
+where
+    T: OrderedScalar + OrderedScalar<U>,
+{
+    fn eq(&self, o: &Array<U>) -> bool {
+        self.rank() == o.rank() && self.list().iter().zip(o.list()).all(|(l, r)| l.eq_scalar(r))
+    }
+}
+
+impl PartialEq for List {
+    fn eq(&self, other: &Self) -> bool {
+        with_list!(self, |a| with_list!(other, |b| a == b))
+    }
+}
+impl Eq for List {}
+
+impl PartialOrd for List {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for List {
+    fn cmp(&self, other: &Self) -> Ordering {
+        with_list!(self, |a| with_list!(other, |b| a.partial_cmp(b))).unwrap()
+    }
+}
 
 pub trait OrderedScalar<T: Scalar = Self>: Scalar {
     fn cmp_scalar(&self, o: &T) -> Ordering;

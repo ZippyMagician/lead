@@ -18,7 +18,7 @@ use smallvec::{SmallVec, smallvec};
 
 pub(crate) const INLINE_SIZE: usize = 2;
 
-#[derive(Clone, Debug, Hash, PartialEq, PartialOrd, Eq, Ord)]
+#[derive(Clone, Debug, Hash)]
 #[repr(u8, C)]
 pub enum List {
     Integers(Array<i64>),
@@ -36,6 +36,20 @@ struct Repr {
     pub s: usize,
     pub e: usize,
 }
+
+macro_rules! with_list {
+    ($l:expr, |$x:ident| $body:expr) => {
+        match $l {
+            List::Integers($x) => $body,
+            List::Doubles($x)  => $body,
+            List::Booleans($x) => $body,
+            List::String($x)   => $body,
+            List::Boxes($x)    => $body,
+        }
+    };
+}
+
+pub(crate) use with_list;
 
 impl List {
     #[inline(always)]
@@ -62,13 +76,7 @@ impl List {
 
     #[inline(always)]
     pub fn to_cast(self, t: u8) -> Status<Self> {
-        match self {
-            Self::Integers(l) => l.to_cast(t),
-            Self::Doubles(l) => l.to_cast(t),
-            Self::Booleans(l) => l.to_cast(t),
-            Self::String(l) => l.to_cast(t),
-            Self::Boxes(l) => l.to_cast(t),
-        }
+        with_list!(self, |l| l.to_cast(t))
     }
 
     #[inline(always)]
