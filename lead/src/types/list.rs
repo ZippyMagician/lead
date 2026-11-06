@@ -5,10 +5,8 @@
 
 use std::fmt::{self, Display};
 use std::hash::Hash;
+use std::hint;
 use std::rc::Rc;
-
-use ecow::{EcoVec, eco_vec};
-use smallvec::{SmallVec, smallvec};
 
 use super::scalar::{self, Boxed, Scalar};
 use crate::utils::Arena;
@@ -16,6 +14,7 @@ use crate::utils::display_boxed_lines;
 use crate::utils::error::{Status, err};
 
 use ordered_float::OrderedFloat;
+use smallvec::{SmallVec, smallvec};
 
 pub(crate) const INLINE_SIZE: usize = 2;
 
@@ -29,13 +28,93 @@ pub enum List {
     Boxes(Array<Boxed>),
 }
 
+#[repr(C)]
+struct Repr {
+    pub tag: u8,
+    pub ds: usize,
+    pub rk: SmallVec<[usize; INLINE_SIZE]>,
+    pub s: usize,
+    pub e: usize,
+}
+
+impl List {
+    #[inline(always)]
+    pub fn get_type(&self) -> u8 {
+        match &self {
+            Self::Integers(_) => b'I',
+            Self::Doubles(_) => b'F',
+            Self::Booleans(_) => b'B',
+            Self::String(_) => b'C',
+            Self::Boxes(_) => b'X',
+        }
+    }
+
+    #[inline(always)]
+    pub unsafe fn listi_unchecked(&self) -> &[i64] {
+        let Self::Integers(l) = &self else { unsafe { hint::unreachable_unchecked() } };
+        l.list()
+    }
+
+    #[inline(always)]
+    pub unsafe fn listf_unchecked(&self) -> &[OrderedFloat<f64>] {
+        let Self::Doubles(l) = &self else { unsafe { hint::unreachable_unchecked() } };
+        l.list()
+    }
+
+    #[inline(always)]
+    pub unsafe fn listb_unchecked(&self) -> &[bool] {
+        let Self::Booleans(l) = &self else { unsafe { hint::unreachable_unchecked() } };
+        l.list()
+    }
+
+    #[inline(always)]
+    pub unsafe fn listc_unchecked(&self) -> &[u8] {
+        let Self::String(l) = &self else { unsafe { hint::unreachable_unchecked() } };
+        l.list()
+    }
+
+    #[inline(always)]
+    pub unsafe fn listx_unchecked(&self) -> &[Boxed] {
+        let Self::Boxes(l) = &self else { unsafe { hint::unreachable_unchecked() } };
+        l.list()
+    }
+
+    #[inline(always)]
+    pub fn rank(&self) -> &[usize] {
+        let hdr: &Repr = unsafe { std::mem::transmute(self) };
+        &hdr.rk
+    }
+
+    pub fn dims(&self) -> usize {
+        let hdr: &Repr = unsafe { std::mem::transmute(self) };
+        hdr.ds
+    }
+
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        let hdr: &Repr = unsafe { std::mem::transmute(self) };
+        hdr.e - hdr.s
+    }
+
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    #[inline(always)]
+    pub fn is_scalar(&self) -> bool {
+        self.len() == 1
+    }
+}
+
 // TODO: Various functions implemented for `List`
 
 #[derive(Clone, Debug, Hash)]
+#[repr(C)]
 pub struct Array<T: Scalar> {
-    dt: Scalars<T>,
     pub(crate) ds: usize,
     pub(crate) rk: SmallVec<[usize; INLINE_SIZE]>,
+    dt: Scalars<T>,
 }
 
 impl<T: Scalar> Array<T> {
@@ -110,24 +189,6 @@ impl<T: Scalar> Array<T> {
     #[inline(always)]
     pub fn is_scalar(&self) -> bool {
         self.len() == 1
-    }
-
-    #[inline]
-    pub fn range(start: T, end: T, rev: bool) -> Status<List> {
-        let start = start.to_num()?;
-        let end = end.to_num()?;
-        if end < start || end < 0 || start < 0 {
-            return err!(Domain);
-        }
-        let count: usize = (end - start + 1) as usize;
-        unsafe {
-            let iter = (start..=end).map(T::from_usize);
-            if rev {
-                Self::alloc_iter(&[count], iter.rev())
-            } else {
-                Self::alloc_iter(&[count], iter)
-            }
-        }
     }
 
     // Swaps out rank. It is in place if possible
@@ -210,47 +271,6 @@ impl<T: Scalar> Array<T> {
         }
     }
 
-    #[inline]
-    pub fn unranked(
-        arena: &Arena, _original: usize, trailing_rank: &[usize], mut lists: Vec<List>,
-    ) -> Status<List> {
-        if lists.is_empty() {
-            return Ok(List::Integers(Array::empty()));
-        } else if lists.len() == 1 {
-            let f = lists[0].clone();
-            return Ok(f);
-        }
-
-        let mut box_it = false;
-        let rank = lists[0].rank();
-        for list in lists.iter().skip(1) {
-            if !eq_rank(rank, list.rank()) {
-                box_it = true;
-                break;
-            }
-        }
-
-        if box_it {
-            unsafe {
-                Array::<Boxed>::try_alloc_iter(
-                    trailing_rank,
-                    lists.into_iter().map(|n| scalar::boxed(&arena, n)),
-                ).map(List::Boxes)
-            }
-        } else {
-            let mut rank: SmallVec<[usize; INLINE_SIZE]> =
-                if eq_rank(rank, &[1]) { smallvec![] } else { rank.into() };
-            rank.extend_from_slice(trailing_rank);
-
-            let diff = lists[0].rank().iter().product::<usize>() * lists.len()
-                / rank.iter().product::<usize>();
-            if diff != 1 {
-                rank.push(diff);
-            }
-            unsafe { Self::alloc_iter(&rank, lists.iter().flat_map(|n| n.list()).copied()) }
-        }
-    }
-
     // Assumes lists have already been checked to match
     #[inline]
     pub fn unranked_unchecked(trailing_rank: &[usize], lists: Vec<Array<T>>) -> Status<List> {
@@ -272,6 +292,74 @@ impl<T: Scalar> Array<T> {
             rank.push(diff);
         }
         unsafe { Self::alloc_iter(&rank, lists.iter().flat_map(|n| n.list()).copied()) }
+    }
+}
+
+#[inline]
+pub fn unranked(
+    arena: &Arena, _original: usize, trailing_rank: &[usize], lists: Vec<List>,
+) -> Status<List> {
+    if lists.is_empty() {
+        return Ok(List::Integers(Array::empty()));
+    } else if lists.len() == 1 {
+        let f = lists[0].clone();
+        return Ok(f);
+    }
+
+    let mut box_it = false;
+    let rank = lists[0].rank();
+    let t = lists[0].get_type();
+    for list in lists.iter().skip(1) {
+        if !eq_rank(rank, list.rank()) || t != list.get_type() {
+            box_it = true;
+            break;
+        }
+    }
+
+    if box_it {
+        unsafe {
+            Array::<Boxed>::try_alloc_iter(
+                trailing_rank,
+                lists.into_iter().map(|n| scalar::boxed(&arena, n)),
+            )
+            .map(List::Boxes)
+        }
+    } else {
+        let mut rank: SmallVec<[usize; INLINE_SIZE]> =
+            if eq_rank(rank, &[1]) { smallvec![] } else { rank.into() };
+        rank.extend_from_slice(trailing_rank);
+
+        let diff = lists[0].rank().iter().product::<usize>() * lists.len()
+            / rank.iter().product::<usize>();
+        if diff != 1 {
+            rank.push(diff);
+        }
+        // Same type
+        unsafe {
+            match t {
+                b'I' => Array::<i64>::alloc_iter(
+                    &rank,
+                    lists.iter().flat_map(|n| n.listi_unchecked()).copied(),
+                ),
+                b'F' => Array::<OrderedFloat<f64>>::alloc_iter(
+                    &rank,
+                    lists.iter().flat_map(|n| n.listf_unchecked()).copied(),
+                ),
+                b'B' => Array::<bool>::alloc_iter(
+                    &rank,
+                    lists.iter().flat_map(|n| n.listb_unchecked()).copied(),
+                ),
+                b'C' => Array::<u8>::alloc_iter(
+                    &rank,
+                    lists.iter().flat_map(|n| n.listc_unchecked()).copied(),
+                ),
+                b'X' => Array::<Boxed>::alloc_iter(
+                    &rank,
+                    lists.iter().flat_map(|n| n.listx_unchecked()).copied(),
+                ),
+                _ => hint::unreachable_unchecked(),
+            }
+        }
     }
 }
 
@@ -301,45 +389,63 @@ fn hmask(x: usize, mx: usize) -> u8 {
 }
 
 // TODO: Implement for each Array type separately
-/*
-// TODO: impl Display for Array
-impl<T: Scalar> Display for Array<T> {
+// } else {
+//     fm = push_and_get(&mut formatted, format!("{num}"));
+//     x = usize::max(x, fm.chars().count());
+//     strings.push(vec![fm]);
+// }
+//
+// } else {
+//     // Currently we have a list of scalar values
+//     // x and y are the max size of those scalars.
+//     for row in 0..rows {
+//         for col in 0..cols {
+//             let word = &strings[row * cols + col];
+//             assert!(word.len() == 1, "Internal error");
+//             let word = word[0];
+//             if is_str || self.dims() == 1 {
+//                 write!(f, "{}", word)?;
+//             } else {
+//                 write!(f, "{}{}", " ".repeat(x - word.len()), word)?;
+//             }
+//             if !is_str && col < cols - 1 {
+//                 write!(f, " ")?;
+//             }
+//         }
+//         if row + 1 != rows {
+//             write!(f, "\n")?;
+//         }
+//     }
+// }
+impl Display for Array<Boxed> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.is_scalar() {
             write!(f, "{}", self.list()[0])?;
         } else if self.is_empty() {
-            std::hint::cold_path();
+            hint::cold_path();
             return Ok(());
         } else if self.dims() < 3 {
-            let boxed = self.list()[0].is_box();
             let mut formatted = Vec::with_capacity(self.len());
             let mut strings: Vec<Vec<&str>> = Vec::with_capacity(self.len());
 
             let mut x = 0;
             let mut y = 1;
-            let is_str = self.list()[0].is_char();
-            for num in self.list().iter() {
+            for b in self.list().iter() {
                 // SAFETY: formatted is not dropped until strings
                 let fm;
-                if boxed {
-                    fm = push_and_get(
-                        &mut formatted,
-                        format!("{}", unsafe { num.as_unboxed_unchecked() }),
-                    );
-                    // Oh rust strs, how you fuck with me
-                    x = usize::max(
-                        x,
-                        fm.chars()
-                            .zip(0..)
-                            .find(|(c, _)| *c == '\n')
-                            .map_or_else(|| fm.chars().count(), |(_, i)| i),
-                    );
-                    strings.push(fm.trim_end_matches('\n').split('\n').collect());
-                } else {
-                    fm = push_and_get(&mut formatted, format!("{num}"));
-                    x = usize::max(x, fm.chars().count());
-                    strings.push(vec![fm]);
-                }
+                fm = push_and_get(
+                    &mut formatted,
+                    format!("{}", unsafe { &*b }),
+                );
+                // Oh rust strs, how you fuck with me
+                x = usize::max(
+                    x,
+                    fm.chars()
+                        .zip(0..)
+                        .find(|(c, _)| *c == '\n')
+                        .map_or_else(|| fm.chars().count(), |(_, i)| i),
+                );
+                strings.push(fm.trim_end_matches('\n').split('\n').collect());
             }
             for ys in strings.iter() {
                 y = usize::max(y, ys.len());
@@ -351,58 +457,35 @@ impl<T: Scalar> Display for Array<T> {
             }
 
             let rows = self.len() / cols;
-            if boxed {
-                // Collect to list of words, each list of lines
-                // Converto to list of constructed lines
-                // Write to formatter
-                let mut v = 0;
-                let mut m = 0;
-                let strings = (0..)
-                    .zip(strings.into_iter())
-                    .map(|(i, elements)| {
-                        if i % cols == 0 {
-                            v = vmask(i / cols, rows);
-                        }
-                        m = v | hmask(i % cols, cols);
-                        Ok((m, display_boxed_lines(elements, Some(x), Some(y), m)?))
-                    })
-                    .collect::<Result<Vec<(u8, Vec<String>)>, fmt::Error>>()?;
-                for row in 0..rows {
-                    let mut line = String::with_capacity(((x + 4) * cols + 1) * (y + 2));
-                    for j in usize::from(row != 0)..y + 2 {
-                        for i in 0..cols {
-                            let string = &strings[row * cols + i];
-                            let l = &string.1[j];
-                            let off = l.chars().next().unwrap().len_utf8();
-                            line.push_str(&l[usize::from(i != 0) * off..]);
-                        }
-                        if row + 1 != rows || j != y + 1 {
-                            line.push('\n');
-                        }
+            // Collect to list of words, each list of lines
+            // Converto to list of constructed lines
+            // Write to formatter
+            let mut v = 0;
+            let mut m = 0;
+            let strings = (0..)
+                .zip(strings.into_iter())
+                .map(|(i, elements)| {
+                    if i % cols == 0 {
+                        v = vmask(i / cols, rows);
                     }
-                    write!(f, "{line}")?;
-                }
-            } else {
-                // Currently we have a list of scalar values
-                // x and y are the max size of those scalars.
-                for row in 0..rows {
-                    for col in 0..cols {
-                        let word = &strings[row * cols + col];
-                        assert!(word.len() == 1, "Internal error");
-                        let word = word[0];
-                        if is_str || self.dims() == 1 {
-                            write!(f, "{}", word)?;
-                        } else {
-                            write!(f, "{}{}", " ".repeat(x - word.len()), word)?;
-                        }
-                        if !is_str && col < cols - 1 {
-                            write!(f, " ")?;
-                        }
+                    m = v | hmask(i % cols, cols);
+                    Ok((m, display_boxed_lines(elements, Some(x), Some(y), m)?))
+                })
+                .collect::<Result<Vec<(u8, Vec<String>)>, fmt::Error>>()?;
+            for row in 0..rows {
+                let mut line = String::with_capacity(((x + 4) * cols + 1) * (y + 2));
+                for j in usize::from(row != 0)..y + 2 {
+                    for i in 0..cols {
+                        let string = &strings[row * cols + i];
+                        let l = &string.1[j];
+                        let off = l.chars().next().unwrap().len_utf8();
+                        line.push_str(&l[usize::from(i != 0) * off..]);
                     }
-                    if row + 1 != rows {
-                        write!(f, "\n")?;
+                    if row + 1 != rows || j != y + 1 {
+                        line.push('\n');
                     }
                 }
+                write!(f, "{line}")?;
             }
         } else {
             let dims = self.dims();
@@ -417,7 +500,7 @@ impl<T: Scalar> Display for Array<T> {
 
         Ok(())
     }
-}*/
+}
 
 pub struct SizedScalars<T: Iterator<Item = K>, K: Scalar> {
     iter: T,
@@ -447,10 +530,11 @@ impl<T: Iterator<Item = K>, K: Scalar> Iterator for SizedScalars<T, K> {
 }
 
 #[derive(Clone, Debug, Default, Hash)]
+#[repr(C)]
 pub struct Scalars<T: Scalar> {
-    v: Rc<[T]>,
     s: usize,
     e: usize,
+    v: Rc<[T]>,
 }
 
 impl<T: Scalar> Scalars<T> {

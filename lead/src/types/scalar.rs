@@ -1,4 +1,5 @@
 #![allow(unused)]
+use std::borrow::Cow;
 use std::boxed::Box;
 use std::cmp::PartialEq;
 use std::fmt::{self, Debug, Display};
@@ -24,6 +25,8 @@ pub trait Scalar:
     fn cast_to<T: Scalar>(v: Rc<Self>, l: usize) -> Status<Rc<T>>;
 
     fn wrap(s: Array<Self>) -> List;
+
+    fn fmt_lead(&self) -> Cow<'static, str>;
 }
 
 impl Scalar for i64 {
@@ -39,6 +42,11 @@ impl Scalar for i64 {
     #[inline(always)]
     fn wrap(s: Array<i64>) -> List {
         List::Integers(s)
+    }
+
+    #[inline(always)]
+    fn fmt_lead(&self) -> Cow<'static, str> {
+        fmt_num(*self).into()
     }
 }
 
@@ -56,6 +64,11 @@ impl Scalar for OrderedFloat<f64> {
     fn wrap(s: Array<OrderedFloat<f64>>) -> List {
         List::Doubles(s)
     }
+
+    #[inline(always)]
+    fn fmt_lead(&self) -> Cow<'static, str> {
+        fmt_float(*self)
+    }
 }
 
 impl Scalar for bool {
@@ -71,6 +84,15 @@ impl Scalar for bool {
     #[inline(always)]
     fn wrap(s: Array<bool>) -> List {
         List::Booleans(s)
+    }
+
+    #[inline(always)]
+    fn fmt_lead(&self) -> Cow<'static, str> {
+        if *self {
+            Cow::Borrowed("1")
+        } else {
+            Cow::Borrowed("0")
+        }
     }
 }
 
@@ -89,6 +111,12 @@ impl Scalar for u8 {
     fn wrap(s: Array<u8>) -> List {
         List::String(s)
     }
+
+    // Should be handled separately
+    #[inline(always)]
+    fn fmt_lead(&self) -> Cow<'static, str> {
+        unreachable!()
+    }
 }
 
 impl Scalar for Boxed {
@@ -105,6 +133,11 @@ impl Scalar for Boxed {
     #[inline(always)]
     fn wrap(s: Array<Boxed>) -> List {
         List::Boxes(s)
+    }
+
+    #[inline(always)]
+    fn fmt_lead(&self) -> Cow<'static, str> {
+        format!("{}", *self).into()
     }
 }
 

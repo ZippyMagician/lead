@@ -1,10 +1,15 @@
-pub mod builtins;
 pub mod exec;
-#[cfg(feature = "ffi")]
-pub mod ffi;
-pub mod function;
 pub mod lex;
 pub mod parse;
 pub mod scope;
-pub mod types;
+
+pub mod array;
 pub mod utils;
+
+pub mod builtins;
+
+pub mod function;
+pub mod types;
+
+#[cfg(feature = "ffi")]
+pub mod ffi;
