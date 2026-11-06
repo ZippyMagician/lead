@@ -402,36 +402,6 @@ fn eq_rank(a: &[usize], b: &[usize]) -> bool {
     a.iter().zip(b.iter()).all(|(l, r)| l == r)
 }
 
-impl<T: Scalar> PartialOrd for Array<T> {
-    fn partial_cmp(&self, o: &Array<T>) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(&o))
-    }
-}
-
-impl<T: Scalar> PartialEq for Array<T> {
-    fn eq(&self, o: &Array<T>) -> bool {
-        eq_rank(self.rank(), o.rank()) && self.list().iter().zip(o.list()).all(|(l, r)| *l == *r)
-    }
-}
-
-impl<T: Scalar> Ord for Array<T> {
-    fn cmp(&self, o: &Array<T>) -> std::cmp::Ordering {
-        self.dims().cmp(&o.dims()).then(self.rank().cmp(&o.rank())).then_with(|| {
-            let l = self.list();
-            let o = o.list();
-
-            for (l, r) in l.iter().zip(o) {
-                if l != r {
-                    return l.cmp(&r);
-                }
-            }
-            std::cmp::Ordering::Equal
-        })
-    }
-}
-
-impl<T: Scalar> Eq for Array<T> {}
-
 // SAFETY: Determined by called
 fn push_and_get<'a, T>(v: &mut Vec<T>, s: T) -> &'a str
 where
