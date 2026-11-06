@@ -22,6 +22,8 @@ pub trait Scalar:
 {
     fn size(&self) -> usize;
 
+    fn get_type(&self) -> u8;
+
     fn cast_to<T: Scalar>(v: Rc<Self>, l: usize) -> Status<Rc<T>>;
 
     fn wrap(s: Array<Self>) -> List;
@@ -33,6 +35,11 @@ impl Scalar for i64 {
     #[inline(always)]
     fn size(&self) -> usize {
         std::mem::size_of::<i64>()
+    }
+
+    #[inline(always)]
+    fn get_type(&self) -> u8 {
+        b'I'
     }
 
     fn cast_to<T: Scalar>(v: Rc<i64>, l: usize) -> Status<Rc<T>> {
@@ -56,6 +63,11 @@ impl Scalar for OrderedFloat<f64> {
         std::mem::size_of::<f64>()
     }
 
+    #[inline(always)]
+    fn get_type(&self) -> u8 {
+        b'F'
+    }
+
     fn cast_to<T: Scalar>(v: Rc<OrderedFloat<f64>>, l: usize) -> Status<Rc<T>> {
         todo!("f64::cast_to")
     }
@@ -75,6 +87,11 @@ impl Scalar for bool {
     #[inline(always)]
     fn size(&self) -> usize {
         std::mem::size_of::<bool>()
+    }
+
+    #[inline(always)]
+    fn get_type(&self) -> u8 {
+        b'B'
     }
 
     fn cast_to<T: Scalar>(v: Rc<bool>, l: usize) -> Status<Rc<T>> {
@@ -103,6 +120,11 @@ impl Scalar for u8 {
         std::mem::size_of::<u8>()
     }
 
+    #[inline(always)]
+    fn get_type(&self) -> u8 {
+        b'C'
+    }
+
     fn cast_to<T: Scalar>(v: Rc<u8>, l: usize) -> Status<Rc<T>> {
         todo!("bool::cast_to")
     }
@@ -123,6 +145,11 @@ impl Scalar for Boxed {
     #[inline(always)]
     fn size(&self) -> usize {
         std::mem::size_of::<*const Type>()
+    }
+
+    #[inline(always)]
+    fn get_type(&self) -> u8 {
+        b'X'
     }
 
     #[inline(always)]

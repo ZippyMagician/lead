@@ -372,9 +372,12 @@ fn eq_rank(a: &[usize], b: &[usize]) -> bool {
 }
 
 // SAFETY: Determined by called
-fn push_and_get<'a>(v: &mut Vec<String>, s: String) -> &'a str {
+fn push_and_get<'a, T>(v: &mut Vec<T>, s: T) -> &'a str
+where
+    T: AsRef<str>,
+{
     v.push(s);
-    let r: &str = v.last().unwrap();
+    let r: &str = v.last().unwrap().as_ref();
     unsafe { &*(r as *const str) }
 }
 
@@ -388,35 +391,6 @@ fn hmask(x: usize, mx: usize) -> u8 {
     ((x + 1 != mx) as u8) << 1 | ((x != 0) as u8) << 3
 }
 
-// TODO: Implement for each Array type separately
-// } else {
-//     fm = push_and_get(&mut formatted, format!("{num}"));
-//     x = usize::max(x, fm.chars().count());
-//     strings.push(vec![fm]);
-// }
-//
-// } else {
-//     // Currently we have a list of scalar values
-//     // x and y are the max size of those scalars.
-//     for row in 0..rows {
-//         for col in 0..cols {
-//             let word = &strings[row * cols + col];
-//             assert!(word.len() == 1, "Internal error");
-//             let word = word[0];
-//             if is_str || self.dims() == 1 {
-//                 write!(f, "{}", word)?;
-//             } else {
-//                 write!(f, "{}{}", " ".repeat(x - word.len()), word)?;
-//             }
-//             if !is_str && col < cols - 1 {
-//                 write!(f, " ")?;
-//             }
-//         }
-//         if row + 1 != rows {
-//             write!(f, "\n")?;
-//         }
-//     }
-// }
 impl Display for Array<Boxed> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.is_scalar() {
@@ -433,10 +407,7 @@ impl Display for Array<Boxed> {
             for b in self.list().iter() {
                 // SAFETY: formatted is not dropped until strings
                 let fm;
-                fm = push_and_get(
-                    &mut formatted,
-                    format!("{}", unsafe { &*b }),
-                );
+                fm = push_and_get(&mut formatted, format!("{}", unsafe { &*b }));
                 // Oh rust strs, how you fuck with me
                 x = usize::max(
                     x,
@@ -501,6 +472,76 @@ impl Display for Array<Boxed> {
         Ok(())
     }
 }
+
+macro_rules! impl_display {
+    ($($t:ty),*) => {$(
+        impl Display for Array<$t> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                if self.is_scalar() {
+                    write!(f, "{}", self.list()[0])?;
+                } else if self.is_empty() {
+                    hint::cold_path();
+                    return Ok(());
+                } else if self.dims() < 3 {
+                    let mut formatted = Vec::with_capacity(self.len());
+                    let mut strings: Vec<Vec<&str>> = Vec::with_capacity(self.len());
+
+                    let mut x = 0;
+                    let mut y = 1;
+                    let is_str = self.list()[0].get_type() == b'C';
+                    for num in self.list().iter() {
+                        let fm = push_and_get(&mut formatted, num.fmt_lead());
+                        x = usize::max(x, fm.chars().count());
+                        strings.push(vec![fm]);
+                    }
+                    for ys in strings.iter() {
+                        y = usize::max(y, ys.len());
+                    }
+
+                    let cols = self.rank()[0];
+                    unsafe {
+                        std::hint::assert_unchecked(self.len() % cols == 0);
+                    }
+
+                    let rows = self.len() / cols;
+                    // Currently we have a list of scalar values
+                    // x and y are the max size of those scalars.
+                    for row in 0..rows {
+                        for col in 0..cols {
+                            let word = &strings[row * cols + col];
+                            assert!(word.len() == 1, "Internal error");
+                            let word = word[0];
+                            if is_str || self.dims() == 1 {
+                                write!(f, "{}", word)?;
+                            } else {
+                                write!(f, "{}{}", " ".repeat(x - word.len()), word)?;
+                            }
+                            if !is_str && col < cols - 1 {
+                                write!(f, " ")?;
+                            }
+                        }
+                        if row + 1 != rows {
+                            write!(f, "\n")?;
+                        }
+                    }
+                } else {
+                    let dims = self.dims();
+                    let ranked = self.ranked(dims - 1).expect("Couldn't disp. list");
+                    for i in 0..ranked.len() {
+                        write!(f, "{}", ranked[i])?;
+                        if i + 1 != ranked.len() {
+                            write!(f, "{}", "\n".repeat(dims - 1))?;
+                        }
+                    }
+                }
+
+                Ok(())
+            }
+        }
+    )*};
+}
+
+impl_display![i64, OrderedFloat<f64>, bool, u8];
 
 pub struct SizedScalars<T: Iterator<Item = K>, K: Scalar> {
     iter: T,
