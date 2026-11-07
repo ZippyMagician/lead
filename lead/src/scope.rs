@@ -5,8 +5,8 @@ use std::rc::Rc;
 #[allow(unused_imports)]
 use crate::function::{Function, function};
 use crate::types::Type;
-use crate::types::list::List;
-use crate::types::scalar::Scalar;
+use crate::types::list::{Array, List};
+use crate::types::scalar::{Boxed, Scalar};
 use crate::utils::Arena;
 use crate::utils::error::{Error, Status, err};
 
@@ -82,10 +82,9 @@ impl Internals {
             map.insert("I".to_string(), Type::from(List::empty())); // TODO: Initialize I
             uniq.insert("STDOUT".to_string());
         }
-        let boxes = List::from_vec(
-            unsafe { crate::utils::BOXES }.into_iter().map(|c| Scalar::Char(c)).collect(),
-        );
-        map.insert("BOXC".to_string(), Type::from(boxes.unwrap()));
+        let x: String = unsafe { crate::utils::BOXES }.iter().collect();
+        let boxes = List::string(&x);
+        map.insert("BOXC".to_string(), Type::from(boxes));
 
         // Functions
         #[cfg(feature = "ffi")]
@@ -153,7 +152,9 @@ impl Internals {
             b"time" => {
                 use std::time::Instant;
                 let iterations = b
-                    .map(|n| n.as_list()?.list().get(0).map(|n| n.to_num()).unwrap_or(Ok(1)))
+                    .map(|n| -> Status<i64> {
+                        Ok(n.as_list()?.listi()?.get(0).copied().unwrap_or(1))
+                    })
                     .unwrap_or(Ok(1))? as usize;
 
                 let arena = Rc::new(RefCell::new(typed_arena::Arena::new()));
@@ -234,13 +235,13 @@ impl Internals {
             let v = v.to_list()?;
             if v.len() != 11 && v.len() != 1 {
                 return err!(Domain);
-            } else if !v.list()[0].is_char() {
+            } else if v.get_type() != b'C' {
                 return err!(Domain);
             }
             use crate::utils::{BOXES, BOXES_BL, BOXES_BR, BOXES_TL, BOXES_TR};
-            for (i, c) in (0..11).zip(v.list().iter().cycle()) {
+            let s = str::from_utf8(unsafe { v.listc_unchecked() })?.chars();
+            for (i, c) in (0..11).zip(s) {
                 unsafe {
-                    let c = c.to_char_unchecked();
                     BOXES[i] = c;
                 }
             }

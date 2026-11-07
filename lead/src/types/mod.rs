@@ -224,7 +224,6 @@ impl Display for Type {
             Self::Function(_) => write!(f, "{{{{ .. }}}}"),
             Self::List(v) => write!(f, "{v}"),
             Self::Map(m) => write!(f, "{m}"),
-            Self::Scalar(s) => write!(f, "{s}"),
         }
     }
 }

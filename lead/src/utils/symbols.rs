@@ -201,7 +201,7 @@ pub(crate) use maybe_apply;
 macro_rules! scalar_op {
     ($a:ident, $b:ident, $d:ident) => {
         scalar_op!($a, $b,
-            [l, r] = { l.$d(*r)? }; { r.$d(l)? }; { l.$d(r)? };
+            [l, r] = { l.$d(*r) }; { r.$d(l) }; { l.$d(r) };
         )
     };
 
@@ -212,7 +212,6 @@ macro_rules! scalar_op {
     // e1: L is &mut S, R is &S.
     // e2: L is S, R is &mut S
     // e3: L is &mut S, R is S
-    // SAFETY: When called on `ListWindows`, depends on caller not being an idiot
     ($a:ident, $b:ident, [$l:ident, $r:ident] = $e1:block; $e2:block; $e3:block;) => {
         if $a.len() == $b.len() {
             let values = $a.list_mut();
@@ -260,7 +259,10 @@ macro_rules! scalar_op {
 
 pub(crate) use scalar_op;
 
-pub(crate) fn pad_rank((v, vr): (&[Scalar], &[usize]), r: &[usize]) -> Status<Vec<Scalar>> {
+pub(crate) fn pad_rank<T>((v, vr): (&[T], &[usize]), r: &[usize]) -> Status<Vec<T>>
+where
+    T: Scalar,
+{
     if vr == r {
         return Ok(v.to_vec());
     }
@@ -279,7 +281,7 @@ pub(crate) fn pad_rank((v, vr): (&[Scalar], &[usize]), r: &[usize]) -> Status<Ve
     }
 
     let nlen: usize = r.iter().product();
-    let mut b = vec![v[0].get_fill()?; nlen];
+    let mut b = vec![T::get_fill()?; nlen];
     for i in 0..v.len() {
         let mut j = 0;
         for k in 0..rank.len() {
@@ -291,9 +293,17 @@ pub(crate) fn pad_rank((v, vr): (&[Scalar], &[usize]), r: &[usize]) -> Status<Ve
     Ok(b)
 }
 
+// ecow::EcoVec copy for mutating len
 #[repr(C)]
-pub(crate) struct EcoView {
-    ptr: *mut Scalar,
+pub(crate) struct EcoVecInternal<T> {
+    pub(crate) ptr: std::ptr::NonNull<T>,
+    pub(crate) len: usize,
+    pub(crate) phantom: std::marker::PhantomData<T>,
+}
+
+#[repr(C)]
+pub(crate) struct EcoView<T> {
+    ptr: *mut T,
     pub(crate) i: usize,
 }
 
@@ -301,16 +311,16 @@ pub(crate) struct EcoView {
 // the vec, nor drop it immediately. `EcoVecInternal` matches the layout of `EcoVec`, allowing
 // mutation. Cannot build `EcoVec` directly from a pointer, as it's header is preallocated to
 // preserve reference counting within the `ecow` crate.
-pub(crate) fn with_eco(
-    capacity: usize, f: impl FnOnce(&mut EcoView) -> Status,
-) -> Status<EcoVec<Scalar>> {
+pub(crate) fn with_eco<T: Scalar>(
+    capacity: usize, f: impl FnOnce(&mut EcoView<T>) -> Status,
+) -> Status<EcoVec<T>> {
     let mut eco = EcoVec::with_capacity(capacity);
-    let ptr = eco.as_ptr() as *mut Scalar;
+    let ptr = eco.as_ptr() as *mut T;
     let mut view = EcoView { ptr, i: 0 };
     f(&mut view)?;
     // SAFETY: lmao
     unsafe {
-        let mut temp: crate::types::list::EcoVecInternal<Scalar> = std::mem::transmute(eco);
+        let mut temp: EcoVecInternal<T> = std::mem::transmute(eco);
         temp.len = capacity;
         eco = std::mem::transmute(temp);
     };
@@ -318,18 +328,18 @@ pub(crate) fn with_eco(
     Ok(eco)
 }
 
-impl EcoView {
+impl<T> EcoView<T> {
     #[inline(always)]
-    pub(crate) fn extend(&mut self, t: &[Scalar]) {
+    pub(crate) fn extend(&mut self, t: &[T]) {
         for item in t {
             self.push(*item);
         }
     }
 
     #[inline(always)]
-    pub(crate) fn extend_iter<T>(&mut self, t: T)
+    pub(crate) fn extend_iter<U>(&mut self, t: U)
     where
-        T: IntoIterator<Item = Scalar>,
+        U: IntoIterator<Item = T>,
     {
         for item in t.into_iter() {
             self.push(item);
@@ -337,7 +347,7 @@ impl EcoView {
     }
 
     #[inline(always)]
-    pub(crate) fn push(&mut self, t: Scalar) {
+    pub(crate) fn push(&mut self, t: T) {
         unsafe {
             self.ptr.add(self.i).write(t);
             self.i += 1;

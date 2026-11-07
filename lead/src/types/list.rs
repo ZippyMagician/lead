@@ -11,7 +11,8 @@ use std::rc::Rc;
 use super::scalar::{self, Boxed, Scalar};
 use crate::utils::Arena;
 use crate::utils::display_boxed_lines;
-use crate::utils::error::Status;
+use crate::utils::error::{Status, err};
+use crate::utils::list::with_list;
 
 use ordered_float::OrderedFloat;
 use smallvec::{SmallVec, smallvec};
@@ -36,20 +37,6 @@ struct Repr {
     pub s: usize,
     pub e: usize,
 }
-
-macro_rules! with_list {
-    ($l:expr, |$x:ident| $body:expr) => {
-        match $l {
-            List::Integers($x) => $body,
-            List::Doubles($x)  => $body,
-            List::Booleans($x) => $body,
-            List::String($x)   => $body,
-            List::Boxes($x)    => $body,
-        }
-    };
-}
-
-pub(crate) use with_list;
 
 impl List {
     #[inline(always)]
@@ -92,6 +79,31 @@ impl List {
             Self::String(l) => l.list()[0].to_bool().unwrap(),
             Self::Boxes(_) => false,
         }
+    }
+
+    #[inline]
+    pub fn listi(&self) -> Status<&[i64]> {
+        if let Self::Integers(l) = &self { Ok(l.list()) } else { err!(Value) }
+    }
+
+    #[inline]
+    pub fn listf(&self) -> Status<&[OrderedFloat<f64>]> {
+        if let Self::Doubles(l) = &self { Ok(l.list()) } else { err!(Value) }
+    }
+
+    #[inline]
+    pub fn listb(&self) -> Status<&[bool]> {
+        if let Self::Booleans(l) = &self { Ok(l.list()) } else { err!(Value) }
+    }
+
+    #[inline]
+    pub fn listc(&self) -> Status<&[u8]> {
+        if let Self::String(l) = &self { Ok(l.list()) } else { err!(Value) }
+    }
+
+    #[inline]
+    pub fn listx(&self) -> Status<&[Boxed]> {
+        if let Self::Boxes(l) = &self { Ok(l.list()) } else { err!(Value) }
     }
 
     #[inline(always)]
@@ -215,6 +227,55 @@ impl List {
                     ),
                     _ => hint::unreachable_unchecked(),
                 }
+            }
+        }
+    }
+
+    // Assumes lists have already been checked to match
+    #[inline]
+    pub fn unranked_unchecked(trailing_rank: &[usize], lists: Vec<List>) -> Status<List> {
+        if lists.is_empty() {
+            return Ok(List::Integers(Array::empty()));
+        } else if lists.len() == 1 {
+            let f = lists[0].clone();
+            return Ok(f);
+        }
+
+        let rank = lists[0].rank();
+        let t = lists[0].get_type();
+        let mut rank: SmallVec<[usize; INLINE_SIZE]> =
+            if eq_rank(rank, &[1]) { smallvec![] } else { rank.into() };
+        rank.extend_from_slice(trailing_rank);
+
+        let diff = lists[0].rank().iter().product::<usize>() * lists.len()
+            / rank.iter().product::<usize>();
+        if diff != 1 {
+            rank.push(diff);
+        }
+
+        unsafe {
+            match t {
+                b'I' => Array::<i64>::alloc_iter(
+                    &rank,
+                    lists.iter().flat_map(|n| n.listi_unchecked()).copied(),
+                ),
+                b'F' => Array::<OrderedFloat<f64>>::alloc_iter(
+                    &rank,
+                    lists.iter().flat_map(|n| n.listf_unchecked()).copied(),
+                ),
+                b'B' => Array::<bool>::alloc_iter(
+                    &rank,
+                    lists.iter().flat_map(|n| n.listb_unchecked()).copied(),
+                ),
+                b'C' => Array::<u8>::alloc_iter(
+                    &rank,
+                    lists.iter().flat_map(|n| n.listc_unchecked()).copied(),
+                ),
+                b'X' => Array::<Boxed>::alloc_iter(
+                    &rank,
+                    lists.iter().flat_map(|n| n.listx_unchecked()).copied(),
+                ),
+                _ => hint::unreachable_unchecked(),
             }
         }
     }
@@ -581,6 +642,12 @@ macro_rules! impl_display {
 }
 
 impl_display![i64, OrderedFloat<f64>, bool, u8];
+
+impl Display for List {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        with_list!(self, |v| write!(f, "{v}"))
+    }
+}
 
 pub struct SizedScalars<T: Iterator<Item = K>, K: Scalar> {
     iter: T,

@@ -31,6 +31,8 @@ pub trait Scalar:
     fn to_float(&self) -> Status<OrderedFloat<f64>>;
     fn to_bool(&self) -> Status<bool>;
     fn to_char(&self) -> Status<u8>;
+
+    fn get_fill() -> Status<Self>;
 }
 
 impl Scalar for i64 {
@@ -80,6 +82,11 @@ impl Scalar for i64 {
         } else {
             err!(ValueS, "Invalid character.")
         }
+    }
+
+    #[inline(always)]
+    fn get_fill() -> Status<i64> {
+        Ok(0)
     }
 }
 
@@ -136,6 +143,11 @@ impl Scalar for OrderedFloat<f64> {
             err!(ValueS, "Float is not a whole number, cannot convert to character.")
         }
     }
+
+    #[inline(always)]
+    fn get_fill() -> Status<OrderedFloat<f64>> {
+        Ok(OrderedFloat(0.))
+    }
 }
 
 impl Scalar for bool {
@@ -186,6 +198,11 @@ impl Scalar for bool {
     fn to_char(&self) -> Status<u8> {
         Ok(*self as u8)
     }
+
+    #[inline(always)]
+    fn get_fill() -> Status<bool> {
+        Ok(false)
+    }
 }
 
 // Strings
@@ -234,6 +251,11 @@ impl Scalar for u8 {
     fn to_char(&self) -> Status<u8> {
         Ok(*self)
     }
+
+    #[inline(always)]
+    fn get_fill() -> Status<u8> {
+        Ok(b' ')
+    }
 }
 
 impl Scalar for Boxed {
@@ -281,6 +303,12 @@ impl Scalar for Boxed {
     fn to_char(&self) -> Status<u8> {
         err!(ValueS, "Cannot convert from boxed value.")
     }
+
+    #[inline(always)]
+    fn get_fill() -> Status<Boxed> {
+        std::hint::cold_path();
+        err!(ValueS, "No valid fill type for boxes.")
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash, Default)]
@@ -291,6 +319,13 @@ impl Boxed {
     #[inline]
     pub(crate) unsafe fn steal_box(&self) -> Type {
         std::mem::take(unsafe { &mut **&self.0 })
+    }
+}
+
+impl Deref for Boxed {
+    type Target = *mut Type;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -502,7 +537,7 @@ impl Scalar {
     }
 
     #[inline]
-    pub fn get_fill(&self) -> Status<Scalar> {
+    pub fn get_fill() -> Status<Scalar> {
         match self {
             Self::Number(_) | Self::Float(_) => Ok(Self::Number(0)),
             Self::Char(_) => Ok(Self::Char(' ')),

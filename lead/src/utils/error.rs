@@ -91,6 +91,13 @@ impl From<io::Error> for Error {
     }
 }
 
+impl From<std::str::Utf8Error> for Error {
+    #[inline(always)]
+    fn from(value: std::str::Utf8Error) -> Self {
+        Error::ValueS(value.to_string().into())
+    }
+}
+
 impl<T> From<Error> for Status<T>
 where
     T: Clone,

@@ -4,16 +4,16 @@ use std::collections::{HashMap, HashSet};
 use std::hint::cold_path;
 use std::ops::*;
 
+use crate::array::arith::*;
 use crate::function::Opts;
 use crate::types::Type;
-use crate::types::list::{INLINE_SIZE, List};
-use crate::types::scalar;
+use crate::types::list::{Array, INLINE_SIZE, List};
+use crate::types::scalar::{self, Boxed, Scalar};
 use crate::utils::error::{Error, Status, err};
 use crate::utils::function::*;
-use crate::utils::symbols::{
-    for_0, for_1, for_n, for_n2, maybe_apply, pad_rank, scalar_op, with_eco,
-};
-use scalar::Scalar::{self, Boolean, Char, Float, Number};
+use crate::utils::symbols::*;
+
+use List::*;
 
 use ecow::{EcoVec, eco_vec};
 use num_traits::{AsPrimitive, Zero};
@@ -78,15 +78,22 @@ pub enum Symbol {
 }
 
 // plusm | + | 0 | Absolute value / Cast to int
-pub(super) fn abs(mut a: List, _: &Opts) -> Status<List> {
-    for_0!(a; [v] = match v {
-        Number(n) => Number(n.abs()),
-        Float(f) => Float(f.abs()),
-        Boolean(n) => Number(*n as i64),
-        Char(c) => Number(*c as u32 as i64),
-        Scalar::Box(ptr) => Number(ptr.addr() as i64),
-    });
-    Ok(a)
+pub(super) fn abs(a: List, _: &Opts) -> Status<List> {
+    match a {
+        Integers(mut l) => {
+            for_0!(l; [v] = v.abs());
+            Ok(List::Integers(l))
+        }
+        Doubles(mut l) => {
+            for_0!(l; [v] = v.abs());
+            l.to_cast(b'I')
+        }
+        Booleans(b) => b.to_cast(b'I'),
+        String(s) => s.to_cast(b'I'),
+        Boxes(b) => unsafe {
+            Array::<i64>::alloc_iter(b.rank(), b.list().into_iter().map(|b| b.addr() as i64))
+        },
+    }
 }
 
 // plusd | + | 0, 0 | Addition
@@ -97,22 +104,8 @@ pub(super) fn add(mut a: List, mut b: List, o: &Opts) -> Status<List> {
     } else if b.is_empty() {
         cold_path();
         Ok(a)
-    } else if matches!(a.list()[0], Scalar::Char(_)) || matches!(b.list()[0], Scalar::Char(_)) {
-        maybe_apply!([scalar] o, a, b, {
-            scalar_op!(a, b,
-                [l, r] = { Scalar::Char(char::from_u32(
-                    l.to_num()? as u32 + r.to_num()? as u32
-                ).ok_or(Error::NaN)?) };
-                { Scalar::Char(char::from_u32(
-                    l.to_num()? as u32 + r.to_num()? as u32
-                ).ok_or(Error::NaN)?) };
-                { Scalar::Char(char::from_u32(
-                    l.to_num()? as u32 + r.to_num()? as u32
-                ).ok_or(Error::NaN)?) };
-            )
-        })
     } else {
-        maybe_apply!([scalar] o, a, b, scalar_op!(a, b, add))
+        maybe_apply!([scalar] o, a, b, add_generic(a, b))
     }
 }
 
@@ -483,7 +476,7 @@ pub(crate) fn gradeup(a: List, o: &Opts) -> Status<List> {
         };
 
         let l = a.ranked(a.dims() - 1)?;
-        s.sort_by(|a, b| unsafe { 
+        s.sort_by(|a, b| unsafe {
             let i = a.to_num_unchecked();
             let j = b.to_num_unchecked();
             std::hint::assert_unchecked(i >= 0 && j >= 0);
@@ -554,7 +547,7 @@ pub(crate) fn gradedown(a: List, o: &Opts) -> Status<List> {
         };
 
         let l = a.ranked(a.dims() - 1)?;
-        s.sort_by(|a, b| unsafe { 
+        s.sort_by(|a, b| unsafe {
             let i = a.to_num_unchecked();
             let j = b.to_num_unchecked();
             std::hint::assert_unchecked(i >= 0 && j >= 0);
