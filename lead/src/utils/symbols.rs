@@ -328,7 +328,7 @@ pub(crate) fn with_eco<T: Scalar>(
     Ok(eco)
 }
 
-impl<T> EcoView<T> {
+impl<T: Scalar> EcoView<T> {
     #[inline(always)]
     pub(crate) fn extend(&mut self, t: &[T]) {
         for item in t {

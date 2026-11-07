@@ -279,6 +279,42 @@ impl List {
             }
         }
     }
+
+    // SAFETY: Assumes all sizes within the struct are valid in respect to the data
+    #[inline]
+    pub fn ranked(&self, dims: usize) -> Status<Vec<Self>> {
+        if dims == 0 {
+            let mut v = Vec::with_capacity(self.len());
+            for i in 0..self.len() {
+                v.push(unsafe { self.sliced(i, i + 1, &[1]) });
+            }
+            Ok(v)
+        } else if dims >= self.dims() {
+            Ok(vec![self.clone()])
+        } else {
+            let ct: usize = self.rank().iter().take(dims).product();
+            unsafe { std::hint::assert_unchecked(self.len() % ct == 0) }
+
+            let size = self.len() / ct;
+            let mut v = Vec::with_capacity(size);
+            for i in 0..size {
+                v.push(unsafe { self.sliced(i * ct, i * ct + ct, &self.rank()[0..dims]) });
+            }
+            return Ok(v);
+        }
+    }
+
+    #[inline(always)]
+    pub(crate) unsafe fn sliced(&self, start: usize, end: usize, r: &[usize]) -> Self {
+        let mut l = self.clone();
+        let n: &mut Repr = unsafe { std::mem::transmute(&mut l) };
+        n.ds = r.len();
+        n.rk = SmallVec::from_slice(r);
+        n.s = start;
+        n.e = end;
+        drop(n);
+        l
+    }
 }
 
 // TODO: Various functions implemented for `List`
