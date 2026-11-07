@@ -293,47 +293,34 @@ where
     Ok(b)
 }
 
-// ecow::EcoVec copy for mutating len
 #[repr(C)]
-pub(crate) struct EcoVecInternal<T> {
-    pub(crate) ptr: std::ptr::NonNull<T>,
-    pub(crate) len: usize,
-    pub(crate) phantom: std::marker::PhantomData<T>,
-}
-
-#[repr(C)]
-pub(crate) struct EcoView<T> {
+pub(crate) struct EcoView<T: Scalar> {
     ptr: *mut T,
     pub(crate) i: usize,
 }
 
-// SAFETY: EcoVec is created and used without cloning. Assumes `f` does *not* clone and pass along
-// the vec, nor drop it immediately. `EcoVecInternal` matches the layout of `EcoVec`, allowing
-// mutation. Cannot build `EcoVec` directly from a pointer, as it's header is preallocated to
-// preserve reference counting within the `ecow` crate.
+// Previously was using `EcoVec`, but with the new way lists are handled, it is better to directly
+// use an `Rc`'s allocation. Not much changes were required
 pub(crate) fn with_eco<T: Scalar>(
     capacity: usize, f: impl FnOnce(&mut EcoView<T>) -> Status,
-) -> Status<EcoVec<T>> {
-    let mut eco = EcoVec::with_capacity(capacity);
-    let ptr = eco.as_ptr() as *mut T;
+) -> Status<std::rc::Rc<[T]>> {
+    let mut eco = std::rc::Rc::new_uninit_slice(capacity);
+    let mutate = std::rc::Rc::get_mut(&mut eco).unwrap();
+    let ptr = mutate.as_mut_ptr().cast();
     let mut view = EcoView { ptr, i: 0 };
     f(&mut view)?;
-    // SAFETY: lmao
-    unsafe {
-        let mut temp: EcoVecInternal<T> = std::mem::transmute(eco);
-        temp.len = capacity;
-        eco = std::mem::transmute(temp);
-    };
     assert!(view.i == capacity);
-    Ok(eco)
+    drop(mutate);
+    Ok(unsafe { eco.assume_init() })
 }
 
 impl<T: Scalar> EcoView<T> {
     #[inline(always)]
     pub(crate) fn extend(&mut self, t: &[T]) {
-        for item in t {
-            self.push(*item);
+        unsafe {
+            std::ptr::copy_nonoverlapping(t.as_ptr(), self.ptr.add(self.i), t.len());
         }
+        self.i += t.len();
     }
 
     #[inline(always)]
