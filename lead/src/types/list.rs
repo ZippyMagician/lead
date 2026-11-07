@@ -1,31 +1,342 @@
-// NOTE: Lists should reject incompatible concatenations/contents
+// NOTE: Arrays should reject incompatible concatenations/contents
 // i.e., all internal scalars should be the same matching types.
 // That is, numeric / character / boxed
 // Maybe booleans as well?
 
 use std::fmt::{self, Display};
+use std::hash::Hash;
+use std::hint;
+use std::rc::Rc;
 
-use ecow::{EcoVec, eco_vec};
-use smallvec::{SmallVec, smallvec};
-
-use super::scalar::Scalar;
+use super::scalar::{self, Boxed, Scalar};
 use crate::utils::Arena;
+use crate::utils::display_boxed_lines;
 use crate::utils::error::{Status, err};
-use crate::utils::{compatible, display_boxed_lines};
+use crate::utils::list::with_list;
+
+use ordered_float::OrderedFloat;
+use smallvec::{SmallVec, smallvec};
 
 pub(crate) const INLINE_SIZE: usize = 2;
 
 #[derive(Clone, Debug, Hash)]
-pub struct List {
-    // dt: Box<[Scalar]>,
-    dt: Scalars,
-    pub(crate) ds: usize,
-    pub(crate) rk: SmallVec<[usize; INLINE_SIZE]>,
+#[repr(u8, C)]
+pub enum List {
+    Integers(Array<i64>),
+    Doubles(Array<OrderedFloat<f64>>),
+    Booleans(Array<bool>),
+    String(Array<u8>),
+    Boxes(Array<Boxed>),
+}
+
+#[repr(C)]
+struct Repr {
+    pub tag: u8,
+    pub ds: usize,
+    pub rk: SmallVec<[usize; INLINE_SIZE]>,
+    pub s: usize,
+    pub e: usize,
 }
 
 impl List {
     #[inline(always)]
-    pub fn new(dt: impl Into<Scalars>, ds: usize, rk: SmallVec<[usize; INLINE_SIZE]>) -> Self {
+    pub fn empty() -> Self {
+        Self::Integers(Array::empty())
+    }
+
+    #[inline]
+    pub fn string(data: &str) -> Self {
+        let size = data.len();
+        unsafe { Array::<u8>::alloc_iter(&[size], data.bytes()).unwrap() }
+    }
+
+    #[inline(always)]
+    pub fn get_type(&self) -> u8 {
+        match &self {
+            Self::Integers(_) => b'I',
+            Self::Doubles(_) => b'F',
+            Self::Booleans(_) => b'B',
+            Self::String(_) => b'C',
+            Self::Boxes(_) => b'X',
+        }
+    }
+
+    #[inline(always)]
+    pub fn to_cast(self, t: u8) -> Status<Self> {
+        with_list!(self, |l| l.to_cast(t))
+    }
+
+    #[inline(always)]
+    pub fn is_truthy(&self) -> bool {
+        if self.is_empty() {
+            return true;
+        }
+
+        match &self {
+            Self::Integers(l) => l.list()[0].to_bool().unwrap(),
+            Self::Doubles(l) => l.list()[0].to_bool().unwrap(),
+            Self::Booleans(l) => l.list()[0],
+            Self::String(l) => l.list()[0].to_bool().unwrap(),
+            Self::Boxes(_) => false,
+        }
+    }
+
+    #[inline]
+    pub fn listi(&self) -> Status<&[i64]> {
+        if let Self::Integers(l) = &self { Ok(l.list()) } else { err!(Value) }
+    }
+
+    #[inline]
+    pub fn listf(&self) -> Status<&[OrderedFloat<f64>]> {
+        if let Self::Doubles(l) = &self { Ok(l.list()) } else { err!(Value) }
+    }
+
+    #[inline]
+    pub fn listb(&self) -> Status<&[bool]> {
+        if let Self::Booleans(l) = &self { Ok(l.list()) } else { err!(Value) }
+    }
+
+    #[inline]
+    pub fn listc(&self) -> Status<&[u8]> {
+        if let Self::String(l) = &self { Ok(l.list()) } else { err!(Value) }
+    }
+
+    #[inline]
+    pub fn listx(&self) -> Status<&[Boxed]> {
+        if let Self::Boxes(l) = &self { Ok(l.list()) } else { err!(Value) }
+    }
+
+    #[inline(always)]
+    pub unsafe fn listi_unchecked(&self) -> &[i64] {
+        let Self::Integers(l) = &self else { unsafe { hint::unreachable_unchecked() } };
+        l.list()
+    }
+
+    #[inline(always)]
+    pub unsafe fn listf_unchecked(&self) -> &[OrderedFloat<f64>] {
+        let Self::Doubles(l) = &self else { unsafe { hint::unreachable_unchecked() } };
+        l.list()
+    }
+
+    #[inline(always)]
+    pub unsafe fn listb_unchecked(&self) -> &[bool] {
+        let Self::Booleans(l) = &self else { unsafe { hint::unreachable_unchecked() } };
+        l.list()
+    }
+
+    #[inline(always)]
+    pub unsafe fn listc_unchecked(&self) -> &[u8] {
+        let Self::String(l) = &self else { unsafe { hint::unreachable_unchecked() } };
+        l.list()
+    }
+
+    #[inline(always)]
+    pub unsafe fn listx_unchecked(&self) -> &[Boxed] {
+        let Self::Boxes(l) = &self else { unsafe { hint::unreachable_unchecked() } };
+        l.list()
+    }
+
+    #[inline(always)]
+    pub fn rank(&self) -> &[usize] {
+        let hdr: &Repr = unsafe { std::mem::transmute(self) };
+        &hdr.rk
+    }
+
+    pub fn dims(&self) -> usize {
+        let hdr: &Repr = unsafe { std::mem::transmute(self) };
+        hdr.ds
+    }
+
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        let hdr: &Repr = unsafe { std::mem::transmute(self) };
+        hdr.e - hdr.s
+    }
+
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    #[inline(always)]
+    pub fn is_scalar(&self) -> bool {
+        self.len() == 1
+    }
+
+    #[inline]
+    pub fn unranked(
+        arena: &Arena, _original: usize, trailing_rank: &[usize], lists: Vec<List>,
+    ) -> Status<List> {
+        if lists.is_empty() {
+            return Ok(List::Integers(Array::empty()));
+        } else if lists.len() == 1 {
+            let f = lists[0].clone();
+            return Ok(f);
+        }
+
+        let mut box_it = false;
+        let rank = lists[0].rank();
+        let t = lists[0].get_type();
+        for list in lists.iter().skip(1) {
+            if !eq_rank(rank, list.rank()) || t != list.get_type() {
+                box_it = true;
+                break;
+            }
+        }
+
+        if box_it {
+            unsafe {
+                Array::<Boxed>::try_alloc_iter(
+                    trailing_rank,
+                    lists.into_iter().map(|n| scalar::boxed(&arena, n)),
+                )
+                .map(List::Boxes)
+            }
+        } else {
+            let mut rank: SmallVec<[usize; INLINE_SIZE]> =
+                if eq_rank(rank, &[1]) { smallvec![] } else { rank.into() };
+            rank.extend_from_slice(trailing_rank);
+
+            let diff = lists[0].rank().iter().product::<usize>() * lists.len()
+                / rank.iter().product::<usize>();
+            if diff != 1 {
+                rank.push(diff);
+            }
+            // Same type
+            unsafe {
+                match t {
+                    b'I' => Array::<i64>::alloc_iter(
+                        &rank,
+                        lists.iter().flat_map(|n| n.listi_unchecked()).copied(),
+                    ),
+                    b'F' => Array::<OrderedFloat<f64>>::alloc_iter(
+                        &rank,
+                        lists.iter().flat_map(|n| n.listf_unchecked()).copied(),
+                    ),
+                    b'B' => Array::<bool>::alloc_iter(
+                        &rank,
+                        lists.iter().flat_map(|n| n.listb_unchecked()).copied(),
+                    ),
+                    b'C' => Array::<u8>::alloc_iter(
+                        &rank,
+                        lists.iter().flat_map(|n| n.listc_unchecked()).copied(),
+                    ),
+                    b'X' => Array::<Boxed>::alloc_iter(
+                        &rank,
+                        lists.iter().flat_map(|n| n.listx_unchecked()).copied(),
+                    ),
+                    _ => hint::unreachable_unchecked(),
+                }
+            }
+        }
+    }
+
+    // Assumes lists have already been checked to match
+    #[inline]
+    pub fn unranked_unchecked(trailing_rank: &[usize], lists: Vec<List>) -> Status<List> {
+        if lists.is_empty() {
+            return Ok(List::Integers(Array::empty()));
+        } else if lists.len() == 1 {
+            let f = lists[0].clone();
+            return Ok(f);
+        }
+
+        let rank = lists[0].rank();
+        let t = lists[0].get_type();
+        let mut rank: SmallVec<[usize; INLINE_SIZE]> =
+            if eq_rank(rank, &[1]) { smallvec![] } else { rank.into() };
+        rank.extend_from_slice(trailing_rank);
+
+        let diff = lists[0].rank().iter().product::<usize>() * lists.len()
+            / rank.iter().product::<usize>();
+        if diff != 1 {
+            rank.push(diff);
+        }
+
+        unsafe {
+            match t {
+                b'I' => Array::<i64>::alloc_iter(
+                    &rank,
+                    lists.iter().flat_map(|n| n.listi_unchecked()).copied(),
+                ),
+                b'F' => Array::<OrderedFloat<f64>>::alloc_iter(
+                    &rank,
+                    lists.iter().flat_map(|n| n.listf_unchecked()).copied(),
+                ),
+                b'B' => Array::<bool>::alloc_iter(
+                    &rank,
+                    lists.iter().flat_map(|n| n.listb_unchecked()).copied(),
+                ),
+                b'C' => Array::<u8>::alloc_iter(
+                    &rank,
+                    lists.iter().flat_map(|n| n.listc_unchecked()).copied(),
+                ),
+                b'X' => Array::<Boxed>::alloc_iter(
+                    &rank,
+                    lists.iter().flat_map(|n| n.listx_unchecked()).copied(),
+                ),
+                _ => hint::unreachable_unchecked(),
+            }
+        }
+    }
+
+    // SAFETY: Assumes all sizes within the struct are valid in respect to the data
+    #[inline]
+    pub fn ranked(&self, dims: usize) -> Status<Vec<Self>> {
+        if dims == 0 {
+            let mut v = Vec::with_capacity(self.len());
+            for i in 0..self.len() {
+                v.push(unsafe { self.sliced(i, i + 1, &[1]) });
+            }
+            Ok(v)
+        } else if dims >= self.dims() {
+            Ok(vec![self.clone()])
+        } else {
+            let ct: usize = self.rank().iter().take(dims).product();
+            unsafe { std::hint::assert_unchecked(self.len() % ct == 0) }
+
+            let size = self.len() / ct;
+            let mut v = Vec::with_capacity(size);
+            for i in 0..size {
+                v.push(unsafe { self.sliced(i * ct, i * ct + ct, &self.rank()[0..dims]) });
+            }
+            return Ok(v);
+        }
+    }
+
+    #[inline(always)]
+    pub(crate) unsafe fn sliced(&self, start: usize, end: usize, r: &[usize]) -> Self {
+        let mut l = self.clone();
+        let n: &mut Repr = unsafe { std::mem::transmute(&mut l) };
+        n.ds = r.len();
+        n.rk = SmallVec::from_slice(r);
+        n.s = start;
+        n.e = end;
+        drop(n);
+        l
+    }
+}
+
+impl<T: Scalar> From<Array<T>> for List {
+    #[inline(always)]
+    fn from(f: Array<T>) -> Self {
+        T::wrap(f)
+    }
+}
+
+// TODO: Various functions implemented for `List`
+
+#[derive(Clone, Debug, Hash)]
+#[repr(C)]
+pub struct Array<T: Scalar> {
+    pub(crate) ds: usize,
+    pub(crate) rk: SmallVec<[usize; INLINE_SIZE]>,
+    pub(crate) dt: Scalars<T>,
+}
+
+impl<T: Scalar> Array<T> {
+    #[inline(always)]
+    pub fn new(dt: impl Into<Scalars<T>>, ds: usize, rk: SmallVec<[usize; INLINE_SIZE]>) -> Self {
         Self { dt: dt.into(), ds, rk }
     }
 
@@ -35,50 +346,33 @@ impl List {
     }
 
     #[inline]
-    pub fn from_vec(data: EcoVec<Scalar>) -> Status<Self> {
-        if !compatible(&data) {
-            return err!(Domain);
-        }
+    pub fn from_vec(data: Rc<[T]>) -> List {
         let size = data.len();
-        Ok(Self { dt: data.into(), ds: 1, rk: smallvec![size] })
+        T::wrap(Self { dt: data.into(), ds: 1, rk: smallvec![size] })
     }
 
     #[inline]
-    pub fn mat(
-        data: EcoVec<Scalar>, ds: usize, rk: SmallVec<[usize; INLINE_SIZE]>,
-    ) -> Status<Self> {
-        if !compatible(&data) {
-            return err!(Domain);
-        }
-        Ok(Self { dt: data.into(), ds, rk })
+    pub fn mat(data: Vec<T>, ds: usize, rk: SmallVec<[usize; INLINE_SIZE]>) -> List {
+        T::wrap(Self { dt: data.into(), ds, rk })
     }
 
     #[inline]
-    pub fn mat_ref(data: &[Scalar], ds: usize, rk: &[usize]) -> Status<Self> {
-        if !compatible(data) {
-            return err!(Domain);
-        }
-        Ok(Self { dt: data.into(), ds, rk: rk.into() })
+    pub fn mat_ref(data: &[T], ds: usize, rk: &[usize]) -> List {
+        T::wrap(Self { dt: data.into(), ds, rk: rk.into() })
     }
 
     #[inline]
-    pub fn scalar(data: Scalar) -> Self {
-        Self { dt: data.into(), ds: 1, rk: smallvec![1] }
-    }
-
-    #[inline]
-    pub fn string(data: &str) -> Self {
-        let size = data.chars().count();
-        unsafe { Self::alloc_iter(&[size], data.chars().map(Scalar::Char)).unwrap() }
+    pub fn scalar(data: T) -> List {
+        T::wrap(Self { dt: data.into(), ds: 1, rk: smallvec![1] })
     }
 
     #[inline(always)]
-    pub fn list(&self) -> &[Scalar] {
+    pub fn list(&self) -> &[T] {
         self.dt.list()
     }
 
     #[inline(always)]
-    pub fn list_mut(&mut self) -> &mut [Scalar] {
+    pub fn list_mut(&mut self) -> &mut [T] {
         self.dt.list_mut()
     }
 
@@ -108,47 +402,9 @@ impl List {
         self.len() == 1
     }
 
-    #[inline(always)]
-    pub fn get_type(&self) -> u8 {
-        if self.is_empty() {
-            std::hint::cold_path();
-            4
-        } else {
-            self.list()[0].repr()
-        }
-    }
-
-    #[inline]
-    pub fn range(start: Scalar, end: Scalar, rev: bool) -> Status<Self> {
-        let chars = start.is_char() && end.is_char();
-        let start = start.to_num()?;
-        let end = end.to_num()?;
-        if end < start || end < 0 || start < 0 {
-            return err!(Domain);
-        }
-        let count: usize = (end - start + 1) as usize;
-        unsafe {
-            if chars {
-                let iter = (start..=end).map(|i| Scalar::Char(i as u8 as char));
-                if rev {
-                    Self::alloc_iter(&[count], iter.rev())
-                } else {
-                    Self::alloc_iter(&[count], iter)
-                }
-            } else {
-                let iter = (start..=end).map(Scalar::Number);
-                if rev {
-                    Self::alloc_iter(&[count], iter.rev())
-                } else {
-                    Self::alloc_iter(&[count], iter)
-                }
-            }
-        }
-    }
-
     // Swaps out rank. It is in place if possible
     #[inline]
-    pub fn with_rank(mut self, r: &[usize]) -> Status<Self> {
+    pub fn with_rank(mut self, r: &[usize]) -> Status<List> {
         let count: usize = r.iter().product();
         if count == self.len() {
             if INLINE_SIZE >= self.dims() || INLINE_SIZE < r.len() {
@@ -158,9 +414,9 @@ impl List {
                 self.rk.extend_from_slice(r);
             }
             self.ds = self.rk.len();
-            Ok(self)
+            Ok(T::wrap(self))
         } else if self.is_empty() {
-            Ok(self)
+            Ok(T::wrap(self))
         } else {
             let bucket = self.list().into_iter().copied().cycle();
             unsafe { Self::alloc_iter(r, bucket) }
@@ -173,14 +429,14 @@ impl List {
     }
 
     #[inline(always)]
-    pub(crate) unsafe fn try_alloc_iter<T>(r: &[usize], bucket: T) -> Status<List>
+    pub(crate) unsafe fn try_alloc_iter<U>(r: &[usize], bucket: U) -> Status<Self>
     where
-        T: Iterator<Item = Status<Scalar>>,
+        U: Iterator<Item = Status<T>>,
     {
         let count: usize = r.iter().product();
         let dims = r.len();
         if dims == 0 {
-            return Ok(List::empty());
+            return Ok(Array::empty());
         }
         let rank = SmallVec::from_slice(r);
         Ok(unsafe { Self::new(Scalars::try_from_iter(bucket, count)?, dims, rank) })
@@ -188,23 +444,23 @@ impl List {
 
     // SAFETY: Assumes called has provided valid sizes
     #[inline(always)]
-    pub(crate) unsafe fn alloc_iter<T>(r: &[usize], bucket: T) -> Status<List>
+    pub(crate) unsafe fn alloc_iter<U>(r: &[usize], bucket: U) -> Status<List>
     where
-        T: Iterator<Item = Scalar>,
+        U: Iterator<Item = T>,
     {
         let count: usize = r.iter().product();
         let dims = r.len();
         if dims == 0 {
-            return Ok(List::empty());
+            return Ok(T::wrap(Array::empty()));
         }
         let rank = SmallVec::from_slice(r);
         let bucket = SizedScalars::new(bucket, count);
-        Ok(unsafe { Self::new(Scalars::from_iter(bucket, count), dims, rank) })
+        Ok(T::wrap(unsafe { Self::new(Scalars::from_iter(bucket, count), dims, rank) }))
     }
 
     // SAFETY: Assumes all sizes within the struct are valid in respect to the data
     #[inline]
-    pub fn ranked(&self, dims: usize) -> Status<Vec<List>> {
+    pub fn ranked(&self, dims: usize) -> Status<Vec<Self>> {
         if dims == 0 {
             let mut v = Vec::with_capacity(self.len());
             for i in 0..self.len() {
@@ -226,53 +482,14 @@ impl List {
         }
     }
 
-    #[inline]
-    pub fn unranked(
-        arena: &Arena, _original: usize, trailing_rank: &[usize], mut lists: Vec<List>,
-    ) -> Status<Self> {
-        if lists.is_empty() {
-            return Ok(List::empty());
-        } else if lists.len() == 1 {
-            return Ok(std::mem::take(&mut lists[0]));
-        }
-
-        let mut box_it = false;
-        let rank = lists[0].rank();
-        for list in lists.iter().skip(1) {
-            if !eq_rank(rank, list.rank()) {
-                box_it = true;
-                break;
-            }
-        }
-
-        if box_it {
-            unsafe {
-                Self::try_alloc_iter(
-                    trailing_rank,
-                    lists.into_iter().map(|n| Scalar::boxed(&arena, n)),
-                )
-            }
-        } else {
-            let mut rank: SmallVec<[usize; INLINE_SIZE]> =
-                if eq_rank(rank, &[1]) { smallvec![] } else { rank.into() };
-            rank.extend_from_slice(trailing_rank);
-
-            let diff = lists[0].rank().iter().product::<usize>() * lists.len()
-                / rank.iter().product::<usize>();
-            if diff != 1 {
-                rank.push(diff);
-            }
-            unsafe { Self::alloc_iter(&rank, lists.iter().flat_map(|n| n.list()).copied()) }
-        }
-    }
-
     // Assumes lists have already been checked to match
     #[inline]
-    pub fn unranked_unchecked(trailing_rank: &[usize], mut lists: Vec<List>) -> Status<Self> {
+    pub fn unranked_unchecked(trailing_rank: &[usize], lists: Vec<Array<T>>) -> Status<List> {
         if lists.is_empty() {
-            return Ok(List::empty());
+            return Ok(T::wrap(Array::empty()));
         } else if lists.len() == 1 {
-            return Ok(std::mem::take(&mut lists[0]));
+            let f = lists[0].clone();
+            return Ok(T::wrap(f));
         }
 
         let rank = lists[0].rank();
@@ -297,40 +514,13 @@ fn eq_rank(a: &[usize], b: &[usize]) -> bool {
     a.iter().zip(b.iter()).all(|(l, r)| l == r)
 }
 
-impl PartialOrd for List {
-    fn partial_cmp(&self, o: &List) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(&o))
-    }
-}
-
-impl PartialEq for List {
-    fn eq(&self, o: &List) -> bool {
-        eq_rank(self.rank(), o.rank()) && self.list().iter().zip(o.list()).all(|(l, r)| *l == *r)
-    }
-}
-
-impl Ord for List {
-    fn cmp(&self, o: &List) -> std::cmp::Ordering {
-        self.dims().cmp(&o.dims()).then(self.len().cmp(&o.len())).then_with(|| {
-            let l = self.list();
-            let o = o.list();
-
-            for (l, r) in l.iter().zip(o) {
-                if l != r {
-                    return l.cmp(&r);
-                }
-            }
-            std::cmp::Ordering::Equal
-        })
-    }
-}
-
-impl Eq for List {}
-
 // SAFETY: Determined by called
-fn push_and_get<'a>(v: &mut Vec<String>, s: String) -> &'a str {
+fn push_and_get<'a, T>(v: &mut Vec<T>, s: T) -> &'a str
+where
+    T: AsRef<str>,
+{
     v.push(s);
-    let r: &str = v.last().unwrap();
+    let r: &str = v.last().unwrap().as_ref();
     unsafe { &*(r as *const str) }
 }
 
@@ -344,44 +534,32 @@ fn hmask(x: usize, mx: usize) -> u8 {
     ((x + 1 != mx) as u8) << 1 | ((x != 0) as u8) << 3
 }
 
-// TODO: impl Display for List
-impl Display for List {
+impl Display for Array<Boxed> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.is_scalar() {
             write!(f, "{}", self.list()[0])?;
         } else if self.is_empty() {
-            std::hint::cold_path();
+            hint::cold_path();
             return Ok(());
         } else if self.dims() < 3 {
-            let boxed = self.list()[0].is_box();
             let mut formatted = Vec::with_capacity(self.len());
             let mut strings: Vec<Vec<&str>> = Vec::with_capacity(self.len());
 
             let mut x = 0;
             let mut y = 1;
-            let is_str = self.list()[0].is_char();
-            for num in self.list().iter() {
+            for b in self.list().iter() {
                 // SAFETY: formatted is not dropped until strings
                 let fm;
-                if boxed {
-                    fm = push_and_get(
-                        &mut formatted,
-                        format!("{}", unsafe { num.as_unboxed_unchecked() }),
-                    );
-                    // Oh rust strs, how you fuck with me
-                    x = usize::max(
-                        x,
-                        fm.chars()
-                            .zip(0..)
-                            .find(|(c, _)| *c == '\n')
-                            .map_or_else(|| fm.chars().count(), |(_, i)| i),
-                    );
-                    strings.push(fm.trim_end_matches('\n').split('\n').collect());
-                } else {
-                    fm = push_and_get(&mut formatted, format!("{num}"));
-                    x = usize::max(x, fm.chars().count());
-                    strings.push(vec![fm]);
-                }
+                fm = push_and_get(&mut formatted, format!("{}", b));
+                // Oh rust strs, how you fuck with me
+                x = usize::max(
+                    x,
+                    fm.chars()
+                        .zip(0..)
+                        .find(|(c, _)| *c == '\n')
+                        .map_or_else(|| fm.chars().count(), |(_, i)| i),
+                );
+                strings.push(fm.trim_end_matches('\n').split('\n').collect());
             }
             for ys in strings.iter() {
                 y = usize::max(y, ys.len());
@@ -393,58 +571,35 @@ impl Display for List {
             }
 
             let rows = self.len() / cols;
-            if boxed {
-                // Collect to list of words, each list of lines
-                // Converto to list of constructed lines
-                // Write to formatter
-                let mut v = 0;
-                let mut m = 0;
-                let strings = (0..)
-                    .zip(strings.into_iter())
-                    .map(|(i, elements)| {
-                        if i % cols == 0 {
-                            v = vmask(i / cols, rows);
-                        }
-                        m = v | hmask(i % cols, cols);
-                        Ok((m, display_boxed_lines(elements, Some(x), Some(y), m)?))
-                    })
-                    .collect::<Result<Vec<(u8, Vec<String>)>, fmt::Error>>()?;
-                for row in 0..rows {
-                    let mut line = String::with_capacity(((x + 4) * cols + 1) * (y + 2));
-                    for j in usize::from(row != 0)..y + 2 {
-                        for i in 0..cols {
-                            let string = &strings[row * cols + i];
-                            let l = &string.1[j];
-                            let off = l.chars().next().unwrap().len_utf8();
-                            line.push_str(&l[usize::from(i != 0) * off..]);
-                        }
-                        if row + 1 != rows || j != y + 1 {
-                            line.push('\n');
-                        }
+            // Collect to list of words, each list of lines
+            // Converto to list of constructed lines
+            // Write to formatter
+            let mut v = 0;
+            let mut m = 0;
+            let strings = (0..)
+                .zip(strings.into_iter())
+                .map(|(i, elements)| {
+                    if i % cols == 0 {
+                        v = vmask(i / cols, rows);
                     }
-                    write!(f, "{line}")?;
-                }
-            } else {
-                // Currently we have a list of scalar values
-                // x and y are the max size of those scalars.
-                for row in 0..rows {
-                    for col in 0..cols {
-                        let word = &strings[row * cols + col];
-                        assert!(word.len() == 1, "Internal error");
-                        let word = word[0];
-                        if is_str || self.dims() == 1 {
-                            write!(f, "{}", word)?;
-                        } else {
-                            write!(f, "{}{}", " ".repeat(x - word.len()), word)?;
-                        }
-                        if !is_str && col < cols - 1 {
-                            write!(f, " ")?;
-                        }
+                    m = v | hmask(i % cols, cols);
+                    Ok((m, display_boxed_lines(elements, Some(x), Some(y), m)?))
+                })
+                .collect::<Result<Vec<(u8, Vec<String>)>, fmt::Error>>()?;
+            for row in 0..rows {
+                let mut line = String::with_capacity(((x + 4) * cols + 1) * (y + 2));
+                for j in usize::from(row != 0)..y + 2 {
+                    for i in 0..cols {
+                        let string = &strings[row * cols + i];
+                        let l = &string.1[j];
+                        let off = l.chars().next().unwrap().len_utf8();
+                        line.push_str(&l[usize::from(i != 0) * off..]);
                     }
-                    if row + 1 != rows {
-                        write!(f, "\n")?;
+                    if row + 1 != rows || j != y + 1 {
+                        line.push('\n');
                     }
                 }
+                write!(f, "{line}")?;
             }
         } else {
             let dims = self.dims();
@@ -461,27 +616,96 @@ impl Display for List {
     }
 }
 
-impl Default for List {
-    #[inline(always)]
-    fn default() -> Self {
-        Self::empty()
+macro_rules! impl_display {
+    ($($t:ty),*) => {$(
+        impl Display for Array<$t> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                if self.is_scalar() {
+                    write!(f, "{}", self.list()[0])?;
+                } else if self.is_empty() {
+                    hint::cold_path();
+                    return Ok(());
+                } else if self.dims() < 3 {
+                    let mut formatted = Vec::with_capacity(self.len());
+                    let mut strings: Vec<Vec<&str>> = Vec::with_capacity(self.len());
+
+                    let mut x = 0;
+                    let mut y = 1;
+                    let is_str = <$t>::get_type() == b'C';
+                    for num in self.list().iter() {
+                        let fm = push_and_get(&mut formatted, num.fmt_lead());
+                        x = usize::max(x, fm.chars().count());
+                        strings.push(vec![fm]);
+                    }
+                    for ys in strings.iter() {
+                        y = usize::max(y, ys.len());
+                    }
+
+                    let cols = self.rank()[0];
+                    unsafe {
+                        std::hint::assert_unchecked(self.len() % cols == 0);
+                    }
+
+                    let rows = self.len() / cols;
+                    // Currently we have a list of scalar values
+                    // x and y are the max size of those scalars.
+                    for row in 0..rows {
+                        for col in 0..cols {
+                            let word = &strings[row * cols + col];
+                            assert!(word.len() == 1, "Internal error");
+                            let word = word[0];
+                            if is_str || self.dims() == 1 {
+                                write!(f, "{}", word)?;
+                            } else {
+                                write!(f, "{}{}", " ".repeat(x - word.len()), word)?;
+                            }
+                            if !is_str && col < cols - 1 {
+                                write!(f, " ")?;
+                            }
+                        }
+                        if row + 1 != rows {
+                            write!(f, "\n")?;
+                        }
+                    }
+                } else {
+                    let dims = self.dims();
+                    let ranked = self.ranked(dims - 1).expect("Couldn't disp. list");
+                    for i in 0..ranked.len() {
+                        write!(f, "{}", ranked[i])?;
+                        if i + 1 != ranked.len() {
+                            write!(f, "{}", "\n".repeat(dims - 1))?;
+                        }
+                    }
+                }
+
+                Ok(())
+            }
+        }
+    )*};
+}
+
+impl_display![i64, OrderedFloat<f64>, bool, u8];
+
+impl Display for List {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        with_list!(self, |v| write!(f, "{v}"))
     }
 }
 
-pub struct SizedScalars<T: Iterator<Item = Scalar>> {
+pub struct SizedScalars<T: Iterator<Item = K>, K: Scalar> {
     iter: T,
     size: usize,
     c: usize,
 }
 
-impl<T: Iterator<Item = Scalar>> SizedScalars<T> {
+impl<T: Iterator<Item = K>, K: Scalar> SizedScalars<T, K> {
     pub fn new(iter: T, size: usize) -> Self {
         Self { iter, size, c: 0 }
     }
 }
 
-impl<T: Iterator<Item = Scalar>> Iterator for SizedScalars<T> {
-    type Item = Scalar;
+impl<T: Iterator<Item = K>, K: Scalar> Iterator for SizedScalars<T, K> {
+    type Item = K;
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         self.c += 1;
@@ -496,27 +720,30 @@ impl<T: Iterator<Item = Scalar>> Iterator for SizedScalars<T> {
 }
 
 #[derive(Clone, Debug, Default, Hash)]
-pub struct Scalars {
-    v: EcoVec<Scalar>,
-    s: usize,
-    e: usize,
+#[repr(C)]
+pub struct Scalars<T: Scalar> {
+    pub(crate) s: usize,
+    pub(crate) e: usize,
+    pub(crate) v: Rc<[T]>,
 }
 
-impl Scalars {
+impl<T: Scalar> Scalars<T> {
     #[inline(always)]
-    pub(crate) fn list(&self) -> &[Scalar] {
+    pub(crate) fn list(&self) -> &[T] {
+        // SAFETY: Creator must guarantee boundaries
         &self.v[self.s..self.e]
     }
 
     #[inline(always)]
-    pub(crate) fn list_mut(&mut self) -> &mut [Scalar] {
-        if self.len() != self.v.len() {
-            self.v = EcoVec::from(self.list());
+    pub(crate) fn list_mut(&mut self) -> &mut [T] {
+        if Rc::get_mut(&mut self.v).is_none() {
+            self.v = self.v[self.s..self.e].iter().copied().collect();
+            self.e -= self.s;
             self.s = 0;
-            self.e = self.v.len();
         }
 
-        self.v.make_mut()
+        let all = Rc::get_mut(&mut self.v).unwrap();
+        &mut all[self.s..self.e]
     }
 
     #[inline(always)]
@@ -530,74 +757,49 @@ impl Scalars {
         Self { v: self.v.clone(), s: self.s + start, e: self.s + end }
     }
 
-    // SAFETY: What an incredible function
     #[inline(always)]
-    pub(crate) unsafe fn from_iter<T>(it: SizedScalars<T>, end: usize) -> Self
+    pub(crate) unsafe fn from_iter<U>(it: SizedScalars<U, T>, end: usize) -> Scalars<T>
     where
-        T: Iterator<Item = Scalar>,
+        U: Iterator<Item = T>,
     {
-        let mut v = EcoVec::with_capacity(end);
-        // SAFETY: Ptr is checked for null
-        // as for the casting, well lol
-        unsafe {
-            let ptr = v.as_ptr() as *mut Scalar;
-            for (i, s) in it.take(end).enumerate() {
-                ptr.add(i).write(s);
-            }
-            // SAFETY: lmao
-            let mut temp: EcoVecInternal<Scalar> = std::mem::transmute(v);
-            temp.len = end;
-            v = std::mem::transmute(temp);
-        }
-        Self { v, s: 0, e: end }
+        Self { v: it.take(end).collect(), s: 0, e: end }
     }
 
     #[inline(always)]
-    pub(crate) unsafe fn try_from_iter<T>(it: T, end: usize) -> Status<Self>
+    pub(crate) unsafe fn try_from_iter<U>(it: U, end: usize) -> Status<Scalars<T>>
     where
-        T: Iterator<Item = Status<Scalar>>,
+        U: Iterator<Item = Status<T>>,
     {
-        let mut v = EcoVec::with_capacity(end);
-        // SAFETY: See above
-        unsafe {
-            let ptr = v.as_ptr() as *mut Scalar;
-            for (i, s) in it.take(end).enumerate() {
-                ptr.add(i).write(s?);
-            }
-            let mut temp: EcoVecInternal<Scalar> = std::mem::transmute(v);
-            temp.len = end;
-            v = std::mem::transmute(temp);
-        }
-        Ok(Self { v, s: 0, e: end })
+        Ok(Self { v: it.take(end).collect::<Status<Rc<[T]>>>()?, s: 0, e: end })
     }
 }
 
-// ecow::EcoVec copy for mutating len
-#[repr(C)]
-pub(crate) struct EcoVecInternal<T> {
-    pub(crate) ptr: std::ptr::NonNull<T>,
-    pub(crate) len: usize,
-    pub(crate) phantom: std::marker::PhantomData<T>,
+impl<T: Scalar> From<Vec<T>> for Scalars<T> {
+    #[inline(always)]
+    fn from(e: Vec<T>) -> Self {
+        let size = e.len();
+        Self { v: e.into(), s: 0, e: size }
+    }
 }
 
-impl From<EcoVec<Scalar>> for Scalars {
+impl<T: Scalar> From<Rc<[T]>> for Scalars<T> {
     #[inline(always)]
-    fn from(e: EcoVec<Scalar>) -> Self {
+    fn from(e: Rc<[T]>) -> Self {
         let size = e.len();
         Self { v: e, s: 0, e: size }
     }
 }
 
-impl From<Scalar> for Scalars {
+impl<T: Scalar> From<T> for Scalars<T> {
     #[inline(always)]
-    fn from(s: Scalar) -> Self {
-        Self { v: eco_vec![s], s: 0, e: 1 }
+    fn from(s: T) -> Self {
+        Self { v: Rc::new([s]), s: 0, e: 1 }
     }
 }
 
-impl From<&[Scalar]> for Scalars {
+impl<T: Scalar> From<&[T]> for Scalars<T> {
     #[inline(always)]
-    fn from(s: &[Scalar]) -> Self {
+    fn from(s: &[T]) -> Self {
         let size = s.len();
         Self { v: s.into(), s: 0, e: size }
     }

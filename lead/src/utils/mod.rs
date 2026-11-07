@@ -1,5 +1,6 @@
 pub mod error;
 pub mod function;
+pub mod list;
 pub mod number;
 pub mod symbols;
 
@@ -14,7 +15,7 @@ use super::parse::Node;
 use super::scope::Scope;
 use super::types::Type;
 use super::types::list::List;
-use super::types::scalar::Scalar::{self as S};
+use super::types::scalar::Scalar;
 use function::apply_loose;
 
 use num_traits::Zero;
@@ -22,30 +23,6 @@ use ordered_float::{FloatCore, OrderedFloat};
 use typed_arena;
 
 pub type Arena = Rc<RefCell<typed_arena::Arena<Type>>>;
-
-// Check to ensure lists contain matching scalar values
-#[inline]
-pub fn compatible(list: &[S]) -> bool {
-    if list.is_empty() {
-        return true;
-    }
-
-    let first = unsafe { list.get_unchecked(0) };
-
-    for i in list.iter().skip(1) {
-        match (first, i) {
-            (S::Box(_), S::Box(_)) => {}
-            (S::Box(_), _) | (_, S::Box(_)) => return false,
-            (S::Char(_), S::Char(_)) => {}
-            (S::Char(_), _) | (_, S::Char(_)) => return false,
-            (S::Boolean(_), S::Boolean(_)) => {}
-            (S::Boolean(_), _) | (_, S::Boolean(_)) => return false,
-            _ => {}
-        }
-    }
-
-    true
-}
 
 #[inline]
 pub fn is_instant(node: &Node<'_>, scope: &Scope) -> bool {
