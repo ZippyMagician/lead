@@ -5,6 +5,8 @@ use std::hint::cold_path;
 use std::ops::*;
 
 use crate::array::arith::*;
+use crate::array::cast::Castable;
+
 use crate::function::Opts;
 use crate::types::Type;
 use crate::types::list::{Array, INLINE_SIZE, List};
@@ -82,22 +84,22 @@ pub(super) fn abs(a: List, _: &Opts) -> Status<List> {
     match a {
         Integers(mut l) => {
             for_0!(l; [v] = v.abs());
-            Ok(List::Integers(l))
+            Ok(Integers(l))
         }
         Doubles(mut l) => {
             for_0!(l; [v] = v.abs());
-            l.to_cast(b'I')
+            l.cast_i64().map(Integers)
         }
-        Booleans(b) => b.to_cast(b'I'),
-        String(s) => s.to_cast(b'I'),
+        Booleans(b) => b.cast_i64().map(Integers),
+        String(s) => s.cast_i64().map(Integers),
         Boxes(b) => unsafe {
-            Array::<i64>::alloc_iter(b.rank(), b.list().into_iter().map(|b| b.addr() as i64))
+            Array::alloc_iter(b.rank(), b.list().into_iter().map(|b| b.addr() as i64))
         },
     }
 }
 
 // plusd | + | 0, 0 | Addition
-pub(super) fn add(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+pub(super) fn add(a: List, b: List, o: &Opts) -> Status<List> {
     if a.is_empty() {
         cold_path();
         Ok(b)
@@ -110,16 +112,25 @@ pub(super) fn add(mut a: List, mut b: List, o: &Opts) -> Status<List> {
 }
 
 // pluscolonm | +: | 0 | Double
-pub(super) fn double(mut a: List, _: &Opts) -> Status<List> {
-    for_0!(a; [v] = match v {
-        Char(c) => Number(*c as u32 as i64 * 2),
-        Number(n) => Number(*n * 2),
-        Float(f) => Float(*f * 2.),
-        Boolean(false) => Number(0),
-        Boolean(true) => Number(2),
-        Scalar::Box(_) => return err!(Box),
-    });
-    Ok(a)
+pub(super) fn double(a: List, _: &Opts) -> Status<List> {
+    match a {
+        Integers(mut l) => {
+            for_0!(l; [v] = *v * 2);
+            Ok(Integers(l))
+        }
+        Doubles(mut l) => {
+            for_0!(l; [v] = *v * 2.);
+            Ok(Doubles(l))
+        }
+        Booleans(b) => unsafe {
+            Array::alloc_iter(b.rank(), b.list().into_iter().map(|b| *b as u8 as i64 * 2))
+        },
+        String(mut s) => {
+            for_0!(s; [v] = *v * 2);
+            Ok(String(s))
+        }
+        Boxes(b) => err!(Box),
+    }
 }
 
 // pluscolond | +: | 0, 0 | Abs sum
@@ -141,16 +152,30 @@ pub(super) fn abssum(mut a: List, mut b: List, o: &Opts) -> Status<List> {
 }
 
 // dashm | - | 0 | Negate / Swap case / Boolean NOT
-pub(super) fn negate(mut a: List, _: &Opts) -> Status<List> {
-    for_0!(a; [v] = match v {
-        Char(c) if c.is_lowercase() => Char(c.to_ascii_uppercase()),
-        Char(c) => Char(c.to_ascii_lowercase()),
-        Number(n) => Number(-*n),
-        Float(n) => Float(-*n),
-        Boolean(b) => Boolean(!*b),
-        Scalar::Box(ptr) => return err!(Box),
-    });
-    Ok(a)
+pub(super) fn negate(a: List, _: &Opts) -> Status<List> {
+    match a {
+        Integers(mut l) => {
+            for_0!(l; [v] = v.neg());
+            Ok(Integers(l))
+        }
+        Doubles(mut l) => {
+            for_0!(l; [v] = v.neg());
+            Ok(Doubles(l))
+        }
+        Booleans(mut b) => {
+            for_0!(b; [v] = !*v);
+            Ok(Booleans(b))
+        }
+        String(mut s) => {
+            for_0!(s; [v] = if v.is_ascii_uppercase() {
+                v.to_ascii_lowercase()
+            } else {
+                v.to_ascii_uppercase()
+            });
+            Ok(String(s))
+        }
+        Boxes(b) => err!(Box),
+    }
 }
 
 // dashd | - | 0, 0 | Subtraction
@@ -181,17 +206,29 @@ pub(super) fn sub(mut a: List, mut b: List, o: &Opts) -> Status<List> {
 }
 
 // dashcolonm | -: | 0 | Halve
-pub(super) fn halve(mut a: List, _: &Opts) -> Status<List> {
-    for_0!(a; [v] = match v {
-        Char(c) => Number(*c as u32 as i64 / 2),
-        Number(n) if *n % 2 == 0 => Number(*n / 2),
-        Number(n) => Float(OrderedFloat(*n as f64 / 2.)),
-        Float(f) => Float(*f / 2.),
-        Boolean(false) => Number(0),
-        Boolean(true) => Float(OrderedFloat(0.5)),
-        Scalar::Box(_) => return err!(Box),
-    });
-    Ok(a)
+pub(super) fn halve(a: List, _: &Opts) -> Status<List> {
+    match a {
+        Integers(l) => {
+            let mut l = l.cast_f64().unwrap();
+            for_0!(l; [v] = *v / 2.);
+            Ok(Doubles(l))
+        }
+        Doubles(mut l) => {
+            for_0!(l; [v] = *v / 2.);
+            Ok(Doubles(l))
+        }
+        Booleans(b) => unsafe {
+            Array::alloc_iter(
+                b.rank(),
+                b.list().into_iter().map(|b| OrderedFloat(if *b { 0.5 } else { 0. })),
+            )
+        },
+        String(mut s) => {
+            for_0!(s; [v] = *v / 2);
+            Ok(String(s))
+        }
+        Boxes(b) => err!(Box),
+    }
 }
 
 // dashcolond | -: | 0, 0 | Abs diff
@@ -208,18 +245,28 @@ pub(super) fn absdiff(mut a: List, mut b: List, o: &Opts) -> Status<List> {
 }
 
 // starm | * | 0 | Sign / Case
-pub(super) fn signum(mut a: List, _: &Opts) -> Status<List> {
-    for_0!(a; [v] = match v {
-        Char(c) if c.is_lowercase() => Number(-1),
-        Char(c) if c.is_uppercase() => Number(1),
-        Char(_) => Number(0),
-        Number(n) => Number(n.signum()),
-        Float(n) => Number(n.signum().as_()),
-        Boolean(b) if *b => Number(1),
-        Boolean(_) => Number(0),
-        Scalar::Box(ptr) => Number(0),
-    });
-    Ok(a)
+pub(super) fn signum(a: List, _: &Opts) -> Status<List> {
+    match a {
+        Integers(mut l) => {
+            for_0!(l; [v] = v.signum());
+            Ok(Integers(l))
+        }
+        Doubles(mut l) => {
+            for_0!(l; [v] = v.signum());
+            l.cast_i64().map(Integers)
+        }
+        Booleans(b) => b.cast_i64().map(Integers),
+        String(s) => unsafe {
+            Array::alloc_iter(s.rank(), s.list().into_iter().map(|c| match c {
+                c if c.is_ascii_lowercase() => -1i64,
+                c if c.is_ascii_uppercase() => 1i64,
+                _ => 0i64,
+            }))
+        },
+        Boxes(b) => unsafe {
+            Array::alloc_iter(b.rank(), std::iter::repeat_n(0i64, b.len()))
+        },
+    }
 }
 
 // stard | * | 0, 0 | Multiplication / Boolean AND

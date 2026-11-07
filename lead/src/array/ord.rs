@@ -1,7 +1,8 @@
 use std::cmp::Ordering;
 
-use crate::types::list::{Array, List, with_list};
+use crate::types::list::{Array, List};
 use crate::types::scalar::{Boxed, Scalar};
+use crate::utils::list::with_list;
 
 use ordered_float::OrderedFloat;
 
