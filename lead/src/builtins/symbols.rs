@@ -107,7 +107,7 @@ pub(super) fn add(a: List, b: List, o: &Opts) -> Status<List> {
         cold_path();
         Ok(a)
     } else {
-        maybe_apply!([scalar] o, a, b, add_generic(a, b))
+        maybe_apply!([scalar] o, a, b, add::generic_op(a, b))
     }
 }
 

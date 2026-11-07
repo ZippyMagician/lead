@@ -317,6 +317,13 @@ impl List {
     }
 }
 
+impl<T: Scalar> From<Array<T>> for List {
+    #[inline(always)]
+    fn from(f: Array<T>) -> Self {
+        T::wrap(f)
+    }
+}
+
 // TODO: Various functions implemented for `List`
 
 #[derive(Clone, Debug, Hash)]
