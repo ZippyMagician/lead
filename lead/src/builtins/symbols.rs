@@ -3,6 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::hint::cold_path;
 use std::ops::*;
+use std::rc::Rc;
 
 use crate::array::arith::*;
 use crate::array::cast::Castable;
@@ -13,6 +14,7 @@ use crate::types::list::{Array, INLINE_SIZE, List};
 use crate::types::scalar::{self, Boxed, Scalar};
 use crate::utils::error::{Error, Status, err};
 use crate::utils::function::*;
+use crate::utils::list::*;
 use crate::utils::symbols::*;
 
 use List::*;
@@ -133,21 +135,24 @@ pub(super) fn double(a: List, _: &Opts) -> Status<List> {
     }
 }
 
-// pluscolond | +: | 0, 0 | Abs sum
-pub(super) fn abssum(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+// pluscolond | +: | 0, 0 | Wrapping add / Boolean XOR
+pub(super) fn abssum(a: List, b: List, o: &Opts) -> Status<List> {
     if a.is_empty() {
         cold_path();
         Ok(b)
     } else if b.is_empty() {
         cold_path();
         Ok(a)
-    } else {
+    } else if a.get_type() == b'B' && b.get_type() == b'B' {
         maybe_apply!([scalar] o, a, b, {
+            let mut a = unsafe { a.arrayb_unchecked() };
+            let mut b = unsafe { b.arrayb_unchecked() };
             scalar_op!(a, b,
-                [l, r] = { (*l + *r)?.abs() };
-                { (l + *r)?.abs() }; { (*l + r)?.abs() };
-            )
+                [l, r] = { *l ^ *r }; { *r ^ l }; { *l ^ r };
+            ).map(List::Booleans)
         })
+    } else {
+        maybe_apply!([scalar] o, a, b, wrapping_add::generic_op(a, b))
     }
 }
 
@@ -179,29 +184,15 @@ pub(super) fn negate(a: List, _: &Opts) -> Status<List> {
 }
 
 // dashd | - | 0, 0 | Subtraction
-pub(super) fn sub(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+pub(super) fn sub(a: List, b: List, o: &Opts) -> Status<List> {
     if a.is_empty() {
         cold_path();
         Ok(b)
     } else if b.is_empty() {
         cold_path();
         Ok(a)
-    } else if matches!(a.list()[0], Scalar::Char(_)) || matches!(b.list()[0], Scalar::Char(_)) {
-        maybe_apply!([scalar] o, a, b, {
-            scalar_op!(a, b,
-                [l, r] = { Scalar::Char(char::from_u32(
-                    l.to_num()? as u32 - r.to_num()? as u32
-                ).ok_or(Error::NaN)?) };
-                { Scalar::Char(char::from_u32(
-                    l.to_num()? as u32 - r.to_num()? as u32
-                ).ok_or(Error::NaN)?) };
-                { Scalar::Char(char::from_u32(
-                    l.to_num()? as u32 - r.to_num()? as u32
-                ).ok_or(Error::NaN)?) };
-            )
-        })
     } else {
-        maybe_apply!([scalar] o, a, b, scalar_op!(a, b, sub))
+        maybe_apply!([scalar] o, a, b, sub::generic_op(a, b))
     }
 }
 
@@ -232,7 +223,7 @@ pub(super) fn halve(a: List, _: &Opts) -> Status<List> {
 }
 
 // dashcolond | -: | 0, 0 | Abs diff
-pub(super) fn absdiff(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+pub(super) fn absdiff(a: List, b: List, o: &Opts) -> Status<List> {
     if a.is_empty() {
         cold_path();
         Ok(b)
@@ -240,7 +231,20 @@ pub(super) fn absdiff(mut a: List, mut b: List, o: &Opts) -> Status<List> {
         cold_path();
         Ok(a)
     } else {
-        maybe_apply!([scalar] o, a, b, scalar_op!(a, b, abs_diff))
+        maybe_apply!([scalar] o, a, b, {
+            let mut res = sub::generic_op(a, b)?;
+            if let Ok(ints) = res.listi_mut() {
+                for i in ints.iter_mut() {
+                    *i = i.abs();
+                }
+            } else if let Ok(floats) = res.listf_mut() {
+                for i in floats.iter_mut() {
+                    *i = i.abs();
+                }
+            }
+
+            Ok(res)
+        })
     }
 }
 
@@ -257,129 +261,170 @@ pub(super) fn signum(a: List, _: &Opts) -> Status<List> {
         }
         Booleans(b) => b.cast_i64().map(Integers),
         String(s) => unsafe {
-            Array::alloc_iter(s.rank(), s.list().into_iter().map(|c| match c {
-                c if c.is_ascii_lowercase() => -1i64,
-                c if c.is_ascii_uppercase() => 1i64,
-                _ => 0i64,
-            }))
+            Array::alloc_iter(
+                s.rank(),
+                s.list().into_iter().map(|c| match c {
+                    c if c.is_ascii_lowercase() => -1i64,
+                    c if c.is_ascii_uppercase() => 1i64,
+                    _ => 0i64,
+                }),
+            )
         },
-        Boxes(b) => unsafe {
-            Array::alloc_iter(b.rank(), std::iter::repeat_n(0i64, b.len()))
-        },
+        Boxes(b) => unsafe { Array::alloc_iter(b.rank(), std::iter::repeat_n(0i64, b.len())) },
     }
 }
 
 // stard | * | 0, 0 | Multiplication / Boolean AND
-pub(super) fn mul(mut a: List, mut b: List, o: &Opts) -> Status<List> {
-    if a.is_empty() {
-        cold_path();
-        return Ok(b);
-    } else if b.is_empty() {
-        cold_path();
-        return Ok(a);
-    } else if matches!(a.list()[0], Scalar::Boolean(_)) && matches!(b.list()[0], Scalar::Boolean(_))
-    {
-        maybe_apply!([scalar] o, a, b, {
-            scalar_op!(a, b,
-                [l, r] = { Scalar::Boolean(
-                    unsafe { l.to_bool_unchecked() && r.to_bool_unchecked() }
-                ) };
-                { Scalar::Boolean(
-                    unsafe { l.to_bool_unchecked() && r.to_bool_unchecked() }
-                ) };
-                { Scalar::Boolean(
-                    unsafe { l.to_bool_unchecked() && r.to_bool_unchecked() }
-                ) };
-            )
-        })
-    } else {
-        maybe_apply!([scalar] o, a, b, scalar_op!(a, b, mul))
-    }
-}
-
-// percentm | % | 0 | Reciprocal
-pub(super) fn reciprocal(mut a: List, _: &Opts) -> Status<List> {
-    for_0!(a; [v] = match v {
-        Char('\0') | Number(0) | Float(OrderedFloat(0.)) | Boolean(false) => {
-            std::hint::cold_path();
-            return err!(NaN);
-        }
-        Char(c) => Float(OrderedFloat(*c as u32 as f64).recip()),
-        Number(n) => Float(OrderedFloat(*n as f64).recip()),
-        Float(f) => Float(f.recip()),
-        Boolean(_) => Float(OrderedFloat(1.0)),
-        _ => return err!(NaN),
-    });
-    Ok(a)
-}
-
-// percentd | % | 0, 0 | Division
-pub(super) fn div(mut a: List, mut b: List, o: &Opts) -> Status<List> {
-    maybe_apply!([scalar] o, a, b, scalar_op!(a, b, div))
-}
-
-// pipem | | | 0 | Boolean not
-pub(super) fn not(mut a: List, _: &Opts) -> Status<List> {
-    for_0!(a; [v] = match v {
-        Char(c) if *c == '\0' => Boolean(true),
-        Number(n) if *n == 0 => Boolean(true),
-        Float(f) if *f == 0. => Boolean(true),
-        Boolean(b) => Boolean(!*b),
-        Scalar::Box(_) => return err!(Box),
-        _ => Boolean(false),
-    });
-    Ok(a)
-}
-
-// piped | | | 0, 0 | Residue (Modulus) / Boolean Or
-pub(super) fn residue(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+pub(super) fn mul(a: List, b: List, o: &Opts) -> Status<List> {
     if a.is_empty() {
         cold_path();
         Ok(b)
     } else if b.is_empty() {
         cold_path();
         Ok(a)
-    } else if matches!(a.list()[0], Scalar::Boolean(_)) && matches!(b.list()[0], Scalar::Boolean(_))
-    {
+    } else if a.get_type() == b'B' && b.get_type() == b'B' {
         maybe_apply!([scalar] o, a, b, {
+            let mut a = unsafe { a.arrayb_unchecked() };
+            let mut b = unsafe { b.arrayb_unchecked() };
             scalar_op!(a, b,
-                [l, r] = { Scalar::Boolean(
-                    unsafe { l.to_bool_unchecked() || r.to_bool_unchecked() }
-                ) };
-                { Scalar::Boolean(
-                    unsafe { l.to_bool_unchecked() || r.to_bool_unchecked() }
-                ) };
-                { Scalar::Boolean(
-                    unsafe { l.to_bool_unchecked() || r.to_bool_unchecked() }
-                ) };
-            )
+                [l, r] = { *l && *r }; { *r && l }; { *l && r };
+            ).map(List::Booleans)
         })
     } else {
-        maybe_apply!([scalar] o, a, b, scalar_op!(b, a, rem))
+        maybe_apply!([scalar] o, a, b, mul::generic_op(a, b))
+    }
+}
+
+// percentm | % | 0 | Reciprocal / Mask
+pub(super) fn reciprocal(a: List, o: &Opts) -> Status<List> {
+    match a {
+        Integers(l) => {
+            let mut l = l.cast_f64().unwrap();
+            for_0!(l; [v] = v.recip());
+            Ok(Doubles(l))
+        }
+        Doubles(mut l) => {
+            for_0!(l; [v] = v.recip());
+            Ok(Doubles(l))
+        }
+        Booleans(b) => {
+            let ranks = b.ranked(1)?;
+
+            let rank: SmallVec<[usize; 2]> =
+                b.rank().iter().skip(1).copied().chain(std::iter::once(1)).collect();
+            let count = ranks.len();
+
+            let rc: Rc<[u8]> = ranks
+                .iter()
+                .flat_map(|a| {
+                    a.list().chunks(8).map(|b| {
+                        let len = b.len() - 1;
+                        b.iter()
+                            .enumerate()
+                            .fold(0u8, |acc, (i, &b)| acc | ((b as u8) << (len - i)))
+                    })
+                })
+                .take(count)
+                .collect();
+            Ok(List::String(Array::<u8>::new(rc, rank.len(), rank)))
+        }
+        String(s) => {
+            let mut l = s.cast_f64().unwrap();
+            for_0!(l; [v] = v.recip());
+            Ok(Doubles(l))
+        }
+        Boxes(b) => err!(Box),
+    }
+}
+
+// percentd | % | 0, 0 | Division
+pub(super) fn div(a: List, b: List, o: &Opts) -> Status<List> {
+    maybe_apply!([scalar] o, a, b, div::generic_op(a, b))
+}
+
+// pipem | | | 0 | Boolean NOT
+pub(super) fn not(a: List, _: &Opts) -> Status<List> {
+    match a {
+        Integers(l) => {
+            let mut l = l.cast_bool().unwrap();
+            for_0!(l; [v] = !*v);
+            Ok(Booleans(l))
+        }
+        Doubles(l) => {
+            let mut l = l.cast_bool().unwrap();
+            for_0!(l; [v] = !*v);
+            Ok(Booleans(l))
+        }
+        Booleans(mut b) => {
+            for_0!(b; [v] = !*v);
+            Ok(Booleans(b))
+        }
+        String(s) => {
+            let mut b: Array<bool> = unsafe { std::mem::transmute(s) };
+            for_0!(b; [v] = unsafe { !std::mem::transmute::<bool, u8>(*v).to_bool().unwrap() });
+            Ok(Booleans(b))
+        }
+        Boxes(b) => err!(Box),
+    }
+}
+
+// piped | | | 0, 0 | Residue (Modulus) / Boolean OR
+pub(super) fn residue(a: List, b: List, o: &Opts) -> Status<List> {
+    if a.is_empty() {
+        cold_path();
+        Ok(b)
+    } else if b.is_empty() {
+        cold_path();
+        Ok(a)
+    } else if a.get_type() == b'B' && b.get_type() == b'B' {
+        maybe_apply!([scalar] o, a, b, {
+            let mut a = unsafe { a.arrayb_unchecked() };
+            let mut b = unsafe { b.arrayb_unchecked() };
+            scalar_op!(a, b,
+                [l, r] = { *l || *r }; { *r || l }; { *l || r };
+            ).map(List::Booleans)
+        })
+    } else {
+        maybe_apply!([scalar] o, a, b, rem::generic_op(b, a))
     }
 }
 
 // pipecolonm | |: | 0 | Descend
-pub(super) fn descend(mut a: List, o: &Opts) -> Status<List> {
+pub(super) fn descend(a: List, o: &Opts) -> Status<List> {
     maybe_apply!([scalar] o, a, {
         if a.is_scalar() {
-            let end = a.list()[0];
-            if end.is_char() {
-                List::range(if end.to_num()? < 97 { Scalar::Char('A') } else { Scalar::Char('a') }, end, true)
+            if a.get_type() == b'C' {
+                let end = unsafe { a.listc_unchecked()[0] };
+                Array::<u8>::range(if end < 97 { b'A' } else { b'a' }, end, true)
+            } else if a.get_type() == b'I' {
+                let end = unsafe { a.listi_unchecked()[0] };
+                Array::<i64>::range(1, end, true)
             } else {
-                List::range(Scalar::Number(1), end, true)
+                iter_ints!(a, |it| {
+                    let end = it.next().unwrap();
+                    Array::<i64>::range(1, end, true)
+                })
+            }
+        } else if a.get_type() == b'C' {
+            unsafe {
+                let list = a.listc_unchecked();
+                Array::try_alloc_iter(a.rank(), list.iter().map(|&end| {
+                    scalar::boxed(&o.a, Array::<u8>::range(if end < 97 { b'A' } else { b'a' }, end, true)?)
+                })).map(List::Boxes)
+            }
+        } else if a.get_type() == b'I' {
+            unsafe {
+                let list = a.listi_unchecked();
+                Array::try_alloc_iter(a.rank(), list.iter().map(|&end| {
+                    scalar::boxed(&o.a, Array::<i64>::range(1, end, true)?)
+                })).map(List::Boxes)
             }
         } else {
-            for_0!(a; [v] = Scalar::boxed(
-                &o.a, List::range({
-                    if v.is_char() {
-                        if v.to_num()? < 97 { Scalar::Char('A') } else { Scalar::Char('a') }
-                    } else {
-                        Scalar::Number(1)
-                    }
-                }, *v, true)?)?
-            );
-            Ok(a)
+            iter_ints!(a, |list| unsafe {
+                Array::try_alloc_iter(a.rank(), list.map(|end| {
+                    scalar::boxed(&o.a, Array::<i64>::range(1, end, true)?)
+                })).map(List::Boxes)
+            })
         }
     })
 }
@@ -389,45 +434,48 @@ pub(super) fn axes(a: List, b: List, o: &Opts) -> Status<List> {
     maybe_apply!([within] o, a, b, {
         let rank = b.rank();
         let mut f = Vec::with_capacity(a.len());
-        let indices = a.list().iter().map(|n| n.to_num());
-        for (i, idx) in indices.enumerate() {
-            let idx = idx?;
-            if i >= b.dims() || idx < 0 {
-                return err!(Domain);
+        iter_ints!(a, |indices| {
+            for (i, idx) in indices.enumerate() {
+                if i >= b.dims() || idx < 0 {
+                    return err!(Domain);
+                }
+                let idx = idx as usize;
+                f.push(rank[idx]);
             }
-            let idx = idx as usize;
-            f.push(rank[idx]);
-        }
+        });
         b.with_rank(&f)
     })
 }
 
 // pipedotm | |. | 99 | Reverse
-pub(super) fn rev(mut a: List, o: &Opts) -> Status<List> {
+pub(super) fn rev(a: List, o: &Opts) -> Status<List> {
     maybe_apply!([within] o, a, {
         if a.is_scalar() {
             std::hint::cold_path();
             return Ok(a);
         }
         let dims = a.dims();
-        let (mut runs, r) = applym(&mut a, dims as u8 - 1);
-        let size: usize = r.iter().product();
-        while !runs.is_empty() {
-            let Some(left) = runs.pop_front() else {
-                return err!(Domain);
-            };
-            if let Some(right) = runs.pop_back() {
-                unsafe {
-                    let l = left.as_mut_ptr();
-                    let r = right.as_mut_ptr();
-                    // SAFETY: chunks_exact_mut returns non-overlapping mutable slices of size based
-                    // on provided rank, this is calculated from the returned `r`, ensuring the size
-                    // is correct.
-                    std::ptr::swap_nonoverlapping(l, r, size);
+        with_list!(a, |a| {
+            let mut a = a;
+            let (mut runs, r) = applym(&mut a, dims as u8 - 1);
+            let size: usize = r.iter().product();
+            while !runs.is_empty() {
+                let Some(left) = runs.pop_front() else {
+                    return err!(Domain);
+                };
+                if let Some(right) = runs.pop_back() {
+                    unsafe {
+                        let l = left.as_mut_ptr();
+                        let r = right.as_mut_ptr();
+                        // SAFETY: chunks_exact_mut returns non-overlapping mutable slices of size based
+                        // on provided rank, this is calculated from the returned `r`, ensuring the size
+                        // is correct.
+                        std::ptr::swap_nonoverlapping(l, r, size);
+                    }
                 }
             }
-        }
-        Ok(a)
+            Ok(List::from(a))
+        })
     })
 }
 
@@ -436,29 +484,32 @@ pub(super) fn rot(a: List, mut b: List, o: &Opts) -> Status<List> {
     maybe_apply!(o.rd[1] as usize >= b.dims(), &o.a, b, o.rd[1], {
         let trailing_rank = a.rank();
         let dims = b.dims() as u8;
-        let v = with_eco(a.len() * b.len(), |v| {
-            let (runs, r) = applym(&mut b, dims - 1);
-            let size: usize = r.iter().product();
-            for_0!(a; [c] {
-                let c = c.to_num()?;
-                let rev = c < 0;
-                let l = runs.len();
-                let i = c.abs() as usize % l;
-                if !rev {
-                    for j in (i..l).chain(0..i) {
-                        v.extend(runs[j]);
+        with_list!(b, |b| {
+            let mut b = b;
+            let v = with_eco(a.len() * b.len(), |v| {
+                let (runs, r) = applym(&mut b, dims - 1);
+                let size: usize = r.iter().product();
+                for_0!(a; [c] {
+                    let c = c.to_num()?;
+                    let rev = c < 0;
+                    let l = runs.len();
+                    let i = c.abs() as usize % l;
+                    if !rev {
+                        for j in (i..l).chain(0..i) {
+                            v.extend(runs[j]);
+                        }
+                    } else {
+                        for j in (l - i..l).chain(0..l - i) {
+                            v.extend(runs[j])
+                        }
                     }
-                } else {
-                    for j in (l - i..l).chain(0..l - i) {
-                        v.extend(runs[j])
-                    }
-                }
-            });
-            Ok(())
-        })?;
-        let mut rank = SmallVec::from_slice(b.rank());
-        rank.extend_from_slice(trailing_rank);
-        List::mat(v, rank.len(), rank)
+                });
+                Ok(())
+            })?;
+            let mut rank = SmallVec::from_slice(b.rank());
+            rank.extend_from_slice(trailing_rank);
+            Ok(List::from(Array::new(v, rank.len(), rank)))
+        })
     })
 }
 

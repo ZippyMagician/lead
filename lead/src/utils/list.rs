@@ -1,20 +1,21 @@
 macro_rules! iter_ints {
     ($l:expr, |$it:ident| $body:expr) => {
+        #[allow(unused_mut)]
         match &$l {
             List::Integers(i) => {
-                let $it = i.list().iter().copied();
+                let mut $it = i.list().iter().copied();
                 $body
             }
             List::Doubles(d) => {
-                let $it = d.list().iter().map(|d| d.to_num().unwrap());
+                let mut $it = d.list().iter().map(|d| d.to_num().unwrap());
                 $body
             }
             List::Booleans(b) => {
-                let $it = b.list().iter().map(|b| b.to_num().unwrap());
+                let mut $it = b.list().iter().map(|b| b.to_num().unwrap());
                 $body
             }
             List::String(s) => {
-                let $it = s.list().iter().map(|c| c.to_num().unwrap());
+                let mut $it = s.list().iter().map(|c| c.to_num().unwrap());
                 $body
             }
             List::Boxes(_) => {

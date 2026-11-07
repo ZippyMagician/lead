@@ -22,11 +22,11 @@ pub(crate) const INLINE_SIZE: usize = 2;
 #[derive(Clone, Debug, Hash)]
 #[repr(u8, C)]
 pub enum List {
-    Integers(Array<i64>),
-    Doubles(Array<OrderedFloat<f64>>),
-    Booleans(Array<bool>),
-    String(Array<u8>),
-    Boxes(Array<Boxed>),
+    Integers(Array<i64>) = b'I',
+    Doubles(Array<OrderedFloat<f64>>) = b'F',
+    Booleans(Array<bool>) = b'B',
+    String(Array<u8>) = b'C',
+    Boxes(Array<Boxed>) = b'X',
 }
 
 #[repr(C)]
@@ -81,14 +81,35 @@ impl List {
         }
     }
 
+    // TODO: Add on to these as I need them
+    #[inline]
+    pub unsafe fn arrayb_unchecked(self) -> Array<bool> {
+        match self {
+            Self::Booleans(a) => a,
+            _ => unsafe {
+                hint::unreachable_unchecked();
+            },
+        }
+    }
+
     #[inline]
     pub fn listi(&self) -> Status<&[i64]> {
         if let Self::Integers(l) = &self { Ok(l.list()) } else { err!(Value) }
     }
 
     #[inline]
+    pub fn listi_mut(&mut self) -> Status<&mut [i64]> {
+        if let Self::Integers(l) = self { Ok(l.list_mut()) } else { err!(Value) }
+    }
+
+    #[inline]
     pub fn listf(&self) -> Status<&[OrderedFloat<f64>]> {
         if let Self::Doubles(l) = &self { Ok(l.list()) } else { err!(Value) }
+    }
+
+    #[inline]
+    pub fn listf_mut(&mut self) -> Status<&mut [OrderedFloat<f64>]> {
+        if let Self::Doubles(l) = self { Ok(l.list_mut()) } else { err!(Value) }
     }
 
     #[inline]
@@ -163,6 +184,33 @@ impl List {
         self.len() == 1
     }
 
+    // Swaps out rank. It is in place if possible
+    // Generic version of `Array::<T>::with_rank`
+    #[inline]
+    pub fn with_rank(mut self, r: &[usize]) -> Status<List> {
+        let count: usize = r.iter().product();
+        if count == self.len() {
+            let hdr: &mut Repr = unsafe { std::mem::transmute(&mut self) };
+            if INLINE_SIZE >= hdr.ds || INLINE_SIZE < r.len() {
+                hdr.rk = SmallVec::from_slice(r);
+            } else {
+                hdr.rk.clear();
+                hdr.rk.extend_from_slice(r);
+            }
+            hdr.ds = hdr.rk.len();
+            drop(hdr);
+            Ok(self)
+        } else if self.is_empty() {
+            Ok(self)
+        } else {
+            with_list!(self, |s| {
+                let bucket = s.list().into_iter().copied().cycle();
+                unsafe { Array::alloc_iter(r, bucket) }
+            })
+        }
+    }
+
+    // Unranks generic amount of Lists based on some data
     #[inline]
     pub fn unranked(
         arena: &Arena, _original: usize, trailing_rank: &[usize], lists: Vec<List>,
@@ -232,6 +280,7 @@ impl List {
     }
 
     // Assumes lists have already been checked to match
+    // Generic version of `Array::<T>::unranked_unchecked`
     #[inline]
     pub fn unranked_unchecked(trailing_rank: &[usize], lists: Vec<List>) -> Status<List> {
         if lists.is_empty() {
@@ -280,6 +329,7 @@ impl List {
         }
     }
 
+    // Generic version of `Array::<T>::ranked`
     // SAFETY: Assumes all sizes within the struct are valid in respect to the data
     #[inline]
     pub fn ranked(&self, dims: usize) -> Status<Vec<Self>> {
@@ -304,6 +354,7 @@ impl List {
         }
     }
 
+    // Generic version of `Array::<T>::sliced`
     #[inline(always)]
     pub(crate) unsafe fn sliced(&self, start: usize, end: usize, r: &[usize]) -> Self {
         let mut l = self.clone();
@@ -803,4 +854,17 @@ impl<T: Scalar> From<&[T]> for Scalars<T> {
         let size = s.len();
         Self { v: s.into(), s: 0, e: size }
     }
+}
+
+// just in case
+#[test]
+fn is_it_fucked() {
+    use std::mem::{align_of, offset_of, size_of};
+    let base = 8; // offset after tag
+    assert_eq!(align_of::<Array<u8>>(), 8);
+    assert_eq!(offset_of!(Repr, ds), base + offset_of!(Array<u8>, ds));
+    assert_eq!(offset_of!(Repr, rk), base + offset_of!(Array<u8>, rk));
+    assert_eq!(offset_of!(Repr, s), base + offset_of!(Array<u8>, dt) + offset_of!(Scalars<u8>, s));
+    assert_eq!(offset_of!(Repr, e), base + offset_of!(Array<u8>, dt) + offset_of!(Scalars<u8>, e));
+    assert!(size_of::<Repr>() <= size_of::<List>());
 }
