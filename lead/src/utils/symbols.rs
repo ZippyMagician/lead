@@ -310,7 +310,6 @@ pub(crate) fn with_eco<T: Scalar>(
     let mut view = EcoView { ptr, i: 0 };
     f(&mut view)?;
     assert!(view.i == capacity);
-    drop(mutate);
     Ok(unsafe { eco.assume_init() })
 }
 

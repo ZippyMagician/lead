@@ -19,7 +19,7 @@ macro_rules! define_syms {
             pub fn get_symbol(s: &str) -> Option<Self> {
                 match s.as_bytes() {
                     $($tok => Some(Self::$rep)),*,
-                    _ => None
+                    _ => None,
                 }
             }
 
@@ -27,6 +27,7 @@ macro_rules! define_syms {
             pub fn get_name(&self) -> &'static [u8] {
                 match &self {
                     $(Self::$rep => $tok),*,
+                    _ => unreachable!(),
                 }
             }
 
@@ -38,6 +39,7 @@ macro_rules! define_syms {
                             $rm, $am, $vm, $monad; $rd, $ad, $vd, $dyad; a, s, Some($crate::builtins::symbols::Symbol::$rep)
                         )
                     }),*
+                    _ => unreachable!(),
                 }
             }
         }
@@ -108,33 +110,33 @@ define_syms! {
     Pipe            => (b"|", 0, true, false, symbols::not; [0, 0], true, false, symbols::residue);
     PipeColon       => (b"|:", 0, true, false, symbols::descend; [1, 99], true, false, symbols::axes);
     PipeDot         => (b"|.", 99, true, false, symbols::rev; [0, 99], true, false, symbols::rot);
-    Exclamation     => (b"!", 0, true, false, symbols::factorial; [0, 0], true, false, symbols::bitor);
+/*  Exclamation     => (b"!", 0, true, false, symbols::factorial; [0, 0], true, false, symbols::bitor);
     LeftArrow       => (b"<", 99, false, true, symbols::boxed; [0, 0], true, false, symbols::lt);
     LeftArrowColon  => (b"<:", 99, true, false, symbols::gradeup; [0, 0], true, false, symbols::lte);
     RightArrow      => (b">", 99, false, true, symbols::unbox; [0, 0], true, false, symbols::gt);
     RightArrowColon => (b">:", 99, true, false, symbols::gradedown; [0, 0], true, false, symbols::gte);
-    Caret           => (b"^", 0, true, false, symbols::exp; [0, 0], true, false, symbols::bitand);
+    Caret           => (b"^", 0, true, false, symbols::exp; [0, 0], true, false, symbols::bitand);*/
     Dollar          => (b"$", 99, true, false, symbols::shape; [1, 99], true, false, symbols::reshape);
     LeftBracket     => (b"[", 99, false, true, symbols::identity; [99, 99], true, true, symbols::left);
     RightBracket    => (b"]", 99, false, true, symbols::identity; [99, 99], true, true, symbols::right);
-    Question        => (b"?", 99, true, false, symbols::dedup_sieve; [99, 1], true, false, symbols::group);
+/*  Question        => (b"?", 99, true, false, symbols::dedup_sieve; [99, 1], true, false, symbols::group);
     Equal           => (b"=", 2, true, true, symbols::transpose_keys; [0, 0], true, false, symbols::equal);
     Tilde           => (b"~", 0, true, false, symbols::range; [99, 0], true, false, symbols::index);
     Comma           => (b",", 99, true, true, symbols::ravel; [1, 1], true, false, symbols::concat);
     Semicolon       => (b";", 1, false, false, symbols::mold; [99, 99], false, false, symbols::table);
     Hashtag         => (b"#", 99, true, true, symbols::tally; [99, 1], true, false, symbols::replicate);
     LeftCurly       => (b"{", 0, true, false, symbols::inc; [1, 99], true, false, symbols::take);
-    RightCurly      => (b"}", 0, true, false, symbols::dec; [99, 99], false, false, symbols::drop);
+    RightCurly      => (b"}", 0, true, false, symbols::dec; [99, 99], false, false, symbols::drop);*/
 }
 
 define_op! {
     AtopBind => (b"&", false, operators::atop_bind);
     HookDefault => (b"&:", false, operators::hook_default);
-    OverRank => (b"@", false, operators::over_rank);
+/*  OverRank => (b"@", false, operators::over_rank);
     Fold => (b"/", true, operators::fold);
     TieCommute => (b"`", true, operators::tie_commute);
     Each => (b"\"", true, operators::each);
     EachAtom => (b"\":", true, operators::eachatom);
     RepeatUntil => (b"\".", false, operators::repeat_until);
-    ScanTable => (b"\\", true, operators::scan_table);
+    ScanTable => (b"\\", true, operators::scan_table);*/
 }

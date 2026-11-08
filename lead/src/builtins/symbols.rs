@@ -359,6 +359,7 @@ pub(super) fn not(a: List, _: &Opts) -> Status<List> {
             for_0!(b; [v] = !*v);
             Ok(Booleans(b))
         }
+        #[allow(unnecessary_transmutes)]
         String(s) => {
             let mut b: Array<bool> = unsafe { std::mem::transmute(s) };
             for_0!(b; [v] = unsafe { !std::mem::transmute::<bool, u8>(*v).to_bool().unwrap() });
@@ -480,7 +481,7 @@ pub(super) fn rev(a: List, o: &Opts) -> Status<List> {
 }
 
 // pipedotd | |. | 0, 99 | Rotate
-pub(super) fn rot(a: List, mut b: List, o: &Opts) -> Status<List> {
+pub(super) fn rot(a: List, b: List, o: &Opts) -> Status<List> {
     maybe_apply!(o.rd[1] as usize >= b.dims(), &o.a, b, o.rd[1], {
         let trailing_rank = a.rank();
         let dims = b.dims() as u8;
@@ -489,7 +490,7 @@ pub(super) fn rot(a: List, mut b: List, o: &Opts) -> Status<List> {
             let v = with_eco(a.len() * b.len(), |v| {
                 let (runs, r) = applym(&mut b, dims - 1);
                 let size: usize = r.iter().product();
-                for_0!(a; [c] {
+                iter_ints!(a, |it| for c in it {
                     let c = c.to_num()?;
                     let rev = c < 0;
                     let l = runs.len();
@@ -512,7 +513,7 @@ pub(super) fn rot(a: List, mut b: List, o: &Opts) -> Status<List> {
         })
     })
 }
-
+/*
 // exclamationm | ! | 0 | Factorial
 pub(super) fn factorial(mut a: List, o: &Opts) -> Status<List> {
     for_0!(a; [v] = {
@@ -679,29 +680,24 @@ pub(super) fn bitand(mut a: List, mut b: List, o: &Opts) -> Status<List> {
     maybe_apply!([scalar] o, a, b, {
         scalar_op!(a, b, [l, r] = { Scalar::Float(l.to_float()?.powf(r.to_float()?)) })
     })
-}
+}*/
 
 // dollarm | $ | 99 | Shape
 pub(crate) fn shape(a: List, o: &Opts) -> Status<List> {
     maybe_apply!(o.rm as usize >= a.dims(), &o.a, a, o.rm, unsafe {
-        List::alloc_iter(&[a.dims()], a.rank().iter().map(|n| Scalar::Number(*n as i64)))
+        Array::alloc_iter(&[a.dims()], a.rank().iter().map(|n| *n as i64))
     })
 }
 
 // For dyadic '$'
 macro_rules! calc_shape {
-    ($a:ident, $b:ident) => {{
-        let r = $a
-            .list()
-            .iter()
-            .map(|n| n.to_float())
-            .collect::<Status<SmallVec<[OrderedFloat<f64>; $crate::types::list::INLINE_SIZE]>>>()?;
+    ($a:ident, $b:ident) => {{iter_floats!($a, |r| {
         // Check for interpreted rank values
         let mut rank: SmallVec<[usize; $crate::types::list::INLINE_SIZE]> =
             SmallVec::with_capacity(r.len());
         let mut prod = 1;
         let mut i = None;
-        for (j, &r) in r.iter().enumerate() {
+        for (j, r) in r.enumerate() {
             if r != OrderedFloat::infinity() && r != OrderedFloat::neg_infinity() && r != -1. {
                 let r: usize = num_traits::Float::max(OrderedFloat::<f64>::zero(), r).as_();
                 rank.push(r);
@@ -720,7 +716,7 @@ macro_rules! calc_shape {
             }
         })?;
         rank
-    }};
+    })}};
 }
 
 // dollard | $ | 1, 99 | Reshape
@@ -730,19 +726,21 @@ pub(crate) fn reshape(a: List, b: List, o: &Opts) -> Status<List> {
         if b.dims() <= o.rd[1] as usize {
             return b.with_rank(&rank);
         } else {
-            let r = &b.rank()[0..o.rd[1] as usize];
-            let v = with_eco(
-                b.len() / r.iter().product::<usize>() * rank.iter().product::<usize>(),
-                |v| {
-                    for_n!(b, o.rd[1] as usize; [(b, r)] {
-                        let size = rank.iter().product();
-                        v.extend_iter(b.into_iter().copied().cycle().take(size));
-                    });
-                    Ok(())
-                },
-            )?;
-            rank.extend(b.rank()[o.rd[1] as usize..].iter().copied());
-            return List::mat(v, rank.len(), rank);
+            with_list!(b, |b| {
+                let r = &b.rank()[0..o.rd[1] as usize];
+                let v = with_eco(
+                    b.len() / r.iter().product::<usize>() * rank.iter().product::<usize>(),
+                    |v| {
+                        for_n!(b, o.rd[1] as usize; [(b, r)] {
+                            let size = rank.iter().product();
+                            v.extend_iter(b.into_iter().copied().cycle().take(size));
+                        });
+                        Ok(())
+                    },
+                )?;
+                rank.extend(b.rank()[o.rd[1] as usize..].iter().copied());
+                return Ok(List::from(Array::new(v, rank.len(), rank)));
+            });
         }
     }
 
@@ -766,8 +764,8 @@ pub(super) fn left(a: Type, b: Type, o: &Opts) -> Status<Type> {
         Ok(a)
     } else if !a.is_list() {
         let b = b.to_list()?;
-        let boxed = Scalar::boxed_t(&o.a, a)?;
-        maybe_apply!(o.rd[1] as usize >= b.dims(), &o.a, b, o.rd[1], Ok(List::scalar(boxed)))
+        let boxed = scalar::boxed_t(&o.a, a)?;
+        maybe_apply!(o.rd[1] as usize >= b.dims(), &o.a, b, o.rd[1], Ok(Array::scalar(boxed)))
             .map(Type::List)
     } else {
         let a = a.to_list()?;
@@ -791,8 +789,8 @@ pub(super) fn right(a: Type, b: Type, o: &Opts) -> Status<Type> {
         Ok(b)
     } else if !b.is_list() {
         let a = a.to_list()?;
-        let boxed = Scalar::boxed_t(&o.a, b)?;
-        maybe_apply!(o.rd[0] as usize >= a.dims(), &o.a, a, o.rd[0], Ok(List::scalar(boxed)))
+        let boxed = scalar::boxed_t(&o.a, b)?;
+        maybe_apply!(o.rd[0] as usize >= a.dims(), &o.a, a, o.rd[0], Ok(Array::scalar(boxed)))
             .map(Type::List)
     } else if !a.is_list() {
         Ok(b)
@@ -810,7 +808,7 @@ pub(super) fn right(a: Type, b: Type, o: &Opts) -> Status<Type> {
         .map(Type::List)
     }
 }
-
+/*
 // questionm | ? | 99 | Dedup sieve
 pub(super) fn dedup_sieve(a: List, o: &Opts) -> Status<List> {
     if o.rm == 0 {
@@ -1519,3 +1517,4 @@ pub(crate) fn drop(a: List, b: List, o: &Opts) -> Status<List> {
 
     List::mat(bucket, rank.len(), rank)
 }
+*/

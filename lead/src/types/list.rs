@@ -198,7 +198,6 @@ impl List {
                 hdr.rk.extend_from_slice(r);
             }
             hdr.ds = hdr.rk.len();
-            drop(hdr);
             Ok(self)
         } else if self.is_empty() {
             Ok(self)
@@ -363,7 +362,6 @@ impl List {
         n.rk = SmallVec::from_slice(r);
         n.s = start;
         n.e = end;
-        drop(n);
         l
     }
 }
@@ -667,9 +665,28 @@ impl Display for Array<Boxed> {
     }
 }
 
+macro_rules! impl_display_inner {
+    ([u8], $self:ident, $cols:ident, $formatted:ident, $x:ident, $strings:ident) => {
+        for bytes in $self.list().chunks_exact($cols) {
+            let fm = push_and_get(&mut $formatted, ::std::str::from_utf8(bytes).unwrap());
+            $x = usize::max($x, fm.chars().count());
+            $strings.push(vec![fm]);
+        }
+        $cols = 1;
+    };
+
+    ([$($t:tt)*], $self:ident, $cols:ident, $formatted:ident, $x:ident, $strings:ident) => {
+        for num in $self.list().iter() {
+            let fm = push_and_get(&mut $formatted, num.fmt_lead());
+            $x = usize::max($x, fm.chars().count());
+            $strings.push(vec![fm]);
+        }
+    };
+}
+
 macro_rules! impl_display {
-    ($($t:ty),*) => {$(
-        impl Display for Array<$t> {
+    ($([$($t:tt)*]),*) => {$(
+        impl Display for Array<$($t)*> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 if self.is_scalar() {
                     write!(f, "{}", self.list()[0])?;
@@ -682,22 +699,18 @@ macro_rules! impl_display {
 
                     let mut x = 0;
                     let mut y = 1;
-                    let is_str = <$t>::get_type() == b'C';
-                    for num in self.list().iter() {
-                        let fm = push_and_get(&mut formatted, num.fmt_lead());
-                        x = usize::max(x, fm.chars().count());
-                        strings.push(vec![fm]);
-                    }
-                    for ys in strings.iter() {
-                        y = usize::max(y, ys.len());
-                    }
-
-                    let cols = self.rank()[0];
+                    #[allow(unused_mut)]
+                    let mut cols = self.rank()[0];
                     unsafe {
                         std::hint::assert_unchecked(self.len() % cols == 0);
                     }
-
                     let rows = self.len() / cols;
+
+                    impl_display_inner!([$($t)*], self, cols, formatted, x, strings);
+
+                    for ys in strings.iter() {
+                        y = usize::max(y, ys.len());
+                    }
                     // Currently we have a list of scalar values
                     // x and y are the max size of those scalars.
                     for row in 0..rows {
@@ -705,12 +718,12 @@ macro_rules! impl_display {
                             let word = &strings[row * cols + col];
                             assert!(word.len() == 1, "Internal error");
                             let word = word[0];
-                            if is_str || self.dims() == 1 {
+                            if self.dims() == 1 {
                                 write!(f, "{}", word)?;
                             } else {
                                 write!(f, "{}{}", " ".repeat(x - word.len()), word)?;
                             }
-                            if !is_str && col < cols - 1 {
+                            if col < cols - 1 {
                                 write!(f, " ")?;
                             }
                         }
@@ -735,7 +748,7 @@ macro_rules! impl_display {
     )*};
 }
 
-impl_display![i64, OrderedFloat<f64>, bool, u8];
+impl_display!([i64], [OrderedFloat<f64>], [bool], [u8]);
 
 impl Display for List {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

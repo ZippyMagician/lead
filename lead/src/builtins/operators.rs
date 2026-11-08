@@ -98,6 +98,7 @@ pub(crate) fn hook_default(l: Type, r: Type, arena: Arena, scope: Scope) -> Stat
     }
 }
 
+/*
 #[inline]
 pub(crate) fn over_rank(l: Type, r: Type, arena: Arena, scope: Scope) -> Status<Function> {
     if l.is_instant() {
@@ -630,3 +631,4 @@ pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Funct
         err!(Domain)
     }
 }
+*/
