@@ -682,6 +682,14 @@ macro_rules! impl_display_inner {
             $strings.push(vec![fm]);
         }
     };
+
+    ([u8], $self:ident) => {
+        $self.list()[0] as char
+    };
+
+    ([$($t:tt)*], $self:ident) => {
+        $self.list()[0].fmt_lead()
+    };
 }
 
 macro_rules! impl_display {
@@ -689,7 +697,7 @@ macro_rules! impl_display {
         impl Display for Array<$($t)*> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 if self.is_scalar() {
-                    write!(f, "{}", self.list()[0])?;
+                    write!(f, "{}", impl_display_inner!([$($t)*], self))?;
                 } else if self.is_empty() {
                     hint::cold_path();
                     return Ok(());

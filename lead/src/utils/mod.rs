@@ -15,7 +15,7 @@ use super::parse::Node;
 use super::scope::Scope;
 use super::types::Type;
 use super::types::list::List;
-use super::types::scalar::Scalar;
+use super::utils::error::{Status, err};
 use function::apply_loose;
 
 use num_traits::Zero;
@@ -23,6 +23,22 @@ use ordered_float::{FloatCore, OrderedFloat};
 use typed_arena;
 
 pub type Arena = Rc<RefCell<typed_arena::Arena<Type>>>;
+
+#[inline(always)]
+pub fn maybe_utf8(v: Type) -> Status<String> {
+    if v.is_list() && unsafe { v.as_list_unchecked().get_type() == b'C' } {
+        let list = unsafe { v.as_list_unchecked() };
+        let lines = unsafe { list.listc_unchecked() };
+        for line in lines.chunks_exact(list.rank()[0]) {
+            if str::from_utf8(line).is_err() {
+                return err!(ValueS, "Attempt to display invalid UTF-8 string.");
+            }
+        }
+        Ok(format!("{list}"))
+    } else {
+        Ok(format!("{v}"))
+    }
+}
 
 #[inline]
 pub fn is_instant(node: &Node<'_>, scope: &Scope) -> bool {

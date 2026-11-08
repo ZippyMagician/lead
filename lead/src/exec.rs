@@ -51,7 +51,7 @@ impl Exec {
                     && !self.silent
                     && let Some(v) = self.right.take()
                 {
-                    println!("{v}");
+                    println!("{}", utils::maybe_utf8(v)?);
                 }
             } else {
                 current.push(node);
@@ -66,7 +66,7 @@ impl Exec {
         let mut s = String::new();
         self.exec_line(take(&mut node_line))?;
         if let Some(v) = self.right.take() {
-            s.push_str(&format!("{v}"));
+            s.push_str(&format!("{}", utils::maybe_utf8(v)?));
         }
         Ok(s)
     }
