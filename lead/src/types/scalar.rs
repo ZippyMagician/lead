@@ -77,11 +77,7 @@ impl Scalar for i64 {
 
     #[inline(always)]
     fn to_char(&self) -> Status<u8> {
-        if *self >= 0 && *self < 256 {
-            Ok(*self as u8)
-        } else {
-            err!(ValueS, "Invalid character.")
-        }
+        if *self >= 0 && *self < 256 { Ok(*self as u8) } else { err!(ValueS, "Invalid character.") }
     }
 
     #[inline(always)]
@@ -134,11 +130,7 @@ impl Scalar for OrderedFloat<f64> {
     fn to_char(&self) -> Status<u8> {
         if self.fract() == 0. {
             let u: i32 = self.floor().as_();
-            if u >= 0 && u < 256 {
-                Ok(u as u8)
-            } else {
-                err!(ValueS, "Invalid character.")
-            }
+            if u >= 0 && u < 256 { Ok(u as u8) } else { err!(ValueS, "Invalid character.") }
         } else {
             err!(ValueS, "Float is not a whole number, cannot convert to character.")
         }
@@ -172,11 +164,7 @@ impl Scalar for bool {
 
     #[inline(always)]
     fn fmt_lead(&self) -> Cow<'static, str> {
-        if *self {
-            Cow::Borrowed("1")
-        } else {
-            Cow::Borrowed("0")
-        }
+        if *self { Cow::Borrowed("1") } else { Cow::Borrowed("0") }
     }
 
     #[inline(always)]

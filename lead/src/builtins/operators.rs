@@ -8,6 +8,7 @@ use crate::types::list::List;
 use crate::types::scalar::Scalar;
 use crate::utils::Arena;
 use crate::utils::error::{Status, err};
+use crate::utils::list::iter_ints;
 use crate::utils::symbols::{for_0, maybe_apply, with_eco};
 
 use smallvec::SmallVec;
@@ -98,7 +99,6 @@ pub(crate) fn hook_default(l: Type, r: Type, arena: Arena, scope: Scope) -> Stat
     }
 }
 
-/*
 #[inline]
 pub(crate) fn over_rank(l: Type, r: Type, arena: Arena, scope: Scope) -> Status<Function> {
     if l.is_instant() {
@@ -112,22 +112,34 @@ pub(crate) fn over_rank(l: Type, r: Type, arena: Arena, scope: Scope) -> Status<
         if r.is_empty() || r.len() > 2 {
             return err!(Domain);
         } else if r.is_scalar() {
-            let mut n = r.list()[0].to_num()?;
+            let mut n = iter_ints!(r, |it| it.next().unwrap());
             if n > 99 {
                 n = 99
             }
+            if n < 0 {
+                return err!(Domain);
+            }
             l.apply_rm(n as u8);
             l.apply_rd([n as u8, n as u8]);
-        } else {
-            let mut a = r.list()[0].to_num()?;
-            let mut b = r.list()[1].to_num()?;
+        } else if r.len() == 2 {
+            let mut a;
+            let mut b;
+            iter_ints!(r, |it| {
+                a = it.next().unwrap();
+                b = it.next().unwrap();
+            });
             if a > 99 {
                 a = 99
             }
             if b > 99 {
                 b = 99
             }
+            if a < 0 || b < 0 {
+                return err!(Domain);
+            }
             l.apply_rd([a as u8, b as u8]);
+        } else {
+            return err!(Domain);
         }
         Ok(l)
     } else {
@@ -143,6 +155,7 @@ pub(crate) fn over_rank(l: Type, r: Type, arena: Arena, scope: Scope) -> Status<
     }
 }
 
+/*
 #[inline]
 pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
     let f = f.to_function(a.clone(), s.clone())?;
@@ -545,7 +558,7 @@ pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Funct
                 }
                 Ok(b)
             } else {
-                if o.rm != 99 { 
+                if o.rm != 99 {
                     f.apply_rm(o.rm);
                 }
                 for _ in 0..count {
@@ -578,7 +591,7 @@ pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Funct
                 })?;
                 List::from_vec(v).map(Type::List)
             } else {
-                if o.rm != 99 { 
+                if o.rm != 99 {
                     f.apply_rm(o.rm);
                 }
                 let v = with_eco(counts.len(), |v| {

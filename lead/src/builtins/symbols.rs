@@ -691,32 +691,34 @@ pub(crate) fn shape(a: List, o: &Opts) -> Status<List> {
 
 // For dyadic '$'
 macro_rules! calc_shape {
-    ($a:ident, $b:ident) => {{iter_floats!($a, |r| {
-        // Check for interpreted rank values
-        let mut rank: SmallVec<[usize; $crate::types::list::INLINE_SIZE]> =
-            SmallVec::with_capacity(r.len());
-        let mut prod = 1;
-        let mut i = None;
-        for (j, r) in r.enumerate() {
-            if r != OrderedFloat::infinity() && r != OrderedFloat::neg_infinity() && r != -1. {
-                let r: usize = num_traits::Float::max(OrderedFloat::<f64>::zero(), r).as_();
-                rank.push(r);
-                prod *= r;
-            } else {
-                rank.push(0);
-                i = Some(j);
+    ($a:ident, $b:ident) => {{
+        iter_floats!($a, |r| {
+            // Check for interpreted rank values
+            let mut rank: SmallVec<[usize; $crate::types::list::INLINE_SIZE]> =
+                SmallVec::with_capacity(r.len());
+            let mut prod = 1;
+            let mut i = None;
+            for (j, r) in r.enumerate() {
+                if r != OrderedFloat::infinity() && r != OrderedFloat::neg_infinity() && r != -1. {
+                    let r: usize = num_traits::Float::max(OrderedFloat::<f64>::zero(), r).as_();
+                    rank.push(r);
+                    prod *= r;
+                } else {
+                    rank.push(0);
+                    i = Some(j);
+                }
             }
-        }
-        i.map_or(Ok(()), |i| {
-            if $b.len() % prod != 0 {
-                err!(Domain)
-            } else {
-                rank[i] = $b.len() / prod;
-                Ok(())
-            }
-        })?;
-        rank
-    })}};
+            i.map_or(Ok(()), |i| {
+                if $b.len() % prod != 0 {
+                    err!(Domain)
+                } else {
+                    rank[i] = $b.len() / prod;
+                    Ok(())
+                }
+            })?;
+            rank
+        })
+    }};
 }
 
 // dollard | $ | 1, 99 | Reshape
@@ -808,22 +810,26 @@ pub(super) fn right(a: Type, b: Type, o: &Opts) -> Status<Type> {
         .map(Type::List)
     }
 }
-/*
+
 // questionm | ? | 99 | Dedup sieve
 pub(super) fn dedup_sieve(a: List, o: &Opts) -> Status<List> {
     if o.rm == 0 {
-        let mut m = HashSet::new();
-        let new = with_eco(a.len(), |new| {
-            for s in a.list() {
-                if m.contains(s) {
-                    continue;
-                }
-                m.insert(*s);
-                new.push(*s);
-            }
-            Ok(())
-        })?;
-        List::from_vec(new)
+        with_list!(a, |a| {
+            let mut m = HashSet::new();
+            let it = a
+                .list()
+                .iter()
+                .copied()
+                .filter(|s| {
+                    if m.contains(s) {
+                        return false;
+                    }
+                    m.insert(*s);
+                    true
+                })
+                .collect::<Rc<[_]>>();
+            Ok(List::from(Array::new(it, 1, smallvec![m.len()])))
+        })
     } else {
         let rank: SmallVec<[usize; 4]> = SmallVec::from(a.rank());
         let ldims = usize::min(o.rm as usize, usize::max(a.dims(), 1) - 1);
@@ -857,36 +863,43 @@ pub(super) fn group(a: List, b: List, o: &Opts) -> Status<List> {
     let runs = a.ranked(ldims)?;
 
     let mut build: Vec<List> = Vec::with_capacity(b.len() / b.rank()[0]);
-    for_1!(b; [b, r] {
+    let r = b.rank()[0];
+    for b in b.ranked(1)? {
         if rank[ldims] != b.len() {
             return err!(Domain);
         }
-        let mut map: HashMap<usize, Vec<&[Scalar]>> = HashMap::new();
-        let bucket = b.into_iter().map(|n| n.to_num().map(|n| n as usize))
-            .collect::<Status<Vec<usize>>>()?;
+        let mut map: HashMap<usize, Vec<List>> = HashMap::new();
+        let bucket = iter_ints!(b, |it| it
+            .map(|n| if n < 0 { err!(Value) } else { Ok(n as usize) })
+            .collect::<Status<Vec<usize>>>()?);
         for i in 0..=*bucket.iter().max().unwrap() {
             map.insert(i, vec![]);
         }
-        for (run, i) in runs.iter().zip(0..) {
-            map.get_mut(&bucket[i]).unwrap().push(run.list());
+        for (i, run) in runs.iter().cloned().enumerate() {
+            map.get_mut(&bucket[i]).unwrap().push(run);
         }
-        let mut construct = vec![List::empty(); map.len()];
+
+        let len = map.len();
+        let mut construct = vec![List::empty(); len];
         for (key, value) in map.into_iter() {
             if !value.is_empty() {
-                construct[key] = List::unranked(&o.a, ldims, &rank[..ldims],
-                    value.into_iter().map(|v| List::mat_ref(v, ldims, &rank[..ldims]))
-                        .collect::<Status<Vec<List>>>()?
-                )?
+                construct[key] = List::unranked(&o.a, ldims, &rank[..ldims], value)?;
             };
         }
-        build.push(List::from_vec(construct.into_iter().map(
-            |n| Scalar::boxed(&o.a, n)
-        ).collect::<Status<EcoVec<Scalar>>>()?)?);
-    });
+        build.push(List::Boxes(unsafe {
+            Array::try_alloc_iter(&[len], construct.into_iter().map(|n| scalar::boxed(&o.a, n)))?
+        }));
+    }
 
-    List::unranked(&o.a, dims, &rank, build)
+    if build.len() == 1 {
+        let b = build.remove(0);
+        Ok(b)
+    } else {
+        List::unranked(&o.a, dims, &rank, build)
+    }
 }
 
+/*
 // equalm | = | 2 / 99 | Transpose / Keys
 pub(super) fn transpose_keys(a: Type, o: &Opts) -> Status<Type> {
     if a.is_empty() {

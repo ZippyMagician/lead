@@ -212,12 +212,12 @@ impl List {
     // Unranks generic amount of Lists based on some data
     #[inline]
     pub fn unranked(
-        arena: &Arena, _original: usize, trailing_rank: &[usize], lists: Vec<List>,
+        arena: &Arena, _original: usize, trailing_rank: &[usize], mut lists: Vec<List>,
     ) -> Status<List> {
         if lists.is_empty() {
             return Ok(List::Integers(Array::empty()));
         } else if lists.len() == 1 {
-            let f = lists[0].clone();
+            let f = lists.remove(0);
             return Ok(f);
         }
 
@@ -225,7 +225,7 @@ impl List {
         let rank = lists[0].rank();
         let t = lists[0].get_type();
         for list in lists.iter().skip(1) {
-            if !eq_rank(rank, list.rank()) || t != list.get_type() {
+            if rank != list.rank() || t != list.get_type() {
                 box_it = true;
                 break;
             }
@@ -375,7 +375,7 @@ impl<T: Scalar> From<Array<T>> for List {
 
 // TODO: Various functions implemented for `List`
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 #[repr(C)]
 pub struct Array<T: Scalar> {
     pub(crate) ds: usize,
@@ -597,9 +597,13 @@ impl Display for Array<Boxed> {
             let mut x = 0;
             let mut y = 1;
             for b in self.list().iter() {
+                // SAFETY: See `<Boxed as Display>::fmt`
+                if b.is_null() {
+                    err!(MemoryFault, "Lost Box"; !);
+                }
                 // SAFETY: formatted is not dropped until strings
                 let fm;
-                fm = push_and_get(&mut formatted, format!("{}", b));
+                fm = push_and_get(&mut formatted, format!("{}", unsafe { b.read() }));
                 // Oh rust strs, how you fuck with me
                 x = usize::max(
                     x,
@@ -791,7 +795,7 @@ impl<T: Iterator<Item = K>, K: Scalar> Iterator for SizedScalars<T, K> {
     }
 }
 
-#[derive(Clone, Debug, Default, Hash)]
+#[derive(Clone, Debug, Default)]
 #[repr(C)]
 pub struct Scalars<T: Scalar> {
     pub(crate) s: usize,

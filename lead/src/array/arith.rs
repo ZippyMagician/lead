@@ -170,8 +170,8 @@ macro_rules! create_op_generic {
                         std::hint::cold_path();
                         err!(Box)
                     }
-                    (I($a), I($b)) => { $alli },
-                    (F($a), F($b)) => { $allf },
+                    (I($a), I($b)) => $alli,
+                    (F($a), F($b)) => $allf,
                     (F($a), $b) => float_op($a, $b),
                     ($a, F($b)) => float_op_swap($b, $a),
                     (C($a), $b) => char_op($a, $b),

@@ -93,7 +93,8 @@ impl Map {
                 self.internal.iter().flat_map(|(k, v)| {
                     [scalar::boxed_custom(&mut arena, List::string(k).into()), Ok(*v)]
                 }),
-            ).unwrap()
+            )
+            .unwrap()
         };
         (Some(arena), List::Boxes(boxes))
     }

@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::error;
-use std::io;
 use std::fmt::{self, Display};
+use std::io;
 use std::num::{ParseFloatError, ParseIntError};
 
 #[derive(Clone, Debug)]

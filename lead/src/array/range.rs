@@ -38,4 +38,3 @@ impl Array<u8> {
         }
     }
 }
-

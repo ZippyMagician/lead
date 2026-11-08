@@ -1,9 +1,11 @@
 use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
 
-use crate::types::list::{Array, List};
+use crate::types::list::{Array, List, Scalars};
 use crate::types::scalar::{Boxed, Scalar};
 use crate::utils::list::with_list;
 
+use num_traits::Zero;
 use ordered_float::OrderedFloat;
 
 impl<T, U> PartialOrd<Array<U>> for Array<T>
@@ -34,6 +36,8 @@ where
         self.rank() == o.rank() && self.list().iter().zip(o.list()).all(|(l, r)| l.eq_scalar(r))
     }
 }
+
+impl<T: Scalar + OrderedScalar> Eq for Array<T> {}
 
 impl PartialEq for List {
     fn eq(&self, other: &Self) -> bool {
@@ -129,13 +133,13 @@ impl OrderedScalar<i64> for OrderedFloat<f64> {
 
 impl OrderedScalar for Boxed {
     #[inline]
-    fn cmp_scalar(&self, _: &Boxed) -> Ordering {
-        Ordering::Equal
+    fn cmp_scalar(&self, o: &Boxed) -> Ordering {
+        self.addr().cmp(&o.addr())
     }
 
     #[inline]
-    fn eq_scalar(&self, _: &Boxed) -> bool {
-        true
+    fn eq_scalar(&self, o: &Boxed) -> bool {
+        self.addr() == o.addr()
     }
 }
 
@@ -163,32 +167,49 @@ impl OrderedScalar for bool {
     }
 }
 
-macro_rules! impl_float_ordering {
-    ($($t:ty),*) => {$(
-        impl OrderedScalar<OrderedFloat<f64>> for $t {
-            #[inline]
-            fn cmp_scalar(&self, o: &OrderedFloat<f64>) -> Ordering {
-                OrderedFloat(*self as i32 as f64).cmp(&o)
-            }
+impl OrderedScalar<bool> for OrderedFloat<f64> {
+    #[inline]
+    fn cmp_scalar(&self, o: &bool) -> Ordering {
+        (*self != OrderedFloat::zero()).cmp(o)
+    }
+    
+    #[inline]
+    fn eq_scalar(&self, o: &bool) -> bool {
+        (*self != OrderedFloat::zero()) == *o
+    }
+}
 
-            #[inline]
-            fn eq_scalar(&self, o: &OrderedFloat<f64>) -> bool {
-                OrderedFloat(*self as i32 as f64) == *o
-            }
-        }
+impl OrderedScalar<OrderedFloat<f64>> for bool {
+    #[inline]
+    fn cmp_scalar(&self, o: &OrderedFloat<f64>) -> Ordering {
+        self.cmp(&(*o != OrderedFloat::zero()))
+    }
+    
+    #[inline]
+    fn eq_scalar(&self, o: &OrderedFloat<f64>) -> bool {
+        *self == (*o != OrderedFloat::zero())
+    }
+}
 
-        impl OrderedScalar<$t> for OrderedFloat<f64> {
-            #[inline]
-            fn cmp_scalar(&self, o: &$t) -> Ordering {
-                self.cmp(&OrderedFloat(*o as i32 as f64))
-            }
-
-            #[inline]
-            fn eq_scalar(&self, o: &$t) -> bool {
-                *self == OrderedFloat(*o as i32 as f64)
-            }
-        }
-    )*};
+impl OrderedScalar<OrderedFloat<f64>> for u8 {
+    #[inline]
+    fn cmp_scalar(&self, o: &OrderedFloat<f64>) -> Ordering {
+        OrderedFloat(*self as i32 as f64).cmp(&o)
+    }
+    #[inline]
+    fn eq_scalar(&self, o: &OrderedFloat<f64>) -> bool {
+        OrderedFloat(*self as i32 as f64) == *o
+    }
+}
+impl OrderedScalar<u8> for OrderedFloat<f64> {
+    #[inline]
+    fn cmp_scalar(&self, o: &u8) -> Ordering {
+        self.cmp(&OrderedFloat(*o as i32 as f64))
+    }
+    #[inline]
+    fn eq_scalar(&self, o: &u8) -> bool {
+        *self == OrderedFloat(*o as i32 as f64)
+    }
 }
 
 macro_rules! impl_numeric_ordering {
@@ -266,7 +287,6 @@ macro_rules! impl_box_ordering {
     )*};
 }
 
-impl_float_ordering![bool, u8];
 impl_numeric_ordering![u8, i64];
 impl_numeric_ordering!([bool] u8, i64);
 impl_box_ordering![bool, u8, i64, OrderedFloat<f64>];

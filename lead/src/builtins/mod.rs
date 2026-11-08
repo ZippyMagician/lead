@@ -119,8 +119,8 @@ define_syms! {
     Dollar          => (b"$", 99, true, false, symbols::shape; [1, 99], true, false, symbols::reshape);
     LeftBracket     => (b"[", 99, false, true, symbols::identity; [99, 99], true, true, symbols::left);
     RightBracket    => (b"]", 99, false, true, symbols::identity; [99, 99], true, true, symbols::right);
-/*  Question        => (b"?", 99, true, false, symbols::dedup_sieve; [99, 1], true, false, symbols::group);
-    Equal           => (b"=", 2, true, true, symbols::transpose_keys; [0, 0], true, false, symbols::equal);
+    Question        => (b"?", 99, true, false, symbols::dedup_sieve; [99, 1], true, false, symbols::group);
+/*  Equal           => (b"=", 2, true, true, symbols::transpose_keys; [0, 0], true, false, symbols::equal);
     Tilde           => (b"~", 0, true, false, symbols::range; [99, 0], true, false, symbols::index);
     Comma           => (b",", 99, true, true, symbols::ravel; [1, 1], true, false, symbols::concat);
     Semicolon       => (b";", 1, false, false, symbols::mold; [99, 99], false, false, symbols::table);
@@ -132,8 +132,8 @@ define_syms! {
 define_op! {
     AtopBind => (b"&", false, operators::atop_bind);
     HookDefault => (b"&:", false, operators::hook_default);
-/*  OverRank => (b"@", false, operators::over_rank);
-    Fold => (b"/", true, operators::fold);
+    OverRank => (b"@", false, operators::over_rank);
+/*  Fold => (b"/", true, operators::fold);
     TieCommute => (b"`", true, operators::tie_commute);
     Each => (b"\"", true, operators::each);
     EachAtom => (b"\":", true, operators::eachatom);
