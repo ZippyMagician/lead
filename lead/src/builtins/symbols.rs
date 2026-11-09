@@ -697,11 +697,8 @@ pub(super) fn exp(a: List, o: &Opts) -> Status<List> {
             )
         },
         String(s) => unsafe {
-            Array::alloc_iter(
-                s.rank(),
-                s.list().into_iter().map(|&c| OrderedFloat(c as f64).exp()),
-            )
-        }
+            Array::alloc_iter(s.rank(), s.list().into_iter().map(|&c| OrderedFloat(c as f64).exp()))
+        },
         Boxes(b) => err!(Box),
     }
 }
@@ -928,7 +925,26 @@ pub(super) fn group(a: List, b: List, o: &Opts) -> Status<List> {
     }
 }
 
-/*
+macro_rules! equalm_return {
+    ($trailing:ident, $leading:ident, $rank:ident, $name:ident) => {{
+        let size = $rank.iter().product();
+        Array::new(
+            unsafe {
+                $trailing[0]
+                    .$name()
+                    .iter()
+                    .zip(0..)
+                    .flat_map(|(_, i)| $trailing.iter().map(move |v| v.$name()[i]))
+                    .take(size)
+                    .collect::<Rc<[_]>>()
+            },
+            $leading,
+            $rank.into(),
+        )
+        .into()
+    }};
+}
+
 // equalm | = | 2 / 99 | Transpose / Keys
 pub(super) fn transpose_keys(a: Type, o: &Opts) -> Status<Type> {
     if a.is_empty() {
@@ -974,72 +990,81 @@ pub(super) fn transpose_keys(a: Type, o: &Opts) -> Status<Type> {
         }
 
         let trailing = a.ranked(leading - 1)?;
-        List::mat(
-            trailing[0]
-                .list()
-                .iter()
-                .zip(0..)
-                .flat_map(|(_, i)| trailing.iter().map(move |v| v.list()[i]))
-                .collect::<EcoVec<Scalar>>(),
-            leading,
-            rank.into(),
-        )
+        Ok(match trailing[0].get_type() {
+            b'I' => equalm_return!(trailing, leading, rank, listi_unchecked),
+            b'F' => equalm_return!(trailing, leading, rank, listf_unchecked),
+            b'B' => equalm_return!(trailing, leading, rank, listb_unchecked),
+            b'C' => equalm_return!(trailing, leading, rank, listc_unchecked),
+            b'X' => equalm_return!(trailing, leading, rank, listx_unchecked),
+            _ => unreachable!(),
+        })
     })
     .map(Type::from)
 }
 
 // equald | = | 0, 0 | Equals
 #[inline(always)]
-pub(super) fn equal(mut a: List, mut b: List, o: &Opts) -> Status<List> {
-    if o.rd[0] == 0 && o.rd[1] == 0 {
-        scalar_op! {
-            a, b, [l, r] =
-            { Scalar::Boolean(*l == *r) };
-            { Scalar::Boolean(l == *r)  };
-            { Scalar::Boolean(*l == r)  };
-        }
-    } else {
-        std::hint::cold_path();
-        err!(Internal, "TODO: Non rank [0, 0] for dyadic '='.")
-    }
+pub(super) fn equal(a: List, b: List, o: &Opts) -> Status<List> {
+    ord::eq(a, b, o)
 }
 
 // tildem | ~ | 0 | 1-range / Rising alphabet
-pub(super) fn range(mut a: List, o: &Opts) -> Status<List> {
+pub(super) fn range(a: List, o: &Opts) -> Status<List> {
     maybe_apply!([scalar] o, a, {
         if a.is_scalar() {
-            let end = a.list()[0];
-            if end.is_char() {
-                List::range(if end.to_num()? < 97 { Scalar::Char('A') } else { Scalar::Char('a') }, end, false)
+            if a.get_type() == b'C' {
+                let end = unsafe { a.listc_unchecked()[0] };
+                Array::<u8>::range(if end < 97 { b'A' } else { b'a' }, end, false)
+            } else if a.get_type() == b'I' {
+                let end = unsafe { a.listi_unchecked()[0] };
+                Array::<i64>::range(1, end, false)
             } else {
-                List::range(Scalar::Number(1), end, false)
+                iter_ints!(a, |it| {
+                    let end = it.next().unwrap();
+                    Array::<i64>::range(1, end, false)
+                })
+            }
+        } else if a.get_type() == b'C' {
+            unsafe {
+                let list = a.listc_unchecked();
+                Array::try_alloc_iter(a.rank(), list.iter().map(|&end| {
+                    scalar::boxed(&o.a, Array::<u8>::range(if end < 97 { b'A' } else { b'a' }, end, false)?)
+                })).map(List::Boxes)
+            }
+        } else if a.get_type() == b'I' {
+            unsafe {
+                let list = a.listi_unchecked();
+                Array::try_alloc_iter(a.rank(), list.iter().map(|&end| {
+                    scalar::boxed(&o.a, Array::<i64>::range(1, end, false)?)
+                })).map(List::Boxes)
             }
         } else {
-            for_0!(a; [v] = Scalar::boxed(
-                &o.a, List::range({
-                    if v.is_char() {
-                        if v.to_num()? < 97 { Scalar::Char('A') } else { Scalar::Char('a') }
-                    } else {
-                        Scalar::Number(1)
-                    }
-                }, *v, false)?)?
-            );
-            Ok(a)
+            iter_ints!(a, |list| unsafe {
+                Array::try_alloc_iter(a.rank(), list.map(|end| {
+                    scalar::boxed(&o.a, Array::<i64>::range(1, end, false)?)
+                })).map(List::Boxes)
+            })
         }
     })
 }
 
 // tilded | ~ | 99, 0 | Index
 pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
-    apply_loosed(&o.a, a, b, o.rd, |a, b| {
+    apply_loosed(&o.a, a, b, o.rd, |a, index| {
         if a.is_empty() {
+            cold_path();
+            return err!(Domain);
+        } else if !index.is_scalar() {
             cold_path();
             return err!(Domain);
         }
 
-        let index = b.list()[0];
-        if !index.is_box() {
-            let i = index.to_num()? as usize;
+        if index.get_type() != b'X' {
+            let i = iter_ints!(index, |it| it.next().unwrap());
+            if i < 0 {
+                return err!(Domain);
+            }
+            let i = i as usize;
             let rank: SmallVec<[usize; 4]> = if a.dims() == 0 {
                 smallvec![1]
             } else {
@@ -1052,12 +1077,11 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
             let values = unsafe { a.sliced(i * r, i * r + r, &rank) };
             Ok(values)
         } else {
-            let index = unsafe { index.unbox_unchecked() }
-                .to_list()?
-                .list()
-                .iter()
-                .map(|n| n.to_num().map(|n| n as usize))
-                .collect::<Status<Vec<usize>>>()?;
+            let list = unsafe { index.listx_unchecked()[0].read() }.to_list()?;
+            let index = iter_ints!(list, |it| {
+                it.map(|n| if n < 0 { err!(Domain) } else { Ok(n as usize) })
+                    .collect::<Status<Vec<usize>>>()
+            })?;
 
             if a.dims() < index.len() {
                 return err!(Domain);
@@ -1072,9 +1096,9 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
             }
 
             let rank = &rank[0..a.dims() - index.len()];
-            let ct: usize = rank.iter().copied().product();
+            let ct: usize = rank.iter().product();
             if ct == 0 {
-                Ok(List::scalar(a.list()[i]))
+                Ok(unsafe { a.sliced(i, i + 1, &[1]) })
             } else {
                 let values = unsafe { a.sliced(i, i + ct, &rank) };
                 Ok(values)
@@ -1083,6 +1107,7 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
     })
 }
 
+/*
 // commam | , | 99 | Ravel / Values
 pub(crate) fn ravel(a: Type, o: &Opts) -> Status<Type> {
     if a.is_empty() {

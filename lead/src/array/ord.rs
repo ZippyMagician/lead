@@ -7,7 +7,7 @@ use crate::types::scalar::{Boxed, Scalar};
 use crate::utils::error::{Status, err};
 use crate::utils::function::apply_loosed;
 use crate::utils::list::*;
-use crate::utils::symbols::{scalar_op, scalar_map};
+use crate::utils::symbols::scalar_map;
 
 use num_traits::Zero;
 use ordered_float::OrderedFloat;
@@ -332,4 +332,5 @@ impl_symbol_ordering!(lt, <);
 impl_symbol_ordering!(lte, <=);
 impl_symbol_ordering!(gt, >);
 impl_symbol_ordering!(gte, >=);
+impl_symbol_ordering!(eq, ==);
 

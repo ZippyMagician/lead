@@ -1,7 +1,6 @@
 use super::error::Status;
 use crate::types::scalar::Scalar;
 
-use ecow::EcoVec;
 use smallvec::{SmallVec, smallvec};
 
 macro_rules! for_0 {

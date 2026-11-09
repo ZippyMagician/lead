@@ -1,13 +1,12 @@
 use std::collections::VecDeque;
 use std::hint;
-use std::task::Poll::Ready;
 
 use crate::function::Opts;
 use crate::types::list::{Array, List};
 use crate::types::scalar::{self, Boxed, Scalar};
 
 use super::Arena;
-use super::error::{Status, err};
+use super::error::Status;
 
 use smallvec::{SmallVec, smallvec};
 

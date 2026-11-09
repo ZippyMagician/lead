@@ -9,7 +9,6 @@ use std::hint;
 use std::rc::Rc;
 
 use super::scalar::{self, Boxed, Scalar};
-use crate::array::cast::Castable;
 use crate::utils::Arena;
 use crate::utils::display_boxed_lines;
 use crate::utils::error::{Error, Status, err};
