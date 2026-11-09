@@ -231,11 +231,11 @@ macro_rules! scalar_op {
                 *l = r.$d(*l)?;
             }*/
             let $l = $a.list()[0];
-            for_0!($b; [$r] = $e2);
+            $crate::utils::symbols::for_0!($b; [$r] = $e2);
             Ok($b)
         } else if $b.is_scalar() {
             let $r = $b.list()[0];
-            for_0!($a; [$l] = $e3);
+            $crate::utils::symbols::for_0!($a; [$l] = $e3);
             Ok($a)
         } else if $a.len() % $b.len() == 0 {
             let m = $a.list_mut();
@@ -257,6 +257,57 @@ macro_rules! scalar_op {
     };
 }
 
+macro_rules! scalar_map {
+    ($a:ident, $b:ident, [$l:ident, $r:ident] = $e1:block; $e2:block; $e3:block;) => {
+        if $a.len() == $b.len() {
+            let values = $a.list();
+            let rank = if $a.dims() >= $b.dims() { $a.rank() } else { $b.rank() };
+            unsafe {
+                Array::alloc_iter_inner(rank, values.iter().zip($b.list()).map(|($l, $r)| $e1))
+            }
+        } else if $a.is_empty() {
+            Ok(Array::empty())
+        } else if $b.is_empty() {
+            Ok(Array::empty())
+        } else if $a.is_scalar() {
+            let $l = $a.list()[0];
+            let rank = $b.rank();
+            unsafe {
+                Array::alloc_iter_inner(
+                    rank,
+                    $b.list().iter().zip(::std::iter::repeat_n($l, $b.len())).map(|($l, $r)| $e2),
+                )
+            }
+        } else if $b.is_scalar() {
+            let $r = $b.list()[0];
+            let rank = $a.rank();
+            unsafe {
+                Array::alloc_iter_inner(
+                    rank,
+                    $a.list().iter().zip(::std::iter::repeat_n($r, $a.len())).map(|($l, $r)| $e3),
+                )
+            }
+        } else if $a.len() % $b.len() == 0 {
+            let m = $a.list();
+            let o = $b.list();
+            let rank = $a.rank();
+            unsafe {
+                Array::alloc_iter_inner(rank, m.iter().zip(o.iter().cycle()).map(|($l, $r)| $e1))
+            }
+        } else if $b.len() % $a.len() == 0 {
+            let m = $b.list();
+            let o = $a.list();
+            let rank = $b.rank();
+            unsafe {
+                Array::alloc_iter_inner(rank, m.iter().zip(o.iter().cycle()).map(|($r, $l)| $e1))
+            }
+        } else {
+            err!(Domain)
+        }
+    };
+}
+
+pub(crate) use scalar_map;
 pub(crate) use scalar_op;
 
 pub(crate) fn pad_rank<T>((v, vr): (&[T], &[usize]), r: &[usize]) -> Status<Vec<T>>

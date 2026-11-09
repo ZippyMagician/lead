@@ -9,9 +9,10 @@ use std::hint;
 use std::rc::Rc;
 
 use super::scalar::{self, Boxed, Scalar};
+use crate::array::cast::Castable;
 use crate::utils::Arena;
 use crate::utils::display_boxed_lines;
-use crate::utils::error::{Status, err};
+use crate::utils::error::{Error, Status, err};
 use crate::utils::list::with_list;
 
 use ordered_float::OrderedFloat;
@@ -207,6 +208,13 @@ impl List {
                 unsafe { Array::alloc_iter(r, bucket) }
             })
         }
+    }
+
+    #[inline]
+    pub fn nth(&mut self, i: usize) -> Status<List> {
+        with_list!(self, |s| {
+            Ok(Array::scalar(s.list().iter().copied().nth(i).ok_or(Error::Domain)?))
+        })
     }
 
     // Unranks generic amount of Lists based on some data
@@ -497,14 +505,25 @@ impl<T: Scalar> Array<T> {
     where
         U: Iterator<Item = T>,
     {
+        unsafe {
+            Self::alloc_iter_inner(r, bucket).map(T::wrap)
+        }
+    }
+
+    // SAFETY: See above
+    #[inline(always)]
+    pub(crate) unsafe fn alloc_iter_inner<U>(r: &[usize], bucket: U) -> Status<Array<T>>
+    where 
+        U: Iterator<Item = T>,
+    {
         let count: usize = r.iter().product();
         let dims = r.len();
         if dims == 0 {
-            return Ok(T::wrap(Array::empty()));
+            return Ok(Self::empty());
         }
         let rank = SmallVec::from_slice(r);
         let bucket = SizedScalars::new(bucket, count);
-        Ok(T::wrap(unsafe { Self::new(Scalars::from_iter(bucket, count), dims, rank) }))
+        Ok(unsafe { Self::new(Scalars::from_iter(bucket, count), dims, rank) })
     }
 
     // SAFETY: Assumes all sizes within the struct are valid in respect to the data

@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use crate::array::arith::*;
 use crate::array::cast::Castable;
+use crate::array::ord;
 
 use crate::function::Opts;
 use crate::types::Type;
@@ -326,7 +327,7 @@ pub(super) fn reciprocal(a: List, o: &Opts) -> Status<List> {
                 })
                 .take(count)
                 .collect();
-            Ok(List::String(Array::<u8>::new(rc, rank.len(), rank)))
+            Ok(List::String(Array::<u8>::new(rc, count, rank)))
         }
         String(s) => {
             let mut l = s.cast_f64().unwrap();
@@ -513,45 +514,79 @@ pub(super) fn rot(a: List, b: List, o: &Opts) -> Status<List> {
         })
     })
 }
-/*
+
 // exclamationm | ! | 0 | Factorial
-pub(super) fn factorial(mut a: List, o: &Opts) -> Status<List> {
-    for_0!(a; [v] = {
-        let n = v.to_num()?;
-        if n < 0 {
-            return err!(Value);
-        } else if n == 0 {
-            Scalar::Number(1)
-        } else {
-            Scalar::Number((1..n).product())
+pub(super) fn factorial(a: List, o: &Opts) -> Status<List> {
+    match a {
+        List::Integers(mut i) => {
+            for_0!(i; [n] = if *n < 0 { return err!(Value); } else if *n == 0 { 1 } else { (1..*n).product() });
+            Ok(List::Integers(i))
         }
-    });
-    Ok(a)
+        List::Doubles(d) => {
+            let mut i = d.cast_i64().unwrap();
+            for_0!(i; [n] = if *n < 0 { return err!(Value); } else if *n == 0 { 1 } else { (1..*n).product() });
+            Ok(List::Integers(i))
+        }
+        a => {
+            let rank = a.rank();
+            iter_ints!(a, |it| unsafe {
+                Array::try_alloc_iter(
+                    rank,
+                    it.map(|n| {
+                        if n < 0 {
+                            err!(Value)
+                        } else if n == 0 {
+                            Ok(1)
+                        } else {
+                            Ok((1..n).product())
+                        }
+                    }),
+                )
+            }
+            .map(List::from))
+        }
+    }
 }
 
 // exclamationd | ! | 0, 0 | Boolean OR
-pub(super) fn bitor(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+pub(super) fn bor(a: List, b: List, o: &Opts) -> Status<List> {
     maybe_apply!([scalar] o, a, b, {
-        // SAFETY: Underlying `apply_loosem` will take ownership if necessary
-        scalar_op!(a, b, [l, r] = { Scalar::Boolean(l.to_bool()? || r.to_bool()?) })
+        if a.get_type() == b'B' && b.get_type() == b'B' {
+            let mut a = unsafe { a.arrayb_unchecked() };
+            let mut b = unsafe { b.arrayb_unchecked() };
+            scalar_op!(a, b,
+                [l, r] = { *l || *r }; { *r || l }; { *l || r };
+            ).map(List::Booleans)
+        } else if a.get_type() == b'B' {
+            let mut b = unsafe { b.to_cast(b'B')?.arrayb_unchecked() };
+            let mut a = unsafe { a.arrayb_unchecked() };
+            scalar_op!(a, b,
+                [l, r] = { *l || *r }; { *r || l }; { *l || r };
+            ).map(List::Booleans)
+        } else if b.get_type() == b'B' {
+            let mut a = unsafe { a.to_cast(b'B')?.arrayb_unchecked() };
+            let mut b = unsafe { b.arrayb_unchecked() };
+            scalar_op!(a, b,
+                [l, r] = { *l || *r }; { *r || l }; { *l || r };
+            ).map(List::Booleans)
+        } else {
+            let mut a = unsafe { a.to_cast(b'B')?.arrayb_unchecked() };
+            let mut b = unsafe { b.to_cast(b'B')?.arrayb_unchecked() };
+            scalar_op!(a, b,
+                [l, r] = { *l || *r }; { *r || l }; { *l || r };
+            ).map(List::Booleans)
+        }
     })
 }
 
 // leftarrowm | < | 99 | Box
 pub(crate) fn boxed(a: Type, o: &Opts) -> Status<Type> {
-    Ok(Scalar::boxed_t(&o.a, a)?.into())
+    Ok(scalar::boxed_t(&o.a, a)?.into())
 }
 
 // leftarrowd | < | 0, 0 | Less than
-pub(crate) fn lt(mut a: List, mut b: List, o: &Opts) -> Status<List> {
-    maybe_apply!([scalar] o, a, b, {
-        scalar_op! {
-            a, b, [l, r] =
-            { Scalar::Boolean(*l < *r) };
-            { Scalar::Boolean(l < *r)  };
-            { Scalar::Boolean(*l < r)  };
-        }
-    })
+pub(crate) fn lt(a: List, b: List, o: &Opts) -> Status<List> {
+    ord::lt(a, b, o)
 }
 
 // leftarrowcolonm | <: | 99 | Grade Up
@@ -563,7 +598,7 @@ pub(crate) fn gradeup(a: List, o: &Opts) -> Status<List> {
         let len = a.rank()[a.dims() - 1];
         let indices = with_eco(len, |v| {
             for i in 0..len as i64 {
-                v.push(Scalar::Number(i));
+                v.push(i);
             }
             Ok(())
         })?;
@@ -571,58 +606,41 @@ pub(crate) fn gradeup(a: List, o: &Opts) -> Status<List> {
         // SAFETY: indices isn't shared, so this is fine (to the degree that is expected from this
         // awful code)
         let s = unsafe {
-            std::slice::from_raw_parts_mut(indices.as_ptr() as *mut Scalar, len)
+            std::slice::from_raw_parts_mut(indices.as_ptr() as *mut i64, len)
         };
 
         let l = a.ranked(a.dims() - 1)?;
-        s.sort_by(|a, b| unsafe {
-            let i = a.to_num_unchecked();
-            let j = b.to_num_unchecked();
+        s.sort_by(|&i, &j| unsafe {
             std::hint::assert_unchecked(i >= 0 && j >= 0);
             l[i as usize].cmp(&l[j as usize])
         });
 
-        List::from_vec(indices)
+        Ok(Array::from_vec(indices))
     })
 }
 
 // leftarrowcolond | <: | 0, 0 | LTE
-pub(crate) fn lte(mut a: List, mut b: List, o: &Opts) -> Status<List> {
-    maybe_apply!([scalar] o, a, b, {
-        scalar_op! {
-            a, b, [l, r] =
-            { Scalar::Boolean(*l <= *r) };
-            { Scalar::Boolean(l <= *r)  };
-            { Scalar::Boolean(*l <= r)  };
-        }
-    })
+pub(crate) fn lte(a: List, b: List, o: &Opts) -> Status<List> {
+    ord::lte(a, b, o)
 }
 
 // rightarrowm | > | 99 | Unbox / First
 pub(crate) fn unbox(a: Type, o: &Opts) -> Status<Type> {
-    let a = a.to_list()?;
-    if a.is_scalar() {
-        let f = &a.list()[0];
-        if f.is_box() { unsafe { Ok(f.unbox_unchecked()) } } else { Ok(a.into()) }
+    let mut a = a.to_list()?;
+    if a.get_type() == b'X' && a.is_scalar() {
+        let f = &unsafe { a.listx_unchecked()[0] };
+        Ok(unsafe { f.read() })
     } else if a.is_empty() {
         cold_path();
         Ok(a.into())
     } else {
-        Ok(a.list()[0].into())
+        a.nth(0).map(Type::from)
     }
 }
 
 // rightarrowd | > | 0, 0 | Greater than
-pub(crate) fn gt(mut a: List, mut b: List, o: &Opts) -> Status<List> {
-    maybe_apply!([scalar] o, a, b, {
-        // SAFETY: Underlying `apply_loosem` will take ownership if necessary
-        scalar_op! {
-            a, b, [l, r] =
-            { Scalar::Boolean(*l > *r) };
-            { Scalar::Boolean(l > *r) };
-            { Scalar::Boolean(*l < r) };
-        }
-    })
+pub(crate) fn gt(a: List, b: List, o: &Opts) -> Status<List> {
+    ord::gt(a, b, o)
 }
 
 // rightarrowcolonm | >: | 99 | Grade Down
@@ -634,7 +652,7 @@ pub(crate) fn gradedown(a: List, o: &Opts) -> Status<List> {
         let len = a.rank()[a.dims() - 1];
         let indices = with_eco(len, |v| {
             for i in 0..len as i64 {
-                v.push(Scalar::Number(i));
+                v.push(i);
             }
             Ok(())
         })?;
@@ -642,45 +660,56 @@ pub(crate) fn gradedown(a: List, o: &Opts) -> Status<List> {
         // SAFETY: indices isn't shared, so this is fine (to the degree that is expected from this
         // awful code)
         let s = unsafe {
-            std::slice::from_raw_parts_mut(indices.as_ptr() as *mut Scalar, len)
+            std::slice::from_raw_parts_mut(indices.as_ptr() as *mut i64, len)
         };
 
         let l = a.ranked(a.dims() - 1)?;
-        s.sort_by(|a, b| unsafe {
-            let i = a.to_num_unchecked();
-            let j = b.to_num_unchecked();
+        s.sort_by(|&i, &j| unsafe {
             std::hint::assert_unchecked(i >= 0 && j >= 0);
             l[j as usize].cmp(&l[i as usize])
         });
 
-        List::from_vec(indices)
+        Ok(Array::from_vec(indices))
     })
 }
 
 // rightarrowcolond | >: | 0, 0 | GTE
-pub(crate) fn gte(mut a: List, mut b: List, o: &Opts) -> Status<List> {
-    maybe_apply!([scalar] o, a, b, {
-        scalar_op! {
-            a, b, [l, r] =
-            { Scalar::Boolean(*l >= *r) };
-            { Scalar::Boolean(l >= *r)  };
-            { Scalar::Boolean(*l >= r)  };
-        }
-    })
+pub(crate) fn gte(a: List, b: List, o: &Opts) -> Status<List> {
+    ord::gte(a, b, o)
 }
 
 // caretm | ^ | 0 | Exponential
-pub(super) fn exp(mut a: List, o: &Opts) -> Status<List> {
-    for_0!(a; [v] = Float(v.to_float()?.exp()));
-    Ok(a)
+pub(super) fn exp(a: List, o: &Opts) -> Status<List> {
+    match a {
+        Integers(l) => {
+            let mut l = l.cast_f64().unwrap();
+            for_0!(l; [v] = v.exp());
+            Ok(Doubles(l))
+        }
+        Doubles(mut l) => {
+            for_0!(l; [v] = v.exp());
+            Ok(Doubles(l))
+        }
+        Booleans(b) => unsafe {
+            Array::alloc_iter(
+                b.rank(),
+                b.list().into_iter().map(|&b| OrderedFloat(b as u8 as f64).exp()),
+            )
+        },
+        String(s) => unsafe {
+            Array::alloc_iter(
+                s.rank(),
+                s.list().into_iter().map(|&c| OrderedFloat(c as f64).exp()),
+            )
+        }
+        Boxes(b) => err!(Box),
+    }
 }
 
 // caretd | ^ | 0, 0 | Pow
-pub(super) fn bitand(mut a: List, mut b: List, o: &Opts) -> Status<List> {
-    maybe_apply!([scalar] o, a, b, {
-        scalar_op!(a, b, [l, r] = { Scalar::Float(l.to_float()?.powf(r.to_float()?)) })
-    })
-}*/
+pub(super) fn pow(a: List, b: List, o: &Opts) -> Status<List> {
+    maybe_apply!([scalar] o, a, b, pow::generic_op(b, a))
+}
 
 // dollarm | $ | 99 | Shape
 pub(crate) fn shape(a: List, o: &Opts) -> Status<List> {

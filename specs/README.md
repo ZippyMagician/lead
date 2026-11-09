@@ -164,7 +164,7 @@ Partial trains, of course, support constants within them too.
 |  ```-``` |\[`B]Neg / Swp case| 0  |Sub      |  0 0  |\`N: negate, \`B: boolean not, \`C: swap cases|
 | ```-:``` |    Halve   |   0  |   Abs Diff   |  0 0  |       |
 |  ```*``` |Sign / Case |   0  | Mul / Bool AND|  0 0 |Cases: (`1 _1 0 = *'Ab '`)|
-|  ```%``` | Reciprocal |   0  |    Div       |  0 0  |       |
+|  ```%``` | Recip/Mask |   0  |    Div       |  0 0  |\`B: treat as binary mask to bytes|
 |   `\|`   | Bool NOT   |   0  |    Residue   |  0 0  |TODO: Update monadic?|
 |   `\|:`  |   Descend  |   0  |     Axes     | 1 99  |(dyad): reorder axes based on indices|
 |   `\|.`  |   Reverse  |  99  |    Rotate    | 0 99  |       |

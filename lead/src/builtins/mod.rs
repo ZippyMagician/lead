@@ -110,12 +110,12 @@ define_syms! {
     Pipe            => (b"|", 0, true, false, symbols::not; [0, 0], true, false, symbols::residue);
     PipeColon       => (b"|:", 0, true, false, symbols::descend; [1, 99], true, false, symbols::axes);
     PipeDot         => (b"|.", 99, true, false, symbols::rev; [0, 99], true, false, symbols::rot);
-/*  Exclamation     => (b"!", 0, true, false, symbols::factorial; [0, 0], true, false, symbols::bitor);
+    Exclamation     => (b"!", 0, true, false, symbols::factorial; [0, 0], true, false, symbols::bor);
     LeftArrow       => (b"<", 99, false, true, symbols::boxed; [0, 0], true, false, symbols::lt);
     LeftArrowColon  => (b"<:", 99, true, false, symbols::gradeup; [0, 0], true, false, symbols::lte);
     RightArrow      => (b">", 99, false, true, symbols::unbox; [0, 0], true, false, symbols::gt);
     RightArrowColon => (b">:", 99, true, false, symbols::gradedown; [0, 0], true, false, symbols::gte);
-    Caret           => (b"^", 0, true, false, symbols::exp; [0, 0], true, false, symbols::bitand);*/
+    Caret           => (b"^", 0, true, false, symbols::exp; [0, 0], true, false, symbols::pow);
     Dollar          => (b"$", 99, true, false, symbols::shape; [1, 99], true, false, symbols::reshape);
     LeftBracket     => (b"[", 99, false, true, symbols::identity; [99, 99], true, true, symbols::left);
     RightBracket    => (b"]", 99, false, true, symbols::identity; [99, 99], true, true, symbols::right);

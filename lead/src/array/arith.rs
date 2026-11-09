@@ -5,11 +5,11 @@ use crate::types::scalar::Scalar;
 use crate::utils::error::err;
 use crate::utils::symbols::*;
 
-use num_traits::Zero;
+use num_traits::{Zero, real::Real};
 use num_traits::ops::wrapping;
-use ordered_float::OrderedFloat;
+use ordered_float::{Float, OrderedFloat};
 
-type Float = OrderedFloat<f64>;
+type Fl = OrderedFloat<f64>;
 
 macro_rules! create_op_typed {
     ($t1:ty, $t2:ty, $t3:ty, $name:ident, $name2:ident, $mac:ident, |$a:ident, $b:ident| $body:block, $swap:block) => {
@@ -114,7 +114,7 @@ macro_rules! create_op_generic {
         pub(crate) mod $name {
             #![allow(unused_imports)]
             use List::{Booleans as B, Boxes as X, Doubles as F, Integers as I, String as C};
-            use ordered_float::OrderedFloat;
+            use ordered_float::{Float, OrderedFloat};
             use std::ops::*;
             use $crate::array::arith::WrappingAdd;
             use $crate::array::cast::Castable;
@@ -122,10 +122,10 @@ macro_rules! create_op_generic {
             use $crate::types::scalar::Scalar;
             use $crate::utils::error::{Status, err};
             use $crate::utils::list::*;
-            type Float = OrderedFloat<f64>;
+            type Fl = OrderedFloat<f64>;
 
             create_op_typed!(
-                Array<Float>,
+                Array<Fl>,
                 List,
                 Status<List>,
                 float_op,
@@ -233,6 +233,31 @@ create_op_generic!(sub, |a, b| Ok(I(a.sub(b))), Ok(F(a.sub(b))), Ok(a - b), Ok(a
 
 create_op_generic!(mul, |a, b| Ok(I(a.mul(b))), Ok(F(a.mul(b))), Ok(a * b), Ok(a * b), {
     let hi = a as i64 * b as i64;
+    if hi < 0 || hi > 255 {
+        std::hint::cold_path();
+        return err!(Value);
+    }
+    Ok(hi as u8)
+});
+
+#[inline(always)] fn powf(a: Fl, b: Fl) -> Fl {
+    ordered_float::Float::powf(a, b)
+}
+
+create_op_generic!(pow, |a, b| {
+    let mut a = a.cast_f64().unwrap();
+    let mut b = b.cast_f64().unwrap();
+    crate::utils::symbols::scalar_op!(a, b,
+        [l, r] = { l.powf(*r) }; { r.powf(l) }; { l.powf(r) };
+    ).map(List::Doubles)
+}, {
+    let mut a = a;
+    let mut b = b;
+    crate::utils::symbols::scalar_op!(a, b,
+        [l, r] = { l.powf(*r) }; { r.powf(l) }; { l.powf(r) };
+    ).map(List::Doubles)
+}, Ok(a.to_float()?.powf(b.to_float()?)), Ok(a.powf(b)), {
+    let hi = (a as i64).pow(b as u32);
     if hi < 0 || hi > 255 {
         std::hint::cold_path();
         return err!(Value);

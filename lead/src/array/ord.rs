@@ -1,9 +1,13 @@
 use std::cmp::Ordering;
-use std::hash::{Hash, Hasher};
 
-use crate::types::list::{Array, List, Scalars};
+use crate::function::Opts;
+use crate::types::list::{Array, List};
 use crate::types::scalar::{Boxed, Scalar};
-use crate::utils::list::with_list;
+
+use crate::utils::error::{Status, err};
+use crate::utils::function::apply_loosed;
+use crate::utils::list::*;
+use crate::utils::symbols::{scalar_op, scalar_map};
 
 use num_traits::Zero;
 use ordered_float::OrderedFloat;
@@ -172,7 +176,7 @@ impl OrderedScalar<bool> for OrderedFloat<f64> {
     fn cmp_scalar(&self, o: &bool) -> Ordering {
         (*self != OrderedFloat::zero()).cmp(o)
     }
-    
+
     #[inline]
     fn eq_scalar(&self, o: &bool) -> bool {
         (*self != OrderedFloat::zero()) == *o
@@ -184,7 +188,7 @@ impl OrderedScalar<OrderedFloat<f64>> for bool {
     fn cmp_scalar(&self, o: &OrderedFloat<f64>) -> Ordering {
         self.cmp(&(*o != OrderedFloat::zero()))
     }
-    
+
     #[inline]
     fn eq_scalar(&self, o: &OrderedFloat<f64>) -> bool {
         *self == (*o != OrderedFloat::zero())
@@ -291,50 +295,41 @@ impl_numeric_ordering![u8, i64];
 impl_numeric_ordering!([bool] u8, i64);
 impl_box_ordering![bool, u8, i64, OrderedFloat<f64>];
 
-// impl PartialEq for Scalar {
-//     #[inline]
-//     fn eq(&self, o: &Self) -> bool {
-//         use Scalar::*;
-//         match (&self, &o) {
-//             (Number(l), Number(r)) => *l == *r,
-//             (Number(l), Float(r)) => OrderedFloat(*l as f64) == *r,
-//             (Number(l), Boolean(b)) if *b => *l == 1,
-//             (Number(l), Boolean(_)) => *l == 0,
-//             (Number(l), Char(c)) => *l == *c as u32 as i64,
-//             (Float(l), Float(r)) => *l == *r,
-//             (Float(l), Boolean(b)) if *b => *l == 1.,
-//             (Float(l), Boolean(_)) => *l == 0.,
-//             (Float(l), Char(c)) => *l == *c as u32 as f64,
-//             (Char(c), Boolean(b)) if *b => false,
-//             (Char(c), Boolean(_)) => *c == '\0',
-//             (Char(c), Char(r)) => *c == *r,
-//             (Box(l), Box(r)) => l.eq(&r),
-//             (Box(_), _) => false,
-//             _ => o.eq(&self),
-//         }
-//     }
-// }
-//
-// impl PartialOrd for Scalar {
-//     #[inline]
-//     fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> {
-//         Some(self.cmp(&o))
-//     }
-// }
-//
-// impl Ord for Scalar {
-//     #[inline]
-//     fn cmp(&self, o: &Self) -> std::cmp::Ordering {
-//         if self.is_box() && !o.is_box() || o.is_box() && !self.is_box() {
-//             if self.is_box() { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater }
-//         } else if self.is_float() || o.is_float() {
-//             self.to_float().unwrap().cmp(&o.to_float().unwrap())
-//         } else if self.is_box() && o.is_box() {
-//             unsafe { self.unbox_unchecked().cmp(&o.unbox_unchecked()) }
-//         } else {
-//             self.to_num().unwrap().cmp(&o.to_num().unwrap())
-//         }
-//     }
-// }
-//
-// impl Eq for Scalar {}
+macro_rules! impl_symbol_ordering {
+    ($name:ident, $($t:tt)*) => {
+        pub(crate) fn $name(a: List, b: List, o: &Opts) -> Status<List> {
+            use List::*;
+            if o.rd == [0, 0] {
+                match (a, b) {
+                    (Integers(a), Integers(b)) => {
+                        scalar_map!(a, b,
+                            [l, r] = { *l $($t)* *r }; { r $($t)* *l }; { *l $($t)* r };
+                        )
+                        .map(List::Booleans)
+                    }
+                    (Doubles(a), Doubles(b)) => {
+                        scalar_map!(a, b,
+                            [l, r] = { *l $($t)* *r }; { r $($t)* *l }; { *l $($t)* r };
+                        )
+                        .map(List::Booleans)
+                    }
+                    (String(a), String(b)) => {
+                        scalar_map!(a, b,
+                            [l, r] = { *l $($t)* *r }; { r $($t)* *l }; { *l $($t)* r };
+                        )
+                        .map(List::Booleans)
+                    }
+                    (a, b) => apply_loosed(&o.a, a, b, o.rd, |a, b| Ok(Array::scalar(a $($t)* b))),
+                }
+            } else {
+                apply_loosed(&o.a, a, b, o.rd, |a, b| Ok(Array::scalar(a $($t)* b)))
+            }
+        }
+    };
+}
+
+impl_symbol_ordering!(lt, <);
+impl_symbol_ordering!(lte, <=);
+impl_symbol_ordering!(gt, >);
+impl_symbol_ordering!(gte, >=);
+
