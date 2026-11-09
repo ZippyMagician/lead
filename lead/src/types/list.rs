@@ -363,12 +363,13 @@ impl List {
     // Generic version of `Array::<T>::sliced`
     #[inline(always)]
     pub(crate) unsafe fn sliced(&self, start: usize, end: usize, r: &[usize]) -> Self {
+        let hdr: &Repr = unsafe { std::mem::transmute(self) };
         let mut l = self.clone();
         let n: &mut Repr = unsafe { std::mem::transmute(&mut l) };
         n.ds = r.len();
         n.rk = SmallVec::from_slice(r);
-        n.s = start;
-        n.e = end;
+        n.s = hdr.s + start; // if we are taking from an already sliced value
+        n.e = hdr.s + end;
         l
     }
 }
