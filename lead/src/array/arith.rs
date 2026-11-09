@@ -107,7 +107,7 @@ macro_rules! create_op_typed {
 }
 
 macro_rules! maybe_expand {
-    (true, |$a:ident, $b:ident| $opi:expr, $opf:expr, $opc:expr) => {
+    (true, |$a:ident, $b:ident| $alli:expr, $allf:expr, $opi:expr, $opf:expr, $opc:expr) => {
         pub fn int_op($a: i64, $b: i64) -> Status<i64> {
             $opi
         }
@@ -119,9 +119,60 @@ macro_rules! maybe_expand {
         pub fn char_op($a: u8, $b: u8) -> Status<u8> {
             $opc
         }
+
+        pub fn typed_op<const A: u8, const B: u8>($a: List, $b: List) -> Status<List> {
+            match (A, B) {
+                (b'I', b'I') => {
+                    let $a = unsafe { $a.arrayi_unchecked() };
+                    let $b = unsafe { $b.arrayi_unchecked() };
+                    $alli
+                }
+                (b'F', b'F') => {
+                    let $a = unsafe { $a.arrayf_unchecked() };
+                    let $b = unsafe { $b.arrayf_unchecked() };
+                    $allf
+                }
+                (b'C', b'C') => unsafe {
+                    let $a = $a.arrayc_unchecked();
+                    let $b = $b.arrayc_unchecked();
+
+                    if $a.len() > $b.len() {
+                        if $a.len() % $b.len() != 0 {
+                            std::hint::cold_path();
+                            return err!(Domain);
+                        }
+
+                        Array::try_alloc_iter(
+                            $a.rank(),
+                            $a.list().iter().zip($b.list().iter().cycle()).map(|(&$a, &$b)| $opc),
+                        )
+                        .map(List::from)
+                    } else if $a.len() == $b.len() {
+                        let rank = if $a.dims() >= $b.dims() { $a.rank() } else { $b.rank() };
+                        Array::try_alloc_iter(
+                            rank,
+                            $a.list().iter().zip($b.list().iter().cycle()).map(|(&$a, &$b)| $opc),
+                        )
+                        .map(List::from)
+                    } else {
+                        if $b.len() % $a.len() != 0 {
+                            std::hint::cold_path();
+                            return err!(Domain);
+                        }
+
+                        Array::try_alloc_iter(
+                            $b.rank(),
+                            $b.list().iter().zip($a.list().iter().cycle()).map(|(&$a, &$b)| $opc),
+                        )
+                        .map(List::from)
+                    }
+                },
+                _ => unreachable!(),
+            }
+        }
     };
 
-    (false, |$a:ident, $b:ident| $opi:expr, $opf:expr, $opc:expr) => {};
+    (false, |$a:ident, $b:ident| $alli:expr, $allf:expr, $opi:expr, $opf:expr, $opc:expr) => {};
 }
 
 macro_rules! create_op_generic {
@@ -171,7 +222,7 @@ macro_rules! create_op_generic {
                 }
             );
 
-            maybe_expand!($cond, |$a, $b| $opi, $opf, $opc);
+            maybe_expand!($cond, |$a, $b| $alli, $allf, $opi, $opf, $opc);
 
             #[inline]
             pub fn generic_op($a: List, $b: List) -> Status<List> {
@@ -209,23 +260,24 @@ macro_rules! create_op_generic {
             }
         }
     };
-
-    ($name:ident, |$a:ident, $b:ident| $alli:block, $allf:block, $opi:expr, $opf:expr, $opc:expr, $opb:expr) => {
-        #[inline]
-        pub fn $name(a: List, b: List) -> Status<List> {
-            todo!()
-        }
-    };
 }
 
-create_op_generic!(add, |a, b| Ok(I(a.add(b))), Ok(F(a.add(b))), Ok(a + b), Ok(a + b), {
-    let hi = a as i64 + b as i64;
-    if hi < 0 || hi > 255 {
-        std::hint::cold_path();
-        return err!(Value);
-    }
-    Ok(hi as u8)
-}, true);
+create_op_generic!(
+    add,
+    |a, b| Ok(I(a.add(b))),
+    Ok(F(a.add(b))),
+    Ok(a + b),
+    Ok(a + b),
+    {
+        let hi = a as i64 + b as i64;
+        if hi < 0 || hi > 255 {
+            std::hint::cold_path();
+            return err!(Value);
+        }
+        Ok(hi as u8)
+    },
+    true
+);
 
 create_op_generic!(
     wrapping_add,
@@ -241,44 +293,70 @@ create_op_generic!(
     true
 );
 
-create_op_generic!(sub, |a, b| Ok(I(a.sub(b))), Ok(F(a.sub(b))), Ok(a - b), Ok(a - b), {
-    let hi = a as i64 - b as i64;
-    if hi < 0 || hi > 255 {
-        std::hint::cold_path();
-        return err!(Value);
-    }
-    Ok(hi as u8)
-}, true);
+create_op_generic!(
+    sub,
+    |a, b| Ok(I(a.sub(b))),
+    Ok(F(a.sub(b))),
+    Ok(a - b),
+    Ok(a - b),
+    {
+        let hi = a as i64 - b as i64;
+        if hi < 0 || hi > 255 {
+            std::hint::cold_path();
+            return err!(Value);
+        }
+        Ok(hi as u8)
+    },
+    true
+);
 
-create_op_generic!(mul, |a, b| Ok(I(a.mul(b))), Ok(F(a.mul(b))), Ok(a * b), Ok(a * b), {
-    let hi = a as i64 * b as i64;
-    if hi < 0 || hi > 255 {
-        std::hint::cold_path();
-        return err!(Value);
-    }
-    Ok(hi as u8)
-}, true);
+create_op_generic!(
+    mul,
+    |a, b| Ok(I(a.mul(b))),
+    Ok(F(a.mul(b))),
+    Ok(a * b),
+    Ok(a * b),
+    {
+        let hi = a as i64 * b as i64;
+        if hi < 0 || hi > 255 {
+            std::hint::cold_path();
+            return err!(Value);
+        }
+        Ok(hi as u8)
+    },
+    true
+);
 
-create_op_generic!(pow, |a, b| {
-    let mut a = a.cast_f64().unwrap();
-    let mut b = b.cast_f64().unwrap();
-    crate::utils::symbols::scalar_op!(a, b,
-        [l, r] = { l.powf(*r) }; { r.powf(l) }; { l.powf(r) };
-    ).map(List::Doubles)
-}, {
-    let mut a = a;
-    let mut b = b;
-    crate::utils::symbols::scalar_op!(a, b,
-        [l, r] = { l.powf(*r) }; { r.powf(l) }; { l.powf(r) };
-    ).map(List::Doubles)
-}, Ok(a.to_float()?.powf(b.to_float()?)), Ok(a.powf(b)), {
-    let hi = (a as i64).pow(b as u32);
-    if hi < 0 || hi > 255 {
-        std::hint::cold_path();
-        return err!(Value);
-    }
-    Ok(hi as u8)
-}, false);
+create_op_generic!(
+    pow,
+    |a, b| {
+        let mut a = a.cast_f64().unwrap();
+        let mut b = b.cast_f64().unwrap();
+        crate::utils::symbols::scalar_op!(a, b,
+            [l, r] = { l.powf(*r) }; { r.powf(l) }; { l.powf(r) };
+        )
+        .map(List::Doubles)
+    },
+    {
+        let mut a = a;
+        let mut b = b;
+        crate::utils::symbols::scalar_op!(a, b,
+            [l, r] = { l.powf(*r) }; { r.powf(l) }; { l.powf(r) };
+        )
+        .map(List::Doubles)
+    },
+    Ok(a.to_float()?.powf(b.to_float()?)),
+    Ok(a.powf(b)),
+    {
+        let hi = (a as i64).pow(b as u32);
+        if hi < 0 || hi > 255 {
+            std::hint::cold_path();
+            return err!(Value);
+        }
+        Ok(hi as u8)
+    },
+    false
+);
 
 create_op_generic!(
     div,

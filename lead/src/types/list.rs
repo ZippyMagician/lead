@@ -83,6 +83,36 @@ impl List {
 
     // TODO: Add on to these as I need them
     #[inline]
+    pub unsafe fn arrayi_unchecked(self) -> Array<i64> {
+        match self {
+            Self::Integers(a) => a,
+            _ => unsafe {
+                hint::unreachable_unchecked();
+            },
+        }
+    }
+
+    #[inline]
+    pub unsafe fn arrayf_unchecked(self) -> Array<OrderedFloat<f64>> {
+        match self {
+            Self::Doubles(a) => a,
+            _ => unsafe {
+                hint::unreachable_unchecked();
+            },
+        }
+    }
+
+    #[inline]
+    pub unsafe fn arrayc_unchecked(self) -> Array<u8> {
+        match self {
+            Self::String(a) => a,
+            _ => unsafe {
+                hint::unreachable_unchecked();
+            },
+        }
+    }
+
+    #[inline]
     pub unsafe fn arrayb_unchecked(self) -> Array<bool> {
         match self {
             Self::Booleans(a) => a,

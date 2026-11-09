@@ -67,6 +67,37 @@ macro_rules! reduce_op {
     }};
 }
 
+macro_rules! match_symbol_general {
+    ($tag:ident, $f:ident, $items:ident, $acc:ident; $($sym:pat, $($seg:ident)::+);*) => {
+        if let Some(s) = &$f.s {
+            match ($tag, s) {
+                (b'B' | b'X', _) => {}
+                $(
+                    (b'I', $sym) => {
+                        for item in $items {
+                            $acc = $($seg)::+::<b'I', b'I'>($acc, item)?;
+                        }
+                        return Ok($acc);
+                    }
+                    (b'F', $sym) => {
+                        for item in $items {
+                            $acc = $($seg)::+::<b'F', b'F'>($acc, item)?;
+                        }
+                        return Ok($acc);
+                    }
+                    (b'C', $sym) => {
+                        for item in $items {
+                            $acc = $($seg)::+::<b'C', b'C'>($acc, item)?;
+                        }
+                        return Ok($acc);
+                    }
+                )*
+                _ => {}
+            }
+        }
+    }
+}
+
 #[inline]
 pub fn reduce(f: &Function, a: Type, o: &Opts) -> Status<Type> {
     if a.is_empty() || a.is_scalar() {
@@ -77,7 +108,7 @@ pub fn reduce(f: &Function, a: Type, o: &Opts) -> Status<Type> {
     let a = a.to_list()?;
     maybe_apply!([within] o, a, {
         if let Some(s) = &f.s
-            && o.rm == 1 && a.dims() == 1
+            && a.dims() == 1
         {
             match (a.get_type(), s) {
                 // (b'I', Symbol::Plus) => return Ok(reduce_op_ints(a, |a, b| a + b)),
@@ -93,20 +124,26 @@ pub fn reduce(f: &Function, a: Type, o: &Opts) -> Status<Type> {
                 (_, Symbol::Comma) => return f.monadic_call(Type::List(a))?.to_list(),
                 _ => {}
             }
-        } else if o.rm as usize >= a.dims() {
-            let mut items = a.ranked(a.dims() - 1)?.into_iter();
-            let mut acc = Type::List(items.next().unwrap());
-            for item in items {
-                acc = f.dyadic_call(acc, Type::List(item))?;
-            }
-            return acc.to_list();
         }
 
-        let d = a.dims();
-        let mut items = a.ranked(d - 1)?.into_iter();
-        let mut acc = Type::from(items.next().unwrap());
+        let tag = a.get_type();
+        let mut items = a.ranked(a.dims() - 1)?.into_iter();
+        let mut acc = items.next().unwrap();
+        
+        // match general arithmetic operations
+        match_symbol_general! {
+            tag, f, items, acc;
+            Symbol::Plus, arith::add::typed_op;
+            Symbol::PlusColon, arith::wrapping_add::typed_op;
+            Symbol::Dash, arith::sub::typed_op;
+            Symbol::Star, arith::mul::typed_op;
+            Symbol::Percent, arith::div::typed_op;
+            Symbol::Pipe, arith::rem::typed_op
+        };
+
+        let mut acc = Type::List(acc);
         for item in items {
-            acc = f.dyadic_call(acc, Type::from(item))?;
+            acc = f.dyadic_call(acc, Type::List(item))?;
         }
         acc.to_list()
     })
