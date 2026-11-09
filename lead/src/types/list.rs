@@ -521,7 +521,6 @@ impl<T: Scalar> Array<T> {
             return Ok(Self::empty());
         }
         let rank = SmallVec::from_slice(r);
-        let bucket = SizedScalars::new(bucket, count);
         Ok(unsafe { Self::new(Scalars::from_iter(bucket, count), dims, rank) })
     }
 
@@ -786,33 +785,6 @@ impl Display for List {
     }
 }
 
-pub struct SizedScalars<T: Iterator<Item = K>, K: Scalar> {
-    iter: T,
-    size: usize,
-    c: usize,
-}
-
-impl<T: Iterator<Item = K>, K: Scalar> SizedScalars<T, K> {
-    pub fn new(iter: T, size: usize) -> Self {
-        Self { iter, size, c: 0 }
-    }
-}
-
-impl<T: Iterator<Item = K>, K: Scalar> Iterator for SizedScalars<T, K> {
-    type Item = K;
-    #[inline(always)]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.c += 1;
-        self.iter.next()
-    }
-
-    #[inline(always)]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        unsafe { std::hint::assert_unchecked(self.c <= self.size) }
-        (self.size - self.c, Some(self.size - self.c))
-    }
-}
-
 #[derive(Clone, Debug, Default)]
 #[repr(C)]
 pub struct Scalars<T: Scalar> {
@@ -852,7 +824,7 @@ impl<T: Scalar> Scalars<T> {
     }
 
     #[inline(always)]
-    pub(crate) unsafe fn from_iter<U>(it: SizedScalars<U, T>, end: usize) -> Scalars<T>
+    pub(crate) unsafe fn from_iter<U>(it: U, end: usize) -> Scalars<T>
     where
         U: Iterator<Item = T>,
     {

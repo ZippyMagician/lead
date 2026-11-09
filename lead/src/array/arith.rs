@@ -1,15 +1,12 @@
 use std::ops::*;
 
 use crate::types::list::Array;
-use crate::types::scalar::Scalar;
 use crate::utils::error::err;
 use crate::utils::symbols::*;
 
-use num_traits::{Zero, real::Real};
+use num_traits::Zero;
 use num_traits::ops::wrapping;
 use ordered_float::{Float, OrderedFloat};
-
-type Fl = OrderedFloat<f64>;
 
 macro_rules! create_op_typed {
     ($t1:ty, $t2:ty, $t3:ty, $name:ident, $name2:ident, $mac:ident, |$a:ident, $b:ident| $body:block, $swap:block) => {
@@ -239,10 +236,6 @@ create_op_generic!(mul, |a, b| Ok(I(a.mul(b))), Ok(F(a.mul(b))), Ok(a * b), Ok(a
     }
     Ok(hi as u8)
 });
-
-#[inline(always)] fn powf(a: Fl, b: Fl) -> Fl {
-    ordered_float::Float::powf(a, b)
-}
 
 create_op_generic!(pow, |a, b| {
     let mut a = a.cast_f64().unwrap();

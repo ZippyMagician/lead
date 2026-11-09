@@ -3,3 +3,4 @@ pub mod cast;
 pub mod hash;
 pub mod ord;
 pub mod range;
+pub mod reduce;
