@@ -1,5 +1,6 @@
 use std::ops::*;
 
+use crate::array::reduce;
 use crate::builtins::symbols::Symbol;
 use crate::function::{Function, Opts, function};
 use crate::scope::Scope;
@@ -155,159 +156,20 @@ pub(crate) fn over_rank(l: Type, r: Type, arena: Arena, scope: Scope) -> Status<
     }
 }
 
-/*
 #[inline]
 pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
     let f = f.to_function(a.clone(), s.clone())?;
-    let fr = f.clone();
-    let monad = move |a: Type, o: &Opts| {
-        let a = a.to_list()?;
-        if a.is_empty() {
-            std::hint::cold_path();
-            return Ok(a.into());
-        }
-
-        maybe_apply!([within] o, a, {
-            if a.is_scalar() {
-                std::hint::cold_path();
-                return Ok(a);
-            }
-
-            if o.rm == 1 && a.dims() == 1 {
-                if let Some(s) = &f.s {
-                    let list = a.list();
-                    let mut acc = list[0];
-                    match s {
-                        Symbol::Plus => {
-                            for n in list.iter().skip(1) {
-                                acc = acc.add(*n)?;
-                            }
-                            return Ok(List::scalar(acc));
-                        }
-                        Symbol::Dash => {
-                            let mut acc = list[0];
-                            for n in list.iter().skip(1) {
-                                acc = acc.sub(*n)?;
-                            }
-                            return Ok(List::scalar(acc));
-                        }
-                        Symbol::Star => {
-                            let mut acc = list[0];
-                            if acc.is_bool() {
-                                for n in list.iter().skip(1) {
-                                    if !unsafe { acc.to_bool_unchecked() } {
-                                        break;
-                                    }
-                                    acc = Scalar::Boolean(
-                                        unsafe { acc.to_bool_unchecked() }
-                                            && unsafe { n.to_bool_unchecked() },
-                                    );
-                                }
-                            } else {
-                                for n in list.iter().skip(1) {
-                                    acc = acc.mul(*n)?;
-                                }
-                            }
-                            return Ok(List::scalar(acc));
-                        }
-                        Symbol::Percent => {
-                            let mut acc = list[0];
-                            for n in list.iter().skip(1) {
-                                acc = acc.div(*n)?;
-                            }
-                            return Ok(List::scalar(acc));
-                        }
-                        Symbol::Pipe => {
-                            let mut acc = list[0];
-                            if acc.is_bool() {
-                                for n in list.iter().skip(1) {
-                                    if unsafe { acc.to_bool_unchecked() } {
-                                        break;
-                                    }
-                                    acc = Scalar::Boolean(
-                                        unsafe { acc.to_bool_unchecked() }
-                                            || unsafe { n.to_bool_unchecked() },
-                                    );
-                                }
-                            } else {
-                                for n in list.iter().skip(1) {
-                                    acc = acc.rem(*n)?;
-                                }
-                            }
-                            return Ok(List::scalar(acc));
-                        }
-                        _ => {}
-                    }
-                }
-                let items = a.list();
-                let mut acc = Type::Scalar(items[0]);
-                for item in items.iter().skip(1) {
-                    acc = f.dyadic_call(acc, Type::Scalar(*item))?;
-                }
-                return acc.to_list();
-            }
-
-            let d = a.dims();
-            let mut items = a.ranked(d - 1)?.into_iter();
-            let mut acc = Type::from(items.next().unwrap());
-            for item in items {
-                acc = f.dyadic_call(acc, Type::from(item))?;
-            }
-            acc.to_list()
-        })
-    };
-    let f = fr;
-
-    let dyad = move |a: Type, b: Type, o: &Opts| {
-        let a = a.to_list()?;
-        let b = b.to_list()?;
-        maybe_apply!([within] o, a, b, {
-            if b.is_scalar() {
-                return Ok(List::scalar(b.list()[0]));
-            }
-            if !a.is_scalar() {
-                return err!(Domain);
-            }
-
-            let window = a.list()[0].to_num()?;
-            let mut unique = false;
-            let window = if window < 0 {
-                unique = true;
-                (-window) as usize
-            } else {
-                window as usize
-            };
-
-            let dims = b.dims();
-            let mut arr = b.ranked(dims - 1)?;
-            let jump = if unique { window } else { 1 };
-
-            let mut cells = vec![List::empty(); 1 + (arr.len() - window) / jump];
-            let mut j = 0;
-            while j <= arr.len() - window {
-                let i = j / jump;
-                cells[i] = std::mem::take(&mut arr[j]);
-                for k in j + 1..j + window {
-                    let previous = std::mem::take(&mut cells[i]);
-                    cells[i] = f
-                        .dyadic_call(Type::from(previous), Type::from(arr[k].clone()))?
-                        .to_list()?;
-                }
-                j += jump;
-            }
-            List::unranked(&o.a, cells[0].dims() + 1, &[], cells)
-        })
-    };
 
     Ok(function!(1, [0, 99], true, true, move |a, b, o| {
         if let Some(b) = b {
-            dyad(a, b, o).map(Type::from)
+            reduce::reduce_groups(&f, a, b, o)
         } else {
-            monad(a, o).map(Type::from)
+            reduce::reduce(&f, a, o)
         }
     }; a, s))
 }
 
+/*
 #[inline]
 pub(crate) fn scan_table(f: Type, a: Arena, s: Scope) -> Status<Function> {
     let f = f.to_function(a.clone(), s.clone())?;

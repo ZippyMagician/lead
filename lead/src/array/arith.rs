@@ -11,7 +11,7 @@ use ordered_float::{Float, OrderedFloat};
 macro_rules! create_op_typed {
     ($t1:ty, $t2:ty, $t3:ty, $name:ident, $name2:ident, $mac:ident, |$a:ident, $b:ident| $body:block, $swap:block) => {
         #[inline(always)]
-        fn $name($a: $t1, $b: $t2) -> $t3 {
+        pub fn $name($a: $t1, $b: $t2) -> $t3 {
             if $a.len() >= $b.len() {
                 if $a.len() % $b.len() != 0 {
                     std::hint::cold_path();
@@ -58,7 +58,7 @@ macro_rules! create_op_typed {
         }
 
         #[inline(always)]
-        fn $name2($a: $t1, $b: $t2) -> $t3 {
+        pub fn $name2($a: $t1, $b: $t2) -> $t3 {
             if $a.len() >= $b.len() {
                 if $a.len() % $b.len() != 0 {
                     std::hint::cold_path();
@@ -106,10 +106,29 @@ macro_rules! create_op_typed {
     };
 }
 
+macro_rules! maybe_expand {
+    (true, |$a:ident, $b:ident| $opi:expr, $opf:expr, $opc:expr) => {
+        pub fn int_op($a: i64, $b: i64) -> Status<i64> {
+            $opi
+        }
+
+        pub fn float_op($a: OrderedFloat<f64>, $b: OrderedFloat<f64>) -> Status<OrderedFloat<f64>> {
+            $opf
+        }
+
+        pub fn char_op($a: u8, $b: u8) -> Status<u8> {
+            $opc
+        }
+    };
+
+    (false, |$a:ident, $b:ident| $opi:expr, $opf:expr, $opc:expr) => {};
+}
+
 macro_rules! create_op_generic {
-    ($name:ident, |$a:ident, $b:ident| $alli:expr, $allf:expr, $opi:expr, $opf:expr, $opc:expr) => {
+    ($name:ident, |$a:ident, $b:ident| $alli:expr, $allf:expr, $opi:expr, $opf:expr, $opc:expr, $cond:ident) => {
         pub(crate) mod $name {
             #![allow(unused_imports)]
+            #![allow(dead_code)]
             use List::{Booleans as B, Boxes as X, Doubles as F, Integers as I, String as C};
             use ordered_float::{Float, OrderedFloat};
             use std::ops::*;
@@ -125,8 +144,8 @@ macro_rules! create_op_generic {
                 Array<Fl>,
                 List,
                 Status<List>,
-                float_op,
-                float_op_swap,
+                float_op_partial,
+                float_op_partial_swap,
                 iter_floats,
                 |$a, $b| { $opf },
                 {
@@ -140,8 +159,8 @@ macro_rules! create_op_generic {
                 Array<u8>,
                 List,
                 Status<List>,
-                char_op,
-                char_op_swap,
+                char_op_partial,
+                char_op_partial_swap,
                 iter_ints,
                 |$a, $b| { $opc },
                 {
@@ -151,6 +170,8 @@ macro_rules! create_op_generic {
                     $opc
                 }
             );
+
+            maybe_expand!($cond, |$a, $b| $opi, $opf, $opc);
 
             #[inline]
             pub fn generic_op($a: List, $b: List) -> Status<List> {
@@ -169,10 +190,10 @@ macro_rules! create_op_generic {
                     }
                     (I($a), I($b)) => $alli,
                     (F($a), F($b)) => $allf,
-                    (F($a), $b) => float_op($a, $b),
-                    ($a, F($b)) => float_op_swap($b, $a),
-                    (C($a), $b) => char_op($a, $b),
-                    ($a, C($b)) => char_op_swap($b, $a),
+                    (F($a), $b) => float_op_partial($a, $b),
+                    ($a, F($b)) => float_op_partial_swap($b, $a),
+                    (C($a), $b) => char_op_partial($a, $b),
+                    ($a, C($b)) => char_op_partial_swap($b, $a),
                     ($a, $b) => {
                         let count = usize::max($a.len(), $b.len());
                         let rank = if $a.len() > $b.len() { $a.rank() } else { $b.rank() };
@@ -204,7 +225,7 @@ create_op_generic!(add, |a, b| Ok(I(a.add(b))), Ok(F(a.add(b))), Ok(a + b), Ok(a
         return err!(Value);
     }
     Ok(hi as u8)
-});
+}, true);
 
 create_op_generic!(
     wrapping_add,
@@ -216,7 +237,8 @@ create_op_generic!(
         let a = (a & 255) as u8;
         let b = (b & 255) as u8;
         Ok(a.wrapping_add(b))
-    }
+    },
+    true
 );
 
 create_op_generic!(sub, |a, b| Ok(I(a.sub(b))), Ok(F(a.sub(b))), Ok(a - b), Ok(a - b), {
@@ -226,7 +248,7 @@ create_op_generic!(sub, |a, b| Ok(I(a.sub(b))), Ok(F(a.sub(b))), Ok(a - b), Ok(a
         return err!(Value);
     }
     Ok(hi as u8)
-});
+}, true);
 
 create_op_generic!(mul, |a, b| Ok(I(a.mul(b))), Ok(F(a.mul(b))), Ok(a * b), Ok(a * b), {
     let hi = a as i64 * b as i64;
@@ -235,7 +257,7 @@ create_op_generic!(mul, |a, b| Ok(I(a.mul(b))), Ok(F(a.mul(b))), Ok(a * b), Ok(a
         return err!(Value);
     }
     Ok(hi as u8)
-});
+}, true);
 
 create_op_generic!(pow, |a, b| {
     let mut a = a.cast_f64().unwrap();
@@ -256,7 +278,7 @@ create_op_generic!(pow, |a, b| {
         return err!(Value);
     }
     Ok(hi as u8)
-});
+}, false);
 
 create_op_generic!(
     div,
@@ -288,7 +310,8 @@ create_op_generic!(
             return err!(Value);
         }
         Ok(hi as u8)
-    }
+    },
+    true
 );
 
 create_op_generic!(
@@ -321,7 +344,8 @@ create_op_generic!(
             return err!(Value);
         }
         Ok(hi as u8)
-    }
+    },
+    true
 );
 
 trait WrappingAdd {

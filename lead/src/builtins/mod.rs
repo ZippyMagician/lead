@@ -133,8 +133,8 @@ define_op! {
     AtopBind => (b"&", false, operators::atop_bind);
     HookDefault => (b"&:", false, operators::hook_default);
     OverRank => (b"@", false, operators::over_rank);
-/*  Fold => (b"/", true, operators::fold);
-    TieCommute => (b"`", true, operators::tie_commute);
+    Fold => (b"/", true, operators::fold);
+/*  TieCommute => (b"`", true, operators::tie_commute);
     Each => (b"\"", true, operators::each);
     EachAtom => (b"\":", true, operators::eachatom);
     RepeatUntil => (b"\".", false, operators::repeat_until);

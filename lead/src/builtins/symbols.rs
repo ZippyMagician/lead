@@ -2,12 +2,13 @@
 
 use std::collections::{HashMap, HashSet};
 use std::hint::cold_path;
-use std::ops::*;
 use std::rc::Rc;
+use std::{array, ops::*};
 
 use crate::array::arith::*;
 use crate::array::cast::Castable;
 use crate::array::ord;
+use crate::array::reduce;
 
 use crate::function::Opts;
 use crate::types::Type;
@@ -145,13 +146,7 @@ pub(super) fn abssum(a: List, b: List, o: &Opts) -> Status<List> {
         cold_path();
         Ok(a)
     } else if a.get_type() == b'B' && b.get_type() == b'B' {
-        maybe_apply!([scalar] o, a, b, {
-            let mut a = unsafe { a.arrayb_unchecked() };
-            let mut b = unsafe { b.arrayb_unchecked() };
-            scalar_op!(a, b,
-                [l, r] = { *l ^ *r }; { *r ^ l }; { *l ^ r };
-            ).map(List::Booleans)
-        })
+        maybe_apply!([scalar] o, a, b, unsafe { reduce::scalar_xor(a, b) })
     } else {
         maybe_apply!([scalar] o, a, b, wrapping_add::generic_op(a, b))
     }
@@ -284,13 +279,7 @@ pub(super) fn mul(a: List, b: List, o: &Opts) -> Status<List> {
         cold_path();
         Ok(a)
     } else if a.get_type() == b'B' && b.get_type() == b'B' {
-        maybe_apply!([scalar] o, a, b, {
-            let mut a = unsafe { a.arrayb_unchecked() };
-            let mut b = unsafe { b.arrayb_unchecked() };
-            scalar_op!(a, b,
-                [l, r] = { *l && *r }; { *r && l }; { *l && r };
-            ).map(List::Booleans)
-        })
+        maybe_apply!([scalar] o, a, b, unsafe { reduce::scalar_and(a, b) })
     } else {
         maybe_apply!([scalar] o, a, b, mul::generic_op(a, b))
     }
@@ -379,13 +368,7 @@ pub(super) fn residue(a: List, b: List, o: &Opts) -> Status<List> {
         cold_path();
         Ok(a)
     } else if a.get_type() == b'B' && b.get_type() == b'B' {
-        maybe_apply!([scalar] o, a, b, {
-            let mut a = unsafe { a.arrayb_unchecked() };
-            let mut b = unsafe { b.arrayb_unchecked() };
-            scalar_op!(a, b,
-                [l, r] = { *l || *r }; { *r || l }; { *l || r };
-            ).map(List::Booleans)
-        })
+        maybe_apply!([scalar] o, a, b, unsafe { reduce::scalar_or(a, b) })
     } else {
         maybe_apply!([scalar] o, a, b, rem::generic_op(b, a))
     }
