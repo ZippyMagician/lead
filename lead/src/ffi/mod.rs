@@ -1,15 +1,19 @@
 pub mod internal;
 
+use std::alloc::{Layout, alloc, dealloc};
 use std::mem::ManuallyDrop;
 
 use crate::function::Function;
-use crate::types::list::List;
+use crate::types::Type;
+use crate::types::list::{Array, List};
 use crate::types::map::Map;
-use crate::types::scalar::Scalar;
+use crate::types::scalar::{self, Boxed, Scalar};
 use crate::utils::Arena;
-use crate::utils::error::{Error, Status, err};
+use crate::utils::error::{Status, err};
+use crate::utils::list::with_list;
 
-use ecow::EcoVec;
+use ordered_float::OrderedFloat;
+use smallvec::SmallVec;
 
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]
@@ -32,8 +36,10 @@ pub(crate) enum ExternTypes {
 
 #[repr(C)]
 pub struct Window {
+    // tag
+    pub t: ScalarType,
     // list
-    pub i: *mut ScalarExtern,
+    pub i: *mut u8,
     // count
     pub c: usize,
     // dimensions
@@ -42,21 +48,20 @@ pub struct Window {
     pub r: *mut usize,
 }
 
-#[derive(Clone, Copy)]
-#[repr(C, u8)]
-pub enum ScalarExtern {
-    Number(i64),
-    Float(f64),
-    Boolean(bool),
-    Char(u32),
-    Box(*mut Window),
+#[derive(Clone, Copy, PartialEq)]
+#[repr(u8)]
+pub enum ScalarType {
+    Number = b'I',
+    Float = b'F',
+    Boolean = b'B',
+    Char = b'C',
+    Box = b'X',
 }
 
 #[repr(C)]
 union TypeInner {
     f: ManuallyDrop<Function>,
     l: ManuallyDrop<List>,
-    s: Scalar,
     m: ManuallyDrop<Map>,
 }
 
@@ -66,69 +71,109 @@ struct ReprType {
     t: TypeInner,
 }
 
-impl ScalarExtern {
-    pub fn from_scalar(s: Scalar) -> Status<Self> {
-        match s {
-            Scalar::Number(n) => Ok(Self::Number(n)),
-            Scalar::Float(f) => Ok(Self::Float(f.into_inner())),
-            Scalar::Boolean(b) => Ok(Self::Boolean(b)),
-            Scalar::Char(c) => Ok(Self::Char(c as u32)),
-            // SAFETY: Good luck
-            Scalar::Box(t) => unsafe {
-                let r = t as *mut ReprType;
-                if (*r).tag != 1 && (*r).tag != 2 {
-                    return err!(Domain);
+impl Window {
+    #[inline]
+    pub fn create(a: &List) -> Status<Window> {
+        let ptr: *mut u8;
+        with_list!(a, |a| unsafe {
+            if a.get_type() != b'X' {
+                let size = std::mem::size_of_val(&a.list()[0]);
+                let dst = alloc(Layout::array::<u8>(a.len() * size).unwrap());
+                std::ptr::copy_nonoverlapping(a.list().as_ptr() as *const u8, dst, a.len() * size);
+                ptr = dst;
+            } else {
+                const SIZE: usize = std::mem::size_of::<Boxed>();
+                let dst = alloc(Layout::array::<u8>(SIZE * a.len()).unwrap());
+                for (i, b) in a.list().iter().enumerate() {
+                    // unwrap boxed value
+                    let t: &Type = b.unbox();
+                    let r: &ReprType = std::mem::transmute(t);
+                    if r.tag != 1 {
+                        return err!(Domain);
+                    }
+                    let l = &r.t.l;
+
+                    let bx = alloc(Layout::new::<Window>());
+                    *(bx as *mut Window) = Window::create(l)?;
+                    std::ptr::copy_nonoverlapping(bx as *const u8, dst.add(i * SIZE), SIZE);
                 }
 
-                let l = if (*r).tag == 1 { &mut (*r).t.l } else { &mut List::scalar((*r).t.s) };
+                ptr = dst;
+            }
+        });
 
-                let mut alloc = l
-                    .list()
-                    .iter()
-                    .map(|s| Self::from_scalar(*s))
-                    .collect::<Status<Vec<Self>>>()?;
-                alloc.shrink_to_fit();
-                let window = Window {
-                    i: alloc.into_raw_parts().0,
-                    d: l.dims(),
-                    c: l.len(),
-                    r: l.rank().as_ptr() as *mut usize,
-                };
-                Ok(Self::Box(Box::into_raw(Box::new(window))))
-            },
+        Ok(Window {
+            t: unsafe { std::mem::transmute(a.get_type()) },
+            i: ptr,
+            c: a.len(),
+            d: a.dims(),
+            r: a.rank().as_ptr() as *mut usize,
+        })
+    }
+
+    // SAFETY: Assumes FFI did not tamper with it
+    #[inline]
+    pub unsafe fn free(&self) {
+        let size = match self.t {
+            ScalarType::Number => std::mem::size_of::<i64>(),
+            ScalarType::Float => std::mem::size_of::<f64>(),
+            ScalarType::Boolean => std::mem::size_of::<bool>(),
+            ScalarType::Char => std::mem::size_of::<char>(),
+            ScalarType::Box => std::mem::size_of::<*mut Window>(),
+        };
+        unsafe {
+            if self.t == ScalarType::Box {
+                let ptr = self.i as *mut *mut Window;
+                for i in 0..self.c {
+                    let wptr = ptr.add(i).read();
+                    dealloc(wptr as *mut u8, Layout::new::<Window>());
+                }
+            }
+            dealloc(self.i, Layout::array::<u8>(self.c * size).unwrap());
+            // Rank comes from pointer to list's rank, doesn't need to be dealloc'd
         }
     }
 
-    pub fn to_scalar(self, arena: &Arena) -> Status<Scalar> {
-        match self {
-            Self::Number(n) => Ok(Scalar::Number(n)),
-            Self::Float(f) => Ok(Scalar::Float(f.into())),
-            Self::Boolean(b) => Ok(Scalar::Boolean(b)),
-            Self::Char(c) => Ok(Scalar::Char(char::from_u32(c).ok_or(Error::NaN)?)),
-            // SAFETY: Assumes extern call did not fuck with the values
-            // (i.e. they are all correct)
-            Self::Box(w) => unsafe {
-                let w: &mut Window = &mut *w;
-                let mut v = EcoVec::with_capacity(w.c);
-                for i in 0..w.c {
-                    v.push((*w.i.add(i)).to_scalar(arena)?);
-                }
-                let list = List::new(v, w.d, std::slice::from_raw_parts(w.r, w.d).into());
-                drop(Box::from_raw(w)); // SAFETY: Assume allocation wasn't recreated by C
-                Ok(Scalar::boxed(arena, list)?)
+    #[inline]
+    pub fn list(&self, a: &Arena) -> Status<List> {
+        match self.t {
+            ScalarType::Number => unsafe {
+                let ptr = self.i as *mut i64;
+                let rank =
+                    (0..self.d).map(|i| self.r.add(i).read()).collect::<SmallVec<[usize; 2]>>();
+                Array::alloc_iter(&rank, (0..self.c).map(|i| ptr.add(i).read()))
+            },
+            ScalarType::Float => unsafe {
+                let ptr = self.i as *mut OrderedFloat<f64>;
+                let rank =
+                    (0..self.d).map(|i| self.r.add(i).read()).collect::<SmallVec<[usize; 2]>>();
+                Array::alloc_iter(&rank, (0..self.c).map(|i| ptr.add(i).read()))
+            },
+            ScalarType::Boolean => unsafe {
+                let ptr = self.i as *mut bool;
+                let rank =
+                    (0..self.d).map(|i| self.r.add(i).read()).collect::<SmallVec<[usize; 2]>>();
+                Array::alloc_iter(&rank, (0..self.c).map(|i| ptr.add(i).read()))
+            },
+            ScalarType::Char => unsafe {
+                let ptr = self.i as *mut u8;
+                let rank =
+                    (0..self.d).map(|i| self.r.add(i).read()).collect::<SmallVec<[usize; 2]>>();
+                Array::alloc_iter(&rank, (0..self.c).map(|i| ptr.add(i).read()))
+            },
+            ScalarType::Box => unsafe {
+                let ptr = self.i as *mut *mut Window;
+                let rank =
+                    (0..self.d).map(|i| self.r.add(i).read()).collect::<SmallVec<[usize; 2]>>();
+                Array::try_alloc_iter(
+                    &rank,
+                    (0..self.c).map(|i| {
+                        let window = ptr.add(i).read().read();
+                        scalar::boxed(a, window.list(a)?)
+                    }),
+                )
+                .map(List::Boxes)
             },
         }
-    }
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn lead_free_list(a: *mut Window) {
-    unsafe {
-        let a = &mut *a;
-        let inner = Box::from_raw(std::slice::from_raw_parts_mut(a.i, a.c) as *mut [ScalarExtern]);
-        let rank = Vec::from_raw_parts(a.r, a.d, a.d);
-
-        drop(inner);
-        drop(rank);
     }
 }

@@ -538,6 +538,11 @@ impl<T: Scalar> Array<T> {
     }
 
     #[inline(always)]
+    pub fn get_type(&self) -> u8 {
+        T::get_type()
+    }
+
+    #[inline(always)]
     pub fn list(&self) -> &[T] {
         self.dt.list()
     }

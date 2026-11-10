@@ -31,6 +31,7 @@ pub trait Scalar:
     fn to_float(&self) -> Status<OrderedFloat<f64>>;
     fn to_bool(&self) -> Status<bool>;
     fn to_char(&self) -> Status<u8>;
+    fn unbox(&self) -> &Type;
 
     fn get_fill() -> Status<Self>;
 }
@@ -83,6 +84,11 @@ impl Scalar for i64 {
     #[inline(always)]
     fn get_fill() -> Status<i64> {
         Ok(0)
+    }
+
+    #[inline(always)]
+    fn unbox(&self) -> &Type {
+        unreachable!()
     }
 }
 
@@ -140,6 +146,11 @@ impl Scalar for OrderedFloat<f64> {
     fn get_fill() -> Status<OrderedFloat<f64>> {
         Ok(OrderedFloat(0.))
     }
+
+    #[inline(always)]
+    fn unbox(&self) -> &Type {
+        unreachable!()
+    }
 }
 
 impl Scalar for bool {
@@ -190,6 +201,11 @@ impl Scalar for bool {
     #[inline(always)]
     fn get_fill() -> Status<bool> {
         Ok(false)
+    }
+
+    #[inline(always)]
+    fn unbox(&self) -> &Type {
+        unreachable!()
     }
 }
 
@@ -244,6 +260,11 @@ impl Scalar for u8 {
     fn get_fill() -> Status<u8> {
         Ok(b' ')
     }
+
+    #[inline(always)]
+    fn unbox(&self) -> &Type {
+        unreachable!()
+    }
 }
 
 impl Scalar for Boxed {
@@ -296,6 +317,11 @@ impl Scalar for Boxed {
     fn get_fill() -> Status<Boxed> {
         std::hint::cold_path();
         err!(ValueS, "No valid fill type for boxes.")
+    }
+
+    #[inline(always)]
+    fn unbox(&self) -> &Type {
+        unsafe { &***self }
     }
 }
 

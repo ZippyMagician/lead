@@ -12,27 +12,29 @@
          _a > _b ? _a : _b; })
 
 Lead_List* test_list(Lead_List* a, Lead_List* b) {
+    if (a->t != INTEGER || b->t != INTEGER) {
+        printf("Not integers.\n");
+        return NULL;
+    }
+
     Lead_List* r = malloc(sizeof(Lead_List));
     size_t maximum = max(a->c, b->c);
 
-    r->i = malloc(sizeof(Lead_Scalar) * maximum);
+    r->t = INTEGER;
+    r->i = calloc(maximum, sizeof(int64_t));
     r->c = maximum;
 
+    const int64_t* as = (int64_t*)a->i;
+    const int64_t* bs = (int64_t*)b->i;
+    int64_t* out = (int64_t*)r->i;
     for (uint64_t i = 0; i < maximum; i++) {
-        (r->i + i)->t = INTEGER;
-        (r->i + i)->v.n = 0;
-
-        Lead_Scalar* ah = a->i + i;
-        Lead_Scalar* bh = b->i + i;
-        // if within and integer, add
-        if (i < a->c && ah->t == INTEGER) (r->i + i)->v.n += ah->v.n;
-        if (i < b->c && bh->t == INTEGER) (r->i + i)->v.n += bh->v.n;
+        if (i < a->c) out[i] += as[i];
+        if (i < b->c) out[i] += bs[i];
     }
 
     r->d = 1;
     r->r = malloc(sizeof(size_t) * 1);
     *r->r = r->c;
-
     return r;
 }
 
