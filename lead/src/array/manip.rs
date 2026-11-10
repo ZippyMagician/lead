@@ -7,6 +7,7 @@ use crate::utils::symbols::*;
 
 use smallvec::{SmallVec, smallvec};
 
+#[inline(always)]
 pub(crate) fn concat<T: Scalar>(a: Array<T>, b: Array<T>, o: &Opts) -> Status<Array<T>> {
     if o.rd[0] == 1 && o.rd[1] == 1 {
         if a.dims() < 2 && b.dims() < 2 {
@@ -144,5 +145,34 @@ pub(crate) fn concat<T: Scalar>(a: Array<T>, b: Array<T>, o: &Opts) -> Status<Ar
         }
     }
 
+    Ok(Array::new(v, rank.len(), rank))
+}
+
+#[inline(always)]
+pub(crate) fn table<T: Scalar>(a: Array<T>, b: Array<T>) -> Status<Array<T>> {
+    if a.rank() == b.rank() {
+        let v = with_eco(a.len() + b.len(), |v| {
+            v.extend(a.list());
+            v.extend(b.list());
+            Ok(())
+        })?;
+        let mut r = SmallVec::from(a.rank());
+        r.push(2);
+        return Ok(Array::new(v, a.dims() + 1, r));
+    }
+
+    let dims = usize::max(a.dims(), b.dims());
+    let mut rank = SmallVec::with_capacity(dims);
+    for i in 0..dims {
+        rank.push(usize::max(*a.rank().get(i).unwrap_or(&1), *b.rank().get(i).unwrap_or(&1)));
+    }
+
+    let size: usize = rank.iter().product();
+    let v = with_eco(size * 2, |v| {
+        v.extend_iter(pad_rank((a.list(), a.rank()), &rank).unwrap());
+        v.extend_iter(pad_rank((b.list(), b.rank()), &rank).unwrap());
+        Ok(())
+    })?;
+    rank.push(2);
     Ok(Array::new(v, rank.len(), rank))
 }

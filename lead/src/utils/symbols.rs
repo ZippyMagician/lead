@@ -309,6 +309,36 @@ macro_rules! scalar_map {
 pub(crate) use scalar_map;
 pub(crate) use scalar_op;
 
+macro_rules! treat_as {
+    ($tag:ident, $v:ident = $body:expr, $rest:expr) => {
+        match $tag {
+            b'I' => {
+                let $v: Rc<[i64]> = $body;
+                $rest
+            }
+            b'F' => {
+                let $v: Rc<[OrderedFloat<f64>]> = $body;
+                $rest
+            }
+            b'C' => {
+                let $v: Rc<[u8]> = $body;
+                $rest
+            }
+            b'B' => {
+                let $v: Rc<[bool]> = $body;
+                $rest
+            }
+            b'X' => {
+                let $v: Rc<[Boxed]> = $body;
+                $rest
+            }
+            _ => unreachable!(),
+        }
+    };
+}
+
+pub(crate) use treat_as;
+
 pub(crate) fn pad_rank<T>((v, vr): (&[T], &[usize]), r: &[usize]) -> Status<Vec<T>>
 where
     T: Scalar,

@@ -1153,23 +1153,31 @@ pub(crate) fn concat(mut al: List, mut bl: List, o: &Opts) -> Status<List> {
     }
 }
 
-/*
 // semicolonm | ; | 1 | Mold
 pub(crate) fn mold(a: List, _: &Opts) -> Status<List> {
     if a.is_empty() {
         return Ok(a);
-    } else if !a.list()[0].is_box() {
+    } else if a.get_type() != b'X' {
         return Ok(a);
     }
 
-    let lists = a
-        .list()
-        .iter()
-        .map(|b| unsafe { b.as_unboxed_unchecked() }.as_list())
-        .collect::<Status<Vec<&List>>>()?;
+    let lists = unsafe {
+        a.as_arrayx_unchecked()
+            .list()
+            .iter()
+            .map(|b| (&***b).as_list())
+            .collect::<Status<Vec<&List>>>()?
+    };
 
     let mut rank: SmallVec<[usize; INLINE_SIZE]> = SmallVec::new();
+    let tag = lists[0].get_type();
     for list in &lists {
+        // FIXME: Maybe make this error?
+        if list.get_type() != tag {
+            std::hint::cold_path();
+            return Ok(a);
+        }
+
         for i in 0..list.dims() {
             if i == rank.len() {
                 rank.push(1);
@@ -1178,13 +1186,22 @@ pub(crate) fn mold(a: List, _: &Opts) -> Status<List> {
         }
     }
 
-    if lists.iter().any(|v| !v.is_empty() && v.list()[0].is_box()) {
+    if lists.iter().any(|v| !v.is_empty() && v.get_type() == b'X') {
         return err!(ValueS, "No fill character exists for boxes");
     }
-    let flattened: EcoVec<Scalar> =
-        lists.iter().map(|v| pad_rank((v.list(), v.rank()), &rank).unwrap()).flatten().collect();
-    rank.push(flattened.len() / rank.iter().product::<usize>());
-    List::mat(flattened, rank.len(), rank)
+
+    treat_as!(
+        tag,
+        flattened = lists
+            .iter()
+            .map(|v| pad_rank((unsafe { v.treat_as_ref().list() }, v.rank()), &rank).unwrap())
+            .flatten()
+            .collect(),
+        {
+            rank.push(flattened.len() / rank.iter().product::<usize>());
+            Ok(List::from(Array::new(flattened, rank.len(), rank)))
+        }
+    )
 }
 
 // semicolond | ; | 99, 99 | Table
@@ -1195,35 +1212,42 @@ pub(crate) fn table(a: List, b: List, o: &Opts) -> Status<List> {
         return Ok(a);
     }
 
-    if a.list()[0].repr() != b.list()[0].repr() {
-        return List::from_vec(eco_vec![Scalar::boxed(&o.a, a)?, Scalar::boxed(&o.a, b)?]);
-    } else if a.rank() == b.rank() {
-        let v = with_eco(a.len() + b.len(), |v| {
-            v.extend(a.list());
-            v.extend(b.list());
-            Ok(())
-        })?;
-        let mut r = SmallVec::from(a.rank());
-        r.push(2);
-        return List::mat(v, a.dims() + 1, r);
+    if a.get_type() != b.get_type() {
+        return Ok(List::Boxes(Array::new(
+            with_eco(2, |v| {
+                v.extend(&[scalar::boxed(&o.a, a)?, scalar::boxed(&o.a, b)?]);
+                Ok(())
+            })?,
+            1,
+            smallvec![2],
+        )));
     }
 
-    let dims = usize::max(a.dims(), b.dims());
-    let mut rank = SmallVec::with_capacity(dims);
-    for i in 0..dims {
-        rank.push(usize::max(*a.rank().get(i).unwrap_or(&1), *b.rank().get(i).unwrap_or(&1)));
+    // SAFETY: Type is checked
+    unsafe {
+        match a.get_type() {
+            b'I' => {
+                maybe_apply!([within] o, a, b, manip::table(a.treat_as::<i64>(), b.treat_as::<i64>()).map(List::Integers))
+            }
+            b'F' => {
+                maybe_apply!([within] o, a, b, manip::table(a.treat_as::<OrderedFloat<f64>>(), b.treat_as::<OrderedFloat<f64>>())
+                    .map(List::Doubles))
+            }
+            b'C' => {
+                maybe_apply!([within] o, a, b, manip::table(a.treat_as::<u8>(), b.treat_as::<u8>()).map(List::String))
+            }
+            b'B' => {
+                maybe_apply!([within] o, a, b, manip::table(a.treat_as::<bool>(), b.treat_as::<bool>()).map(List::Booleans))
+            }
+            b'X' => {
+                maybe_apply!([within] o, a, b, manip::table(a.treat_as::<Boxed>(), b.treat_as::<Boxed>()).map(List::Boxes))
+            }
+            _ => std::hint::unreachable_unchecked(),
+        }
     }
-
-    let size: usize = rank.iter().product();
-    let v = with_eco(size * 2, |v| {
-        v.extend_iter(pad_rank((a.list(), a.rank()), &rank).unwrap());
-        v.extend_iter(pad_rank((b.list(), b.rank()), &rank).unwrap());
-        Ok(())
-    })?;
-    rank.push(2);
-    List::mat(v, rank.len(), rank)
 }
 
+/*
 // hashtagm | # | 99 | Tally
 pub(crate) fn tally(a: Type, o: &Opts) -> Status<Type> {
     if a.is_empty() {
