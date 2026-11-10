@@ -59,30 +59,25 @@ where
     #[inline(always)]
     pub fn box_elems(self, arena: &Arena) -> Status<Array<Boxed>> {
         match T::get_type() {
+            #[cfg(target_pointer_width = "64")]
             b'I' => unsafe {
                 let mut a: Array<Boxed> = std::mem::transmute(self);
                 for_0!(a; [v] = scalar::boxed(arena, Array::scalar(std::mem::transmute::<_, i64>(*v)))?);
                 Ok(a)
             },
+            #[cfg(target_pointer_width = "64")]
             b'F' => unsafe {
                 let mut a: Array<Boxed> = std::mem::transmute(self);
                 for_0!(a; [v] = scalar::boxed(arena, Array::scalar(std::mem::transmute::<_, OrderedFloat<f64>>(*v)))?);
                 Ok(a)
             },
-            b'C' => unsafe {
-                Array::try_alloc_iter(
-                    self.rank(),
-                    self.list().iter().map(|n| scalar::boxed(arena, Array::scalar(*n))),
-                )
-            },
-            b'B' => unsafe {
-                Array::try_alloc_iter(
-                    self.rank(),
-                    self.list().iter().map(|n| scalar::boxed(arena, Array::scalar(*n))),
-                )
-            },
             b'X' => Ok(unsafe { std::mem::transmute(self) }),
-            _ => todo!(),
+            _ => unsafe {
+                Array::try_alloc_iter(
+                    self.rank(),
+                    self.list().iter().map(|n| scalar::boxed(arena, Array::scalar(*n))),
+                )
+            }
         }
     }
 }
