@@ -43,6 +43,20 @@ where
         };
         Ok(res)
     }
+    
+    #[inline(always)]
+    pub unsafe fn treat_as<U: Scalar>(self) -> Array<U> {
+        unsafe {
+            std::mem::transmute(self)
+        }
+    }
+
+    #[inline(always)]
+    pub unsafe fn treat_as_ref<U: Scalar>(&self) -> &Array<U> {
+        unsafe {
+            std::mem::transmute(self)
+        }
+    }
 }
 
 impl Castable for Array<i64> {

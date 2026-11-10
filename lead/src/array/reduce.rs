@@ -1,16 +1,16 @@
 use crate::array::arith;
-use crate::builtins::symbols::{self, Symbol};
-use crate::function::{Function, Opts};
+use crate::builtins::symbols::Symbol;
+use crate::function::{Function, Opts, function};
 use crate::types::Type;
 use crate::types::list::{Array, List};
-use crate::types::scalar::Scalar;
+use crate::types::scalar::{self, Boxed, Scalar};
 
 use crate::utils::error::{Status, err};
-use crate::utils::function::apply_loosem;
 use crate::utils::list::iter_ints;
 use crate::utils::symbols::*;
 
-use smallvec::SmallVec;
+use ordered_float::OrderedFloat;
+use smallvec::{SmallVec, smallvec};
 
 // SAFETY: Assumes both lists are booleans
 #[inline(always)]
@@ -122,14 +122,23 @@ pub fn reduce(f: &Function, a: Type, o: &Opts) -> Status<Type> {
                 (b'B', Symbol::Pipe) => return Ok(reduce_op_bools(a, |a, b| a || b, |n| n)),
                 (_, Symbol::Pipe) => return reduce_op!(a, arith::rem),
                 (_, Symbol::Comma) => return f.monadic_call(Type::List(a))?.to_list(),
+                (_, Symbol::LeftBracket) => return unsafe { Ok(a.sliced(0, 1, &[1])) },
+                (_, Symbol::RightBracket) => return unsafe { Ok(a.sliced(a.len() - 1, a.len(), &[1])) },
                 _ => {}
             }
+        }
+
+        if let Some(Symbol::RightBracket) = &f.s {
+            let rank = &a.rank()[0..a.dims() - 1];
+            let trailing = a.rank()[a.dims() - 1];
+            let size = a.len() / trailing;
+            return Ok(unsafe { a.sliced(size * (trailing - 1), size * trailing, rank) });
         }
 
         let tag = a.get_type();
         let mut items = a.ranked(a.dims() - 1)?.into_iter();
         let mut acc = items.next().unwrap();
-        
+
         // match general arithmetic operations
         match_symbol_general! {
             tag, f, items, acc;
@@ -140,6 +149,10 @@ pub fn reduce(f: &Function, a: Type, o: &Opts) -> Status<Type> {
             Symbol::Percent, arith::div::typed_op;
             Symbol::Pipe, arith::rem::typed_op
         };
+
+        if let Some(Symbol::LeftBracket) = &f.s {
+            return Ok(acc);
+        }
 
         let mut acc = Type::List(acc);
         for item in items {
@@ -263,4 +276,174 @@ pub fn reduce_groups(f: &Function, a: Type, b: Type, o: &Opts) -> Status<Type> {
         List::unranked(&o.a, 0, &[], cells)
     })
     .map(Type::from)
+}
+
+#[inline(always)]
+pub(crate) fn scan(f: &Function, a: Type, o: &Opts) -> Status<Type> {
+    if !a.is_list() {
+        std::hint::cold_path();
+        return err!(Domain);
+    } else if a.is_empty() || a.is_scalar() {
+        std::hint::cold_path();
+        return Ok(a);
+    }
+
+    let a = unsafe { a.to_list_unchecked() };
+    maybe_apply!([within] o, a, {
+        if a.is_scalar() {
+            std::hint::cold_path();
+            return Ok(a);
+        }
+
+        let runs = a.ranked(a.dims() - 1)?;
+        if runs.len() == 1 {
+            return Ok(runs.into_iter().next().unwrap());
+        }
+
+        let mut b = Vec::with_capacity(runs.len());
+        let mut runs = runs.into_iter();
+        b.push(runs.next().unwrap());
+        let mut boxit = false;
+        let mut r: SmallVec<[usize; 2]> = SmallVec::from_slice(b[0].rank());
+        for (i, run) in runs.enumerate() {
+            let res = f.dyadic_call(b[i].clone().into(), run.into())?.to_list()?;
+            if !boxit && (res.rank() != &*r || res.get_type() != b[0].get_type()) {
+                std::hint::cold_path();
+                boxit = true;
+            }
+            b.push(res);
+        }
+
+        if boxit {
+            unsafe {
+                Array::alloc_iter(
+                    &[b.len()],
+                    b.into_iter().map(|n| scalar::boxed(&o.a, n).unwrap()),
+                )
+            }
+        } else {
+            if b[0].is_scalar() {
+                r.clear();
+            }
+            r.push(b.len());
+            unsafe {
+                match b[0].get_type() {
+                    b'I' => Array::<i64>::alloc_iter(&r, b.iter().flat_map(|n| n.treat_as_ref().list().iter()).copied()),
+                    b'F' => Array::<OrderedFloat<f64>>::alloc_iter(&r, b.iter().flat_map(|n| n.treat_as_ref().list().iter()).copied()),
+                    b'C' => Array::<u8>::alloc_iter(&r, b.iter().flat_map(|n| n.treat_as_ref().list().iter()).copied()),
+                    b'B' => Array::<bool>::alloc_iter(&r, b.iter().flat_map(|n| n.treat_as_ref().list().iter()).copied()),
+                    b'X' => Array::<Boxed>::alloc_iter(&r, b.iter().flat_map(|n| n.treat_as_ref().list().iter()).copied()),
+                    _ => std::hint::unreachable_unchecked(),
+                }
+            }
+        }
+    }).map(Type::List)
+}
+
+#[inline(always)]
+pub(crate) fn table(f: &Function, a: Type, b: Type, o: &Opts) -> Status<Type> {
+    if !b.is_list() || !a.is_list() {
+        std::hint::cold_path();
+        return err!(Domain);
+    }
+
+    let a = unsafe { a.to_list_unchecked() };
+    let b = unsafe { b.to_list_unchecked() };
+    let rda = u8::max(u8::min(a.dims() as u8, o.rd[0]), 1) - 1;
+    let rdb = u8::max(u8::min(b.dims() as u8, o.rd[0]), 1) - 1;
+    let a = a.ranked(rda as usize)?;
+    let b = b.ranked(rdb as usize)?;
+
+    let size_a = a.len();
+    let size_b = b.len();
+
+    let mut boxit = false;
+    let mut v: Vec<Type> = Vec::with_capacity(a.len() * b.len());
+    let mut r: Option<SmallVec<[usize; 2]>> = None;
+    for a in a {
+        for b in b.iter() {
+            let res = f.dyadic_call(a.clone().into(), b.clone().into())?;
+            if !boxit && !res.is_list() {
+                std::hint::cold_path();
+                boxit = true;
+            } else if res.is_scalar() {
+                if r.is_none() {
+                    std::hint::cold_path();
+                    r = Some(smallvec![1]);
+                } else if !boxit && r.as_ref().unwrap().as_slice() != &[1] {
+                    std::hint::cold_path();
+                    boxit = true;
+                } else if !boxit
+                    && (unsafe { res.as_list_unchecked() }.get_type() == b'X'
+                        || unsafe { res.as_list_unchecked() }.get_type()
+                            != unsafe { v.last().unwrap().as_list_unchecked() }.get_type())
+                {
+                    std::hint::cold_path();
+                    boxit = true;
+                }
+            } else {
+                let l = unsafe { res.as_list_unchecked() };
+                if r.is_none() {
+                    std::hint::cold_path();
+                    r = Some(SmallVec::from_slice(l.rank()));
+                } else if !boxit && r.as_ref().unwrap().as_slice() != l.rank() {
+                    boxit = true;
+                }
+            }
+            v.push(res);
+        }
+    }
+
+    if boxit {
+        unsafe {
+            Array::alloc_iter(
+                &[size_a, size_b],
+                v.into_iter().map(|n| scalar::boxed_t(&o.a, n).unwrap()),
+            )
+            .map(Type::List)
+        }
+    } else {
+        let mut r = r.take().unwrap();
+        if r.len() == 1 && r[0] == 1 {
+            r.clear();
+        }
+        r.push(size_a);
+        r.push(size_b);
+        unsafe {
+            match v[0].as_list_unchecked().get_type() {
+                b'I' => Array::<i64>::alloc_iter(
+                    &r,
+                    v.iter()
+                        .flat_map(|n| n.as_list_unchecked().treat_as_ref().list().iter())
+                        .copied(),
+                ),
+                b'F' => Array::<OrderedFloat<f64>>::alloc_iter(
+                    &r,
+                    v.iter()
+                        .flat_map(|n| n.as_list_unchecked().treat_as_ref().list().iter())
+                        .copied(),
+                ),
+                b'C' => Array::<u8>::alloc_iter(
+                    &r,
+                    v.iter()
+                        .flat_map(|n| n.as_list_unchecked().treat_as_ref().list().iter())
+                        .copied(),
+                ),
+                b'B' => Array::<bool>::alloc_iter(
+                    &r,
+                    v.iter()
+                        .flat_map(|n| n.as_list_unchecked().treat_as_ref().list().iter())
+                        .copied(),
+                ),
+                b'X' => Array::<Boxed>::alloc_iter(
+                    &r,
+                    v.iter()
+                        .flat_map(|n| n.as_list_unchecked().treat_as_ref().list().iter())
+                        .copied(),
+                ),
+                _ => std::hint::unreachable_unchecked(),
+            }
+        }
+        .map(Type::List)
+    }
 }

@@ -67,6 +67,30 @@ impl List {
     }
 
     #[inline(always)]
+    pub unsafe fn treat_as<U: Scalar>(self) -> Array<U> {
+        match U::get_type() {
+            b'I' => unsafe { self.arrayi_unchecked().treat_as() },
+            b'F' => unsafe { self.arrayf_unchecked().treat_as() },
+            b'B' => unsafe { self.arrayb_unchecked().treat_as() },
+            b'C' => unsafe { self.arrayc_unchecked().treat_as() },
+            b'X' => unsafe { self.arrayx_unchecked().treat_as() },
+            _ => unsafe { hint::unreachable_unchecked() },
+        }
+    }
+
+    #[inline(always)]
+    pub unsafe fn treat_as_ref<U: Scalar>(&self) -> &Array<U> {
+        match U::get_type() {
+            b'I' => unsafe { self.as_arrayi_unchecked().treat_as_ref() },
+            b'F' => unsafe { self.as_arrayf_unchecked().treat_as_ref() },
+            b'B' => unsafe { self.as_arrayb_unchecked().treat_as_ref() },
+            b'C' => unsafe { self.as_arrayc_unchecked().treat_as_ref() },
+            b'X' => unsafe { self.as_arrayx_unchecked().treat_as_ref() },
+            _ => unsafe { hint::unreachable_unchecked() },
+        }
+    }
+
+    #[inline(always)]
     pub fn is_truthy(&self) -> bool {
         if self.is_empty() {
             return true;
@@ -93,7 +117,27 @@ impl List {
     }
 
     #[inline]
+    pub unsafe fn as_arrayi_unchecked(&self) -> &Array<i64> {
+        match self {
+            Self::Integers(a) => a,
+            _ => unsafe {
+                hint::unreachable_unchecked();
+            },
+        }
+    }
+
+    #[inline]
     pub unsafe fn arrayf_unchecked(self) -> Array<OrderedFloat<f64>> {
+        match self {
+            Self::Doubles(a) => a,
+            _ => unsafe {
+                hint::unreachable_unchecked();
+            },
+        }
+    }
+
+    #[inline]
+    pub unsafe fn as_arrayf_unchecked(&self) -> &Array<OrderedFloat<f64>> {
         match self {
             Self::Doubles(a) => a,
             _ => unsafe {
@@ -113,9 +157,49 @@ impl List {
     }
 
     #[inline]
+    pub unsafe fn as_arrayc_unchecked(&self) -> &Array<u8> {
+        match self {
+            Self::String(a) => a,
+            _ => unsafe {
+                hint::unreachable_unchecked();
+            },
+        }
+    }
+
+    #[inline]
     pub unsafe fn arrayb_unchecked(self) -> Array<bool> {
         match self {
             Self::Booleans(a) => a,
+            _ => unsafe {
+                hint::unreachable_unchecked();
+            },
+        }
+    }
+
+    #[inline]
+    pub unsafe fn as_arrayb_unchecked(&self) -> &Array<bool> {
+        match self {
+            Self::Booleans(a) => a,
+            _ => unsafe {
+                hint::unreachable_unchecked();
+            },
+        }
+    }
+
+    #[inline]
+    pub unsafe fn arrayx_unchecked(self) -> Array<Boxed> {
+        match self {
+            Self::Boxes(a) => a,
+            _ => unsafe {
+                hint::unreachable_unchecked();
+            },
+        }
+    }
+
+    #[inline]
+    pub unsafe fn as_arrayx_unchecked(&self) -> &Array<Boxed> {
+        match self {
+            Self::Boxes(a) => a,
             _ => unsafe {
                 hint::unreachable_unchecked();
             },
@@ -459,6 +543,11 @@ impl<T: Scalar> Array<T> {
     }
 
     #[inline(always)]
+    pub fn take_list(self) -> Scalars<T> {
+        self.dt
+    }
+
+    #[inline(always)]
     pub fn list_mut(&mut self) -> &mut [T] {
         self.dt.list_mut()
     }
@@ -535,15 +624,13 @@ impl<T: Scalar> Array<T> {
     where
         U: Iterator<Item = T>,
     {
-        unsafe {
-            Self::alloc_iter_inner(r, bucket).map(T::wrap)
-        }
+        unsafe { Self::alloc_iter_inner(r, bucket).map(T::wrap) }
     }
 
     // SAFETY: See above
     #[inline(always)]
     pub(crate) unsafe fn alloc_iter_inner<U>(r: &[usize], bucket: U) -> Status<Array<T>>
-    where 
+    where
         U: Iterator<Item = T>,
     {
         let count: usize = r.iter().product();
