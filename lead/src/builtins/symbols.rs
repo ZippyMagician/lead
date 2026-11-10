@@ -1118,8 +1118,8 @@ pub(crate) fn concat(mut al: List, mut bl: List, o: &Opts) -> Status<List> {
     }
 
     let boxit = al.get_type() != bl.get_type();
-    let box_a = boxit && bl.get_type() == b'X' && al.get_type() != b'X';
-    let box_b = boxit && al.get_type() == b'X' && bl.get_type() != b'X';
+    let box_a = boxit && al.get_type() != b'X';
+    let box_b = boxit && bl.get_type() != b'X';
 
     if box_a {
         al = List::Boxes(with_list!(al, |a| a.box_elems(&o.a)?));
