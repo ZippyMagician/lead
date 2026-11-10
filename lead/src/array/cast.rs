@@ -1,8 +1,10 @@
 use std::rc::Rc;
 
 use crate::types::list::{Array, List};
-use crate::types::scalar::{Boxed, Scalar};
+use crate::types::scalar::{self, Boxed, Scalar};
+use crate::utils::Arena;
 use crate::utils::error::{Status, err};
+use crate::utils::symbols::for_0;
 
 use ordered_float::OrderedFloat;
 
@@ -43,18 +45,44 @@ where
         };
         Ok(res)
     }
-    
+
     #[inline(always)]
     pub unsafe fn treat_as<U: Scalar>(self) -> Array<U> {
-        unsafe {
-            std::mem::transmute(self)
-        }
+        unsafe { std::mem::transmute(self) }
     }
 
     #[inline(always)]
     pub unsafe fn treat_as_ref<U: Scalar>(&self) -> &Array<U> {
-        unsafe {
-            std::mem::transmute(self)
+        unsafe { std::mem::transmute(self) }
+    }
+
+    #[inline(always)]
+    pub fn box_elems(self, arena: &Arena) -> Status<Array<Boxed>> {
+        match T::get_type() {
+            b'I' => unsafe {
+                let mut a: Array<Boxed> = std::mem::transmute(self);
+                for_0!(a; [v] = scalar::boxed(arena, Array::scalar(std::mem::transmute::<_, i64>(*v)))?);
+                Ok(a)
+            },
+            b'F' => unsafe {
+                let mut a: Array<Boxed> = std::mem::transmute(self);
+                for_0!(a; [v] = scalar::boxed(arena, Array::scalar(std::mem::transmute::<_, OrderedFloat<f64>>(*v)))?);
+                Ok(a)
+            },
+            b'C' => unsafe {
+                Array::try_alloc_iter(
+                    self.rank(),
+                    self.list().iter().map(|n| scalar::boxed(arena, Array::scalar(*n))),
+                )
+            },
+            b'B' => unsafe {
+                Array::try_alloc_iter(
+                    self.rank(),
+                    self.list().iter().map(|n| scalar::boxed(arena, Array::scalar(*n))),
+                )
+            },
+            b'X' => Ok(unsafe { std::mem::transmute(self) }),
+            _ => todo!(),
         }
     }
 }
