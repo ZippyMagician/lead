@@ -15,14 +15,13 @@ use crate::function::Opts;
 use crate::types::Type;
 use crate::types::list::{Array, INLINE_SIZE, List};
 use crate::types::scalar::{self, Boxed, Scalar};
-use crate::utils::error::{Error, Status, err};
+use crate::utils::error::{Status, err};
 use crate::utils::function::*;
 use crate::utils::list::*;
 use crate::utils::symbols::*;
 
 use List::*;
 
-use ecow::{EcoVec, eco_vec};
 use num_traits::{AsPrimitive, Zero};
 use ordered_float::{Float as OrderFloat, OrderedFloat};
 use smallvec::{SmallVec, smallvec};
@@ -300,24 +299,49 @@ pub(super) fn reciprocal(a: List, o: &Opts) -> Status<List> {
         }
         Booleans(b) => {
             let ranks = b.ranked(1)?;
+            match b.rank()[0] {
+                0..=8 => {
+                    let mut rank: SmallVec<[usize; 2]> = b.rank().iter().skip(1).copied().collect();
+                    if rank.is_empty() {
+                        rank.push(1);
+                    }
+                    let count = ranks.len();
 
-            let rank: SmallVec<[usize; 2]> =
-                b.rank().iter().skip(1).copied().chain(std::iter::once(1)).collect();
-            let count = ranks.len();
+                    let rc: Rc<[u8]> = ranks
+                        .iter()
+                        .map(|a| {
+                            let len = a.len() - 1;
+                            a.list()
+                                .iter()
+                                .enumerate()
+                                .fold(0u8, |acc, (i, &b)| acc | ((b as u8) << (len - i)))
+                        })
+                        .take(count)
+                        .collect();
+                    Ok(List::String(Array::<u8>::new(rc, rank.len(), rank)))
+                }
+                9..=64 => {
+                    let mut rank: SmallVec<[usize; 2]> = b.rank().iter().skip(1).copied().collect();
+                    if rank.is_empty() {
+                        rank.push(1);
+                    }
+                    let count = ranks.len();
 
-            let rc: Rc<[u8]> = ranks
-                .iter()
-                .flat_map(|a| {
-                    a.list().chunks(8).map(|b| {
-                        let len = b.len() - 1;
-                        b.iter()
-                            .enumerate()
-                            .fold(0u8, |acc, (i, &b)| acc | ((b as u8) << (len - i)))
-                    })
-                })
-                .take(count)
-                .collect();
-            Ok(List::String(Array::<u8>::new(rc, count, rank)))
+                    let rc: Rc<[i64]> = ranks
+                        .iter()
+                        .map(|a| {
+                            let len = a.len() - 1;
+                            a.list()
+                                .iter()
+                                .enumerate()
+                                .fold(0i64, |acc, (i, &b)| acc | ((b as u8 as i64) << (len - i)))
+                        })
+                        .take(count)
+                        .collect();
+                    Ok(List::Integers(Array::new(rc, rank.len(), rank)))
+                }
+                _ => err!(Domain),
+            }
         }
         String(s) => {
             let mut l = s.cast_f64().unwrap();
@@ -705,7 +729,7 @@ macro_rules! calc_shape {
         iter_floats!($a, |r| {
             // Check for interpreted rank values
             let mut rank: SmallVec<[usize; $crate::types::list::INLINE_SIZE]> =
-                SmallVec::with_capacity(r.len());
+                SmallVec::with_capacity($a.len());
             let mut prod = 1;
             let mut i = None;
             for (j, r) in r.enumerate() {
