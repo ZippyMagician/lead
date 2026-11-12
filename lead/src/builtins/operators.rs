@@ -5,14 +5,14 @@ use crate::builtins::symbols::Symbol;
 use crate::function::{Function, Opts, function};
 use crate::scope::Scope;
 use crate::types::Type;
-use crate::types::list::List;
-use crate::types::scalar::Scalar;
+use crate::types::list::{Array, List};
+use crate::types::scalar::{self, Scalar};
 use crate::utils::Arena;
 use crate::utils::error::{Status, err};
 use crate::utils::list::iter_ints;
 use crate::utils::symbols::{for_0, maybe_apply, with_eco};
 
-use smallvec::SmallVec;
+use smallvec::{SmallVec, smallvec};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[repr(C)]
@@ -274,17 +274,13 @@ pub(crate) fn eachatom(f: Type, a: Arena, s: Scope) -> Status<Function> {
         }
     }; a, s))
 }
-
+*/
 #[inline]
 pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Function> {
     let f = l.to_function(a.clone(), s.clone())?;
 
     if r.is_scalar() {
-        let count = if r.is_scalar_strict() {
-            unsafe { r.to_scalar_unchecked() }.to_num()?
-        } else {
-            unsafe { r.to_list_unchecked() }.list()[0].to_num()?
-        };
+        let count = iter_ints!(unsafe { r.to_list_unchecked() }, |it| it.next().unwrap());
         Ok(function!(99, [99, 99], true, true, move |mut a, b, o| {
             let mut f = f.clone();
             if let Some(mut b) = b {
@@ -306,11 +302,7 @@ pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Funct
             }
         }; a, s))
     } else if r.is_list() {
-        let counts = unsafe { r.to_list_unchecked() }
-            .list()
-            .into_iter()
-            .map(|n| n.to_num())
-            .collect::<Status<Vec<i64>>>()?;
+        let counts = iter_ints!(unsafe { r.to_list_unchecked() }, |it| it.collect::<Vec<i64>>());
         Ok(function!(99, [99, 99], true, true, move |a, b, o| {
             let mut f = f.clone();
             if let Some(b) = b {
@@ -323,11 +315,11 @@ pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Funct
                         for _ in 0..count {
                             b = f.dyadic_call(a.clone(), b)?;
                         }
-                        v.push(Scalar::boxed_t(&o.a, b)?);
+                        v.push(scalar::boxed_t(&o.a, b)?);
                     }
                     Ok(())
                 })?;
-                List::from_vec(v).map(Type::List)
+                Ok(Type::List(List::Boxes(Array::new(v, 1, smallvec![counts.len()]))))
             } else {
                 if o.rm != 99 {
                     f.apply_rm(o.rm);
@@ -338,11 +330,11 @@ pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Funct
                         for _ in 0..count {
                             a = f.monadic_call(a)?;
                         }
-                        v.push(Scalar::boxed_t(&o.a, a)?);
+                        v.push(scalar::boxed_t(&o.a, a)?);
                     }
                     Ok(())
                 })?;
-                List::from_vec(v).map(Type::List)
+                Ok(Type::List(List::Boxes(Array::new(v, 1, smallvec![counts.len()]))))
             }
         }; a, s))
     } else if r.is_function() {
@@ -356,7 +348,7 @@ pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Funct
                 }
                 loop {
                     let list = cond.monadic_call(p.clone())?.to_list()?;
-                    if list.is_empty() || list.list()[0].to_bool()? {
+                    if list.is_truthy() {
                         break;
                     }
                     p = f.dyadic_call(p, b.clone())?;
@@ -371,7 +363,7 @@ pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Funct
                     p = a.clone();
                     a = f.monadic_call(a)?;
                     let list = cond.dyadic_call(p, a.clone())?.to_list()?;
-                    if list.is_empty() || list.list()[0].to_bool()? {
+                    if list.is_truthy() {
                         break;
                     }
                 }
@@ -382,4 +374,3 @@ pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Funct
         err!(Domain)
     }
 }
-*/
