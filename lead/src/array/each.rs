@@ -223,7 +223,7 @@ pub fn reduce_op_bools(a: List, f: impl Fn(bool, bool) -> bool, c: impl Fn(bool)
     let mut acc = bools[0];
 
     let mut i = 1;
-    while !c(acc) {
+    while i < bools.len() && !c(acc) {
         acc = f(acc, bools[i]);
         i += 1;
     }
