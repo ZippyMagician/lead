@@ -528,6 +528,11 @@ impl<T: Scalar> Array<T> {
     }
 
     #[inline]
+    pub fn get_fill() -> Status<T> {
+        T::get_fill()
+    }
+
+    #[inline]
     pub fn mat_ref(data: &[T], ds: usize, rk: &[usize]) -> List {
         T::wrap(Self { dt: data.into(), ds, rk: rk.into() })
     }

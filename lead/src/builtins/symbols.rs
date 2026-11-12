@@ -1345,11 +1345,26 @@ pub(crate) fn replicate(a: List, b: List, o: &Opts) -> Status<List> {
     })
 }
 
-/*
 // leftcurlym | { | 0 | Increment
-pub(crate) fn inc(mut a: List, o: &Opts) -> Status<List> {
-    for_0!(a; [v] = v.add(1)?);
-    Ok(a)
+pub(crate) fn inc(a: List, o: &Opts) -> Status<List> {
+    match a {
+        Integers(mut l) => {
+            for_0!(l; [v] = *v + 1);
+            Ok(Integers(l))
+        }
+        Doubles(mut l) => {
+            for_0!(l; [v] = *v + 1.);
+            Ok(Doubles(l))
+        }
+        Booleans(b) => unsafe {
+            Array::alloc_iter(b.rank(), b.list().into_iter().map(|b| b.to_num().unwrap() + 1))
+        },
+        String(mut s) => {
+            for_0!(s; [v] = *v + 1);
+            Ok(String(s))
+        }
+        Boxes(b) => err!(Box),
+    }
 }
 
 // leftcurlyd | { | 1, 99 | Take
@@ -1358,14 +1373,10 @@ pub(crate) fn take(a: List, b: List, o: &Opts) -> Status<List> {
         return err!(Domain);
     }
     maybe_apply!(o.rd[0] as usize >= a.dims() && o.rd[1] as usize >= b.dims(), &o.a, a, b, o.rd, {
-        let indices = a
-            .list()
-            .iter()
-            .map(|n| n.to_num().map(|n| n as usize))
-            .collect::<Status<Vec<usize>>>()?;
+        let indices = iter_ints!(a, |it| it
+            .map(|n| if n >= 0 { Ok(n as usize) } else { err!(Domain) })
+            .collect::<Status<Vec<usize>>>())?;
         let rank = b.rank();
-        let bucket = b.list();
-        let fill = bucket[0].get_fill()?;
 
         if indices.len() == 1 {
             let size = indices[0];
@@ -1373,14 +1384,17 @@ pub(crate) fn take(a: List, b: List, o: &Opts) -> Status<List> {
             if size <= count {
                 return b.with_rank(&[size]);
             } else {
-                let v = with_eco(count, |v| {
-                    v.extend(b.list());
-                    for _ in 0..size - count {
-                        v.push(fill);
-                    }
-                    Ok(())
-                })?;
-                return List::from_vec(v);
+                with_list!(&b, |b| {
+                    let fill = Array::get_fill()?;
+                    let v = with_eco(count, |v| {
+                        v.extend(b.list());
+                        for _ in 0..size - count {
+                            v.push(fill);
+                        }
+                        Ok(())
+                    })?;
+                    return Ok(List::from(Array::new(v, rank.len(), SmallVec::from_slice(rank))));
+                })
             }
         }
 
@@ -1394,61 +1408,79 @@ pub(crate) fn take(a: List, b: List, o: &Opts) -> Status<List> {
         let total = indices.iter().product::<usize>() as usize;
         let min = usize::min(indices.len(), rank.len());
 
-        let v = with_eco(total, |v| {
-            for i in 0..total {
-                let mut idx: SmallVec<[usize; 3]> = SmallVec::with_capacity(indices.len());
-                let mut k = i;
-                for j in 0..indices.len() {
-                    idx.push(k % indices[j]);
-                    k /= indices[j];
-                }
-
-                let mut j = 0;
-                let mut within = true;
-                for k in 0..min {
-                    if idx[k] >= rank[k] {
-                        within = false;
-                        break;
+        with_list!(&b, |b| {
+            let bucket = b.list();
+            let fill = Array::get_fill()?;
+            let v = with_eco(total, |v| {
+                for i in 0..total {
+                    let mut idx: SmallVec<[usize; 3]> = SmallVec::with_capacity(indices.len());
+                    let mut k = i;
+                    for j in 0..indices.len() {
+                        idx.push(k % indices[j]);
+                        k /= indices[j];
                     }
-                    j += sizes[k] * idx[k];
-                }
-                if min < indices.len() {
-                    for j in min..indices.len() {
-                        if idx[j] != 0 {
+
+                    let mut j = 0;
+                    let mut within = true;
+                    for k in 0..min {
+                        if idx[k] >= rank[k] {
                             within = false;
                             break;
                         }
+                        j += sizes[k] * idx[k];
                     }
+                    if min < indices.len() {
+                        for j in min..indices.len() {
+                            if idx[j] != 0 {
+                                within = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    v.push(if within { bucket[j] } else { fill });
                 }
+                Ok(())
+            })?;
 
-                v.push(if within { bucket[j] } else { fill });
-            }
-            Ok(())
-        })?;
-
-        List::mat(v, indices.len(), indices.into())
+            Ok(List::from(Array::new(v, indices.len(), indices.into())))
+        })
     })
 }
 
 // rightcurlym | } | 0 | Decrement
-pub(crate) fn dec(mut a: List, o: &Opts) -> Status<List> {
-    for_0!(a; [v] = v.sub(1)?);
-    Ok(a)
+pub(crate) fn dec(a: List, o: &Opts) -> Status<List> {
+    match a {
+        Integers(mut l) => {
+            for_0!(l; [v] = *v - 1);
+            Ok(Integers(l))
+        }
+        Doubles(mut l) => {
+            for_0!(l; [v] = *v - 1.);
+            Ok(Doubles(l))
+        }
+        Booleans(b) => unsafe {
+            Array::alloc_iter(b.rank(), b.list().into_iter().map(|b| b.to_num().unwrap() + 1))
+        },
+        String(mut s) => {
+            for_0!(s; [v] = if *v == 0 { return err!(NaN) } else { *v - 1 });
+            Ok(String(s))
+        }
+        Boxes(b) => err!(Box),
+    }
 }
 
 // rightcurlyd | } | 1, 99 | Drop
 pub(crate) fn drop(a: List, b: List, o: &Opts) -> Status<List> {
-    let nums = a.list().iter().map(|n| n.to_num()).collect::<Status<Vec<i64>>>()?;
+    let nums = iter_ints!(a, |it| it.collect::<Vec<i64>>());
     let mut rank: SmallVec<[usize; INLINE_SIZE]> = SmallVec::from_slice(b.rank());
-    let sizes = [1]
-        .into_iter()
+    let sizes = std::iter::once(1)
         .chain(rank.iter().scan(1, |acc, x| {
             *acc = *acc * *x;
             Some(*acc)
         }))
         .collect::<Vec<usize>>();
     let dims = b.dims();
-    let values = b.list();
 
     if nums.len() > usize::max(dims, 1) {
         cold_path();
@@ -1462,12 +1494,12 @@ pub(crate) fn drop(a: List, b: List, o: &Opts) -> Status<List> {
     }
 
     let size = rank.iter().product::<usize>();
-    if size > values.len() {
+    if size > b.len() {
         return Ok(List::empty());
     }
 
     let mut start = 0;
-    let mut end = values.len();
+    let mut end = b.len();
 
     let ignore_last = dropped.len() == dims;
     if dims > 1 {
@@ -1497,13 +1529,15 @@ pub(crate) fn drop(a: List, b: List, o: &Opts) -> Status<List> {
         }
     }
 
-    let bucket = with_eco(size, |bucket| {
-        for (start, end) in indices {
-            bucket.extend(&values[start..end]);
-        }
-        Ok(())
-    })?;
+    with_list!(b, |b| {
+        let values = b.list();
+        let bucket = with_eco(size, |bucket| {
+            for (start, end) in indices {
+                bucket.extend(&values[start..end]);
+            }
+            Ok(())
+        })?;
 
-    List::mat(bucket, rank.len(), rank)
+        Ok(List::from(Array::new(bucket, rank.len(), rank)))
+    })
 }
-*/
