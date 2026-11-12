@@ -1271,25 +1271,31 @@ pub(crate) fn table(a: List, b: List, o: &Opts) -> Status<List> {
     }
 }
 
-/*
 // hashtagm | # | 99 | Tally
 pub(crate) fn tally(a: Type, o: &Opts) -> Status<Type> {
     if a.is_empty() {
         cold_path();
-        return Ok(Scalar::Number(0).into());
+        return Ok(Array::scalar(0i64).into());
     }
 
     if let Ok(m) = a.as_map() {
-        return Ok(Scalar::Number(m.internal.len() as i64).into());
+        return Ok(Array::scalar(m.internal.len() as i64).into());
     }
 
     let mut a = unsafe { a.to_list_unchecked() };
     if o.rm as usize >= a.dims() {
-        Ok(Scalar::Number(unsafe { *a.rank().last().unwrap_unchecked() } as i64).into())
+        Ok(Array::scalar(unsafe { *a.rank().last().unwrap_unchecked() } as i64).into())
     } else {
-        let (windows, r) = applym(&mut a, o.rm);
-        let v = eco_vec![Scalar::Number(*r.last().unwrap_or(&1) as i64); windows.len()];
-        List::from_vec(v).map(Type::from)
+        unsafe {
+            Array::alloc_iter(
+                &a.rank()[o.rm as usize..],
+                std::iter::repeat_n(
+                    i64::max(1, a.rank()[..o.rm as usize].iter().product::<usize>() as i64),
+                    a.rank()[o.rm as usize..].iter().product(),
+                ),
+            )
+            .map(Type::List)
+        }
     }
 }
 
@@ -1300,11 +1306,9 @@ pub(crate) fn replicate(a: List, b: List, o: &Opts) -> Status<List> {
     }
 
     apply_loosed(&o.a, a, b, o.rd, |a, b| {
-        let mut counts = b
-            .list()
-            .iter()
-            .map(|n| n.to_num().and_then(|x| if x >= 0 { Ok(x) } else { err!(Domain) }))
-            .collect::<Status<Vec<i64>>>()?;
+        let mut counts = iter_ints!(b, |it| it
+            .map(|n| if n >= 0 { Ok(n) } else { err!(Domain) })
+            .collect::<Status<Vec<i64>>>())?;
         let size: usize = a.rank()[0..a.dims() - 1].iter().chain(&[1]).product();
 
         let iters = a.len() / size;
@@ -1324,21 +1328,24 @@ pub(crate) fn replicate(a: List, b: List, o: &Opts) -> Status<List> {
 
         let total = counts.iter().sum::<i64>() as usize;
         let mut tallies = counts.into_iter();
-        let v = with_eco(total * size, |v| {
-            for window in a.list().chunks_exact(size) {
-                for _ in 0..tallies.next().unwrap() {
-                    v.extend(window);
+        with_list!(a, |a| {
+            let v = with_eco(total * size, |v| {
+                for window in a.list().chunks_exact(size) {
+                    for _ in 0..tallies.next().unwrap() {
+                        v.extend(window);
+                    }
                 }
-            }
-            Ok(())
-        })?;
+                Ok(())
+            })?;
 
-        let mut r = SmallVec::from(&a.rank()[0..a.dims() - 1]);
-        r.push(total);
-        List::mat(v, r.len(), r)
+            let mut r = SmallVec::from(&a.rank()[..a.dims() - 1]);
+            r.push(total);
+            Ok(List::from(Array::new(v, r.len(), r)))
+        })
     })
 }
 
+/*
 // leftcurlym | { | 0 | Increment
 pub(crate) fn inc(mut a: List, o: &Opts) -> Status<List> {
     for_0!(a; [v] = v.add(1)?);
