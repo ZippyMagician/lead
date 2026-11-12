@@ -1282,7 +1282,7 @@ pub(crate) fn tally(a: Type, o: &Opts) -> Status<Type> {
         return Ok(Array::scalar(m.internal.len() as i64).into());
     }
 
-    let mut a = unsafe { a.to_list_unchecked() };
+    let a = unsafe { a.to_list_unchecked() };
     if o.rm as usize >= a.dims() {
         Ok(Array::scalar(unsafe { *a.rank().last().unwrap_unchecked() } as i64).into())
     } else {

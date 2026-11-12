@@ -394,8 +394,8 @@ create_op_generic!(
 
 create_op_generic!(
     rem,
-    |a, b| { Ok(I(a.rem(b))) },
-    { Ok(F(a.rem(b))) },
+    |a, b| Ok(I(a.rem(b))),
+    Ok(F(a.rem(b))),
     {
         if b == 0 {
             std::hint::cold_path();

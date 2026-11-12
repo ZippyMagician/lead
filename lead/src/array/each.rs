@@ -1,6 +1,6 @@
 use crate::array::arith;
 use crate::builtins::symbols::Symbol;
-use crate::function::{Function, Opts, function};
+use crate::function::{Function, Opts};
 use crate::types::Type;
 use crate::types::list::{Array, List};
 use crate::types::scalar::{self, Boxed, Scalar};

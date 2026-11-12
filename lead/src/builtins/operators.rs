@@ -1,8 +1,5 @@
-use std::ops::*;
-
 use crate::array::each;
-use crate::builtins::symbols::Symbol;
-use crate::function::{Function, Opts, function};
+use crate::function::{Function, function};
 use crate::scope::Scope;
 use crate::types::Type;
 use crate::types::list::{Array, List};
@@ -10,9 +7,9 @@ use crate::types::scalar::{self, Scalar};
 use crate::utils::Arena;
 use crate::utils::error::{Status, err};
 use crate::utils::list::iter_ints;
-use crate::utils::symbols::{for_0, maybe_apply, with_eco};
+use crate::utils::symbols::with_eco;
 
-use smallvec::{SmallVec, smallvec};
+use smallvec::smallvec;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[repr(C)]

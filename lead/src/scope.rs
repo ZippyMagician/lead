@@ -2,11 +2,9 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-#[allow(unused_imports)]
-use crate::function::{Function, function};
+use crate::function::Function;
 use crate::types::Type;
-use crate::types::list::{Array, List};
-use crate::types::scalar::{Boxed, Scalar};
+use crate::types::list::List;
 use crate::utils::Arena;
 use crate::utils::error::{Error, Status, err};
 
