@@ -447,3 +447,119 @@ pub(crate) fn table(f: &Function, a: Type, b: Type, o: &Opts) -> Status<Type> {
         .map(Type::List)
     }
 }
+
+#[inline(always)]
+pub fn each_atom_monad(f: &Function, a: Type, o: &Opts) -> Status<Type> {
+    if let Type::Map(m) = &a {
+        std::hint::cold_path();
+        let key_values = m.key_values(&o.a)?;
+        let mut f = f.clone();
+        f.apply_rm(1);
+        return f.monadic_call(Type::List(key_values));
+    }
+
+    let Ok(a) = a.to_list() else {
+        return err!(Domain);
+    };
+
+    if a.get_type() == b'X' {
+        maybe_apply!([scalar] o, a, {
+            let a = unsafe { a.treat_as::<Boxed>() };
+            let trailing = a.rank();
+            if f.s.is_some() {
+                let mut v = Vec::with_capacity(a.len());
+                for_0!(a; [a] {
+                    v.push(f.monadic_call(unsafe { a.read() })?.to_list().unwrap());
+                });
+
+                // all primitive symbols will yield the same type across a list
+                unsafe { List::unranked_unchecked(trailing, v) }
+            } else {
+                let mut v = Vec::with_capacity(a.len());
+                for_0!(a; [a] {
+                    v.push(f.monadic_call(unsafe { a.read() })?);
+                });
+
+                if v.iter().any(|n| !n.is_list()) {
+                    unsafe {
+                        Array::try_alloc_iter(
+                            trailing,
+                            v.into_iter().map(|t| scalar::boxed_t(&o.a, t)),
+                        ).map(List::Boxes)
+                    }
+                } else {
+                    let v = v.into_iter().map(|n| unsafe { n.to_list_unchecked() }).collect();
+                    List::unranked(&o.a, a.dims(), trailing, v)
+                }
+            }
+        })
+        .map(Type::List)
+    } else {
+        let mut f = f.clone();
+        f.apply_rm(0);
+        f.monadic_call(Type::List(a))
+    }
+}
+
+#[inline(always)]
+pub fn each_atom_dyad(f: &Function, a: Type, b: Type, o: &Opts) -> Status<Type> {
+    let Ok(a) = a.to_list() else {
+        return err!(Domain);
+    };
+    let Ok(b) = b.to_list() else {
+        return err!(Domain);
+    };
+
+    // SAFETY: Types are checked when necessary
+    maybe_apply!([scalar] o, a, b, unsafe {
+        if a.is_empty() {
+            return Ok(b);
+        } else if b.is_empty() {
+            return Ok(a);
+        }
+
+        let a_maps = a.len() > b.len();
+        if a_maps && a.len() % b.len() != 0
+            || !a_maps && b.len() % a.len() != 0
+        {
+            return err!(Domain);
+        }
+
+        let trailing;
+        let size;
+        if a_maps {
+            trailing = a.rank();
+            size = a.len();
+        } else {
+            trailing = b.rank();
+            size = b.len();
+        }
+
+        let mut v = Vec::with_capacity(size);
+        if a.get_type() == b'X' && b.get_type() == b'X' {
+            for (a, b) in a.listx_unchecked().iter().cycle().zip(b.listx_unchecked().iter().cycle()).take(size) {
+                let a = a.read();
+                let b = b.read();
+                v.push(f.dyadic_call(a, b)?.to_list()?);
+            }
+        } else if a.get_type() == b'X' {
+            for (a, b) in a.listx_unchecked().iter().cycle().zip(b.ranked(0)?.into_iter().cycle()).take(size) {
+                let a = a.read();
+                let b = Type::List(b);
+                v.push(f.dyadic_call(a, b)?.to_list()?);
+            }
+        } else if b.get_type() == b'X' {
+            for (a, b) in a.ranked(0)?.into_iter().cycle().zip(b.listx_unchecked().iter().cycle()).take(size) {
+                let a = Type::List(a);
+                let b = b.read();
+                v.push(f.dyadic_call(a, b)?.to_list()?);
+            }
+        } else {
+            let mut f = f.clone();
+            f.apply_rd([0, 0]);
+            return f.dyadic_call(Type::List(a), Type::List(b))?.to_list();
+        }
+        List::unranked(&o.a, trailing.len(), trailing, v)
+    })
+    .map(Type::List)
+}

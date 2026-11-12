@@ -9,7 +9,7 @@ use crate::array::arith::*;
 use crate::array::cast::Castable;
 use crate::array::manip;
 use crate::array::ord;
-use crate::array::reduce;
+use crate::array::each;
 
 use crate::function::Opts;
 use crate::types::Type;
@@ -146,7 +146,7 @@ pub(super) fn abssum(a: List, b: List, o: &Opts) -> Status<List> {
         cold_path();
         Ok(a)
     } else if a.get_type() == b'B' && b.get_type() == b'B' {
-        maybe_apply!([scalar] o, a, b, unsafe { reduce::scalar_xor(a, b) })
+        maybe_apply!([scalar] o, a, b, unsafe { each::scalar_xor(a, b) })
     } else {
         maybe_apply!([scalar] o, a, b, wrapping_add::generic_op(a, b))
     }
@@ -279,7 +279,7 @@ pub(super) fn mul(a: List, b: List, o: &Opts) -> Status<List> {
         cold_path();
         Ok(a)
     } else if a.get_type() == b'B' && b.get_type() == b'B' {
-        maybe_apply!([scalar] o, a, b, unsafe { reduce::scalar_and(a, b) })
+        maybe_apply!([scalar] o, a, b, unsafe { each::scalar_and(a, b) })
     } else {
         maybe_apply!([scalar] o, a, b, mul::generic_op(a, b))
     }
@@ -393,7 +393,7 @@ pub(super) fn residue(a: List, b: List, o: &Opts) -> Status<List> {
         cold_path();
         Ok(a)
     } else if a.get_type() == b'B' && b.get_type() == b'B' {
-        maybe_apply!([scalar] o, a, b, unsafe { reduce::scalar_or(a, b) })
+        maybe_apply!([scalar] o, a, b, unsafe { each::scalar_or(a, b) })
     } else {
         maybe_apply!([scalar] o, a, b, rem::generic_op(b, a))
     }

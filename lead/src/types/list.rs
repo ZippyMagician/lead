@@ -402,7 +402,7 @@ impl List {
     // Assumes lists have already been checked to match
     // Generic version of `Array::<T>::unranked_unchecked`
     #[inline]
-    pub fn unranked_unchecked(trailing_rank: &[usize], lists: Vec<List>) -> Status<List> {
+    pub unsafe fn unranked_unchecked(trailing_rank: &[usize], lists: Vec<List>) -> Status<List> {
         if lists.is_empty() {
             return Ok(List::Integers(Array::empty()));
         } else if lists.len() == 1 {

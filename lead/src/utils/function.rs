@@ -115,7 +115,7 @@ where
             )?
         })
     } else {
-        List::unranked_unchecked(&from.1[from.2..], values)?
+        unsafe { List::unranked_unchecked(&from.1[from.2..], values)? }
     };
     drop(a);
     drop(b);

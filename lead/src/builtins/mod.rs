@@ -134,7 +134,7 @@ define_op! {
     Fold => (b"/", true, operators::fold);
     ScanTable => (b"\\", true, operators::scan_table);
     TieCommute => (b"`", true, operators::tie_commute);
-/*  Each => (b"\"", true, operators::each);
-    EachAtom => (b"\":", true, operators::eachatom);*/
+    Each => (b"\"", true, operators::each);
+    EachAtom => (b"\":", true, operators::eachatom);
     RepeatUntil => (b"\".", false, operators::repeat_until);
 }
