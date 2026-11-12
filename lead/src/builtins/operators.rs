@@ -1,16 +1,15 @@
-use std::ops::*;
-
-use crate::builtins::symbols::Symbol;
-use crate::function::{Function, Opts, function};
+use crate::array::each;
+use crate::function::{Function, function};
 use crate::scope::Scope;
 use crate::types::Type;
-use crate::types::list::List;
-use crate::types::scalar::Scalar;
+use crate::types::list::{Array, List};
+use crate::types::scalar::{self, Scalar};
 use crate::utils::Arena;
 use crate::utils::error::{Status, err};
-use crate::utils::symbols::{for_0, maybe_apply, with_eco};
+use crate::utils::list::iter_ints;
+use crate::utils::symbols::with_eco;
 
-use smallvec::SmallVec;
+use smallvec::smallvec;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[repr(C)]
@@ -111,22 +110,34 @@ pub(crate) fn over_rank(l: Type, r: Type, arena: Arena, scope: Scope) -> Status<
         if r.is_empty() || r.len() > 2 {
             return err!(Domain);
         } else if r.is_scalar() {
-            let mut n = r.list()[0].to_num()?;
+            let mut n = iter_ints!(r, |it| it.next().unwrap());
             if n > 99 {
                 n = 99
             }
+            if n < 0 {
+                return err!(Domain);
+            }
             l.apply_rm(n as u8);
             l.apply_rd([n as u8, n as u8]);
-        } else {
-            let mut a = r.list()[0].to_num()?;
-            let mut b = r.list()[1].to_num()?;
+        } else if r.len() == 2 {
+            let mut a;
+            let mut b;
+            iter_ints!(r, |it| {
+                a = it.next().unwrap();
+                b = it.next().unwrap();
+            });
             if a > 99 {
                 a = 99
             }
             if b > 99 {
                 b = 99
             }
+            if a < 0 || b < 0 {
+                return err!(Domain);
+            }
             l.apply_rd([a as u8, b as u8]);
+        } else {
+            return err!(Domain);
         }
         Ok(l)
     } else {
@@ -145,151 +156,12 @@ pub(crate) fn over_rank(l: Type, r: Type, arena: Arena, scope: Scope) -> Status<
 #[inline]
 pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
     let f = f.to_function(a.clone(), s.clone())?;
-    let fr = f.clone();
-    let monad = move |a: Type, o: &Opts| {
-        let a = a.to_list()?;
-        if a.is_empty() {
-            std::hint::cold_path();
-            return Ok(a.into());
-        }
-
-        maybe_apply!([within] o, a, {
-            if a.is_scalar() {
-                std::hint::cold_path();
-                return Ok(a);
-            }
-
-            if o.rm == 1 && a.dims() == 1 {
-                if let Some(s) = &f.s {
-                    let list = a.list();
-                    let mut acc = list[0];
-                    match s {
-                        Symbol::Plus => {
-                            for n in list.iter().skip(1) {
-                                acc = acc.add(*n)?;
-                            }
-                            return Ok(List::scalar(acc));
-                        }
-                        Symbol::Dash => {
-                            let mut acc = list[0];
-                            for n in list.iter().skip(1) {
-                                acc = acc.sub(*n)?;
-                            }
-                            return Ok(List::scalar(acc));
-                        }
-                        Symbol::Star => {
-                            let mut acc = list[0];
-                            if acc.is_bool() {
-                                for n in list.iter().skip(1) {
-                                    if !unsafe { acc.to_bool_unchecked() } {
-                                        break;
-                                    }
-                                    acc = Scalar::Boolean(
-                                        unsafe { acc.to_bool_unchecked() }
-                                            && unsafe { n.to_bool_unchecked() },
-                                    );
-                                }
-                            } else {
-                                for n in list.iter().skip(1) {
-                                    acc = acc.mul(*n)?;
-                                }
-                            }
-                            return Ok(List::scalar(acc));
-                        }
-                        Symbol::Percent => {
-                            let mut acc = list[0];
-                            for n in list.iter().skip(1) {
-                                acc = acc.div(*n)?;
-                            }
-                            return Ok(List::scalar(acc));
-                        }
-                        Symbol::Pipe => {
-                            let mut acc = list[0];
-                            if acc.is_bool() {
-                                for n in list.iter().skip(1) {
-                                    if unsafe { acc.to_bool_unchecked() } {
-                                        break;
-                                    }
-                                    acc = Scalar::Boolean(
-                                        unsafe { acc.to_bool_unchecked() }
-                                            || unsafe { n.to_bool_unchecked() },
-                                    );
-                                }
-                            } else {
-                                for n in list.iter().skip(1) {
-                                    acc = acc.rem(*n)?;
-                                }
-                            }
-                            return Ok(List::scalar(acc));
-                        }
-                        _ => {}
-                    }
-                }
-                let items = a.list();
-                let mut acc = Type::Scalar(items[0]);
-                for item in items.iter().skip(1) {
-                    acc = f.dyadic_call(acc, Type::Scalar(*item))?;
-                }
-                return acc.to_list();
-            }
-
-            let d = a.dims();
-            let mut items = a.ranked(d - 1)?.into_iter();
-            let mut acc = Type::from(items.next().unwrap());
-            for item in items {
-                acc = f.dyadic_call(acc, Type::from(item))?;
-            }
-            acc.to_list()
-        })
-    };
-    let f = fr;
-
-    let dyad = move |a: Type, b: Type, o: &Opts| {
-        let a = a.to_list()?;
-        let b = b.to_list()?;
-        maybe_apply!([within] o, a, b, {
-            if b.is_scalar() {
-                return Ok(List::scalar(b.list()[0]));
-            }
-            if !a.is_scalar() {
-                return err!(Domain);
-            }
-
-            let window = a.list()[0].to_num()?;
-            let mut unique = false;
-            let window = if window < 0 {
-                unique = true;
-                (-window) as usize
-            } else {
-                window as usize
-            };
-
-            let dims = b.dims();
-            let mut arr = b.ranked(dims - 1)?;
-            let jump = if unique { window } else { 1 };
-
-            let mut cells = vec![List::empty(); 1 + (arr.len() - window) / jump];
-            let mut j = 0;
-            while j <= arr.len() - window {
-                let i = j / jump;
-                cells[i] = std::mem::take(&mut arr[j]);
-                for k in j + 1..j + window {
-                    let previous = std::mem::take(&mut cells[i]);
-                    cells[i] = f
-                        .dyadic_call(Type::from(previous), Type::from(arr[k].clone()))?
-                        .to_list()?;
-                }
-                j += jump;
-            }
-            List::unranked(&o.a, cells[0].dims() + 1, &[], cells)
-        })
-    };
 
     Ok(function!(1, [0, 99], true, true, move |a, b, o| {
         if let Some(b) = b {
-            dyad(a, b, o).map(Type::from)
+            each::reduce_groups(&f, a, b, o)
         } else {
-            monad(a, o).map(Type::from)
+            each::reduce(&f, a, o)
         }
     }; a, s))
 }
@@ -297,135 +169,11 @@ pub fn fold(f: Type, a: Arena, s: Scope) -> Status<Function> {
 #[inline]
 pub(crate) fn scan_table(f: Type, a: Arena, s: Scope) -> Status<Function> {
     let f = f.to_function(a.clone(), s.clone())?;
-    let fr = f.clone();
-    // Scan
-    let monad = move |a: Type, o: &Opts| {
-        if !a.is_list() {
-            return err!(Domain);
-        }
-        if a.is_scalar() || o.rd[1] == 0 {
-            return Ok(a);
-        }
-
-        let a = unsafe { a.to_list_unchecked() };
-        maybe_apply!(a.dims() <= o.rm as usize, &o.a, a, o.rm, {
-            if a.len() == 1 {
-                return Ok(a);
-            }
-            let mut runs = a.ranked(a.dims() - 1)?;
-            if runs.len() == 1 {
-                return Ok(runs.into_iter().next().unwrap());
-            }
-
-            let mut b = Vec::with_capacity(runs.len());
-            b.push(std::mem::take(&mut runs[0]));
-            let mut boxit = false;
-            let mut r: SmallVec<[usize; 3]> = SmallVec::from_slice(b[0].rank());
-            for i in 1..runs.len() {
-                let res = f
-                    .dyadic_call(b[i - 1].clone().into(), std::mem::take(&mut runs[i]).into())?
-                    .to_list()?;
-                if res.rank() != &*r {
-                    boxit = true;
-                }
-                b.push(res);
-            }
-
-            if boxit {
-                unsafe {
-                    List::alloc_iter(
-                        &[runs.len()],
-                        b.into_iter().map(|n| Scalar::boxed(&o.a, n).unwrap()),
-                    )
-                }
-            } else {
-                if b[0].is_scalar() {
-                    r.clear();
-                }
-                r.push(runs.len());
-                unsafe { List::alloc_iter(&r, b.iter().flat_map(|n| n.list().iter()).copied()) }
-            }
-        })
-        .map(Type::List)
-    };
-    let f = fr;
-    // Table
-    let dyad = move |a: Type, b: Type, o: &Opts| {
-        if !b.is_list() || !a.is_list() {
-            return err!(Domain);
-        }
-
-        let a = a.to_list()?;
-        let b = b.to_list()?;
-        let rda = u8::max(u8::min(a.dims() as u8, o.rd[0]), 1) - 1;
-        let rdb = u8::max(u8::min(b.dims() as u8, o.rd[0]), 1) - 1;
-        let a = a.ranked(rda as usize)?;
-        let b = b.ranked(rdb as usize)?;
-
-        let size_a = a.len();
-        let size_b = b.len();
-
-        let mut boxit = false;
-        let mut v = Vec::with_capacity(a.len() * b.len());
-        let mut r = None;
-        for a in a {
-            for b in b.iter() {
-                let mut res = f.dyadic_call(a.clone().into(), b.clone().into())?;
-                if !res.is_list() && !boxit {
-                    boxit = true;
-                } else if res.is_scalar() {
-                    if r.is_none() {
-                        std::hint::cold_path();
-                        r = Some(vec![1]);
-                    } else if !boxit && r.as_ref().unwrap() != &[1] {
-                        boxit = true;
-                        // for true scalars
-                        if res.is_scalar_strict() {
-                            res = Type::List(res.to_list().unwrap());
-                        }
-                    } else if !boxit && let Ok(Scalar::Box(_)) = res.as_scalar() {
-                        boxit = true;
-                    }
-                } else {
-                    let l = res.as_list()?;
-                    if r.is_none() {
-                        std::hint::cold_path();
-                        r = Some(l.rank().to_vec());
-                    } else if !boxit && r.as_ref().unwrap() != l.rank() {
-                        boxit = true;
-                    }
-                }
-                v.push(res);
-            }
-        }
-
-        if boxit {
-            unsafe {
-                List::alloc_iter(
-                    &[size_a, size_b],
-                    v.into_iter().map(|n| Scalar::boxed_t(&o.a, n).unwrap()),
-                )
-            }
-        } else {
-            let mut r = r.take().unwrap();
-            if r.len() == 1 && r[0] == 1 {
-                r.clear();
-            }
-            r.push(size_a);
-            r.push(size_b);
-            unsafe {
-                List::alloc_iter(
-                    &r,
-                    v.iter().flat_map(|l| l.as_list().unwrap_unchecked().list().iter().copied()),
-                )
-            }
-        }
-    };
     Ok(function!(99, [99, 99], true, true, move |a, b, o| {
         if let Some(b) = b {
-            dyad(a, b, o).map(Type::List)
+            each::table(&f, a, b, o)
         } else {
-            monad(a, o)
+            each::scan(&f, a, o)
         }
     }; a, s))
 }
@@ -466,59 +214,10 @@ pub(crate) fn each(f: Type, a: Arena, s: Scope) -> Status<Function> {
 pub(crate) fn eachatom(f: Type, a: Arena, s: Scope) -> Status<Function> {
     let f = f.to_function(a.clone(), s.clone())?;
     Ok(function!(0, [0, 0], true, true, move |a, b, o| {
-        let Ok(a) = a.to_list() else {
-            return err!(Domain);
-        };
-        if b.is_none() {
-            maybe_apply!([scalar] o, a, {
-                let trailing = a.rank();
-                let mut v = Vec::with_capacity(a.len());
-                for_0!(a; [a] {
-                    if a.is_box() {
-                        v.push(f.monadic_call(
-                            unsafe { a.unbox_unchecked() }
-                        )?.to_list()?);
-                    } else {
-                        v.push(f.monadic_call(Type::Scalar(*a))?.to_list()?);
-                    }
-                });
-                List::unranked(&o.a, a.dims(), trailing, v)
-            }).map(Type::List)
-        } else if let Some(Ok(b)) = b.map(Type::to_list) {
-            maybe_apply!([scalar] o, a, b, {
-                if a.is_empty() {
-                    return Ok(b);
-                } else if b.is_empty() {
-                    return Ok(a);
-                }
-
-                let a_maps = a.len() > b.len();
-                if a_maps && a.len() % b.len() != 0
-                    || !a_maps && b.len() % a.len() != 0
-                {
-                    return err!(Domain);
-                }
-
-                let trailing;
-                let size;
-                if a_maps {
-                    trailing = a.rank();
-                    size = a.len();
-                } else {
-                    trailing = b.rank();
-                    size = b.len();
-                }
-
-                let mut v = Vec::with_capacity(size);
-                for (a, b) in a.list().iter().cycle().zip(b.list().iter().cycle()).take(size) {
-                    let a = if a.is_box() { unsafe { a.unbox_unchecked() } } else { Type::Scalar(*a) };
-                    let b = if b.is_box() { unsafe { b.unbox_unchecked() } } else { Type::Scalar(*b) };
-                    v.push(f.dyadic_call(a, b)?.to_list()?);
-                }
-                List::unranked(&o.a, trailing.len(), trailing, v)
-            }).map(Type::List)
+        if let Some(b) = b {
+            each::each_atom_dyad(&f, a, b, o)
         } else {
-            err!(Domain)
+            each::each_atom_monad(&f, a, o)
         }
     }; a, s))
 }
@@ -528,11 +227,7 @@ pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Funct
     let f = l.to_function(a.clone(), s.clone())?;
 
     if r.is_scalar() {
-        let count = if r.is_scalar_strict() {
-            unsafe { r.to_scalar_unchecked() }.to_num()?
-        } else {
-            unsafe { r.to_list_unchecked() }.list()[0].to_num()?
-        };
+        let count = iter_ints!(unsafe { r.to_list_unchecked() }, |it| it.next().unwrap());
         Ok(function!(99, [99, 99], true, true, move |mut a, b, o| {
             let mut f = f.clone();
             if let Some(mut b) = b {
@@ -544,7 +239,7 @@ pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Funct
                 }
                 Ok(b)
             } else {
-                if o.rm != 99 { 
+                if o.rm != 99 {
                     f.apply_rm(o.rm);
                 }
                 for _ in 0..count {
@@ -554,11 +249,7 @@ pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Funct
             }
         }; a, s))
     } else if r.is_list() {
-        let counts = unsafe { r.to_list_unchecked() }
-            .list()
-            .into_iter()
-            .map(|n| n.to_num())
-            .collect::<Status<Vec<i64>>>()?;
+        let counts = iter_ints!(unsafe { r.to_list_unchecked() }, |it| it.collect::<Vec<i64>>());
         Ok(function!(99, [99, 99], true, true, move |a, b, o| {
             let mut f = f.clone();
             if let Some(b) = b {
@@ -571,13 +262,13 @@ pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Funct
                         for _ in 0..count {
                             b = f.dyadic_call(a.clone(), b)?;
                         }
-                        v.push(Scalar::boxed_t(&o.a, b)?);
+                        v.push(scalar::boxed_t(&o.a, b)?);
                     }
                     Ok(())
                 })?;
-                List::from_vec(v).map(Type::List)
+                Ok(Type::List(List::Boxes(Array::new(v, 1, smallvec![counts.len()]))))
             } else {
-                if o.rm != 99 { 
+                if o.rm != 99 {
                     f.apply_rm(o.rm);
                 }
                 let v = with_eco(counts.len(), |v| {
@@ -586,11 +277,11 @@ pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Funct
                         for _ in 0..count {
                             a = f.monadic_call(a)?;
                         }
-                        v.push(Scalar::boxed_t(&o.a, a)?);
+                        v.push(scalar::boxed_t(&o.a, a)?);
                     }
                     Ok(())
                 })?;
-                List::from_vec(v).map(Type::List)
+                Ok(Type::List(List::Boxes(Array::new(v, 1, smallvec![counts.len()]))))
             }
         }; a, s))
     } else if r.is_function() {
@@ -604,7 +295,7 @@ pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Funct
                 }
                 loop {
                     let list = cond.monadic_call(p.clone())?.to_list()?;
-                    if list.is_empty() || list.list()[0].to_bool()? {
+                    if list.is_truthy() {
                         break;
                     }
                     p = f.dyadic_call(p, b.clone())?;
@@ -619,7 +310,7 @@ pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Funct
                     p = a.clone();
                     a = f.monadic_call(a)?;
                     let list = cond.dyadic_call(p, a.clone())?.to_list()?;
-                    if list.is_empty() || list.list()[0].to_bool()? {
+                    if list.is_truthy() {
                         break;
                     }
                 }

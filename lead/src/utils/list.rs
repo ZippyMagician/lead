@@ -1,0 +1,75 @@
+macro_rules! iter_ints {
+    ($l:expr, |$it:ident| $body:expr) => {
+        match &$l {
+            #[allow(unused_mut)]
+            List::Integers(i) => {
+                let mut $it = i.list().iter().copied();
+                $body
+            }
+            #[allow(unused_mut)]
+            List::Doubles(d) => {
+                let mut $it = d.list().iter().map(|d| d.to_num().unwrap());
+                $body
+            }
+            #[allow(unused_mut)]
+            List::Booleans(b) => {
+                let mut $it = b.list().iter().map(|b| b.to_num().unwrap());
+                $body
+            }
+            #[allow(unused_mut)]
+            List::String(s) => {
+                let mut $it = s.list().iter().map(|c| c.to_num().unwrap());
+                $body
+            }
+            List::Boxes(_) => {
+                return err!(Box);
+            }
+        }
+    };
+}
+
+macro_rules! iter_floats {
+    ($l:expr, |$it:ident| $body:expr) => {
+        match &$l {
+            #[allow(unused_mut)]
+            List::Integers(i) => {
+                let mut $it = i.list().iter().map(|i| i.to_float().unwrap());
+                $body
+            }
+            #[allow(unused_mut)]
+            List::Doubles(d) => {
+                let mut $it = d.list().iter().copied();
+                $body
+            }
+            #[allow(unused_mut)]
+            List::Booleans(b) => {
+                let mut $it = b.list().iter().map(|b| b.to_float().unwrap());
+                $body
+            }
+            #[allow(unused_mut)]
+            List::String(s) => {
+                let mut $it = s.list().iter().map(|c| c.to_float().unwrap());
+                $body
+            }
+            List::Boxes(_) => {
+                return err!(Box);
+            }
+        }
+    };
+}
+
+macro_rules! with_list {
+    ($l:expr, |$x:ident| $body:expr) => {
+        match $l {
+            List::Integers($x) => $body,
+            List::Doubles($x) => $body,
+            List::Booleans($x) => $body,
+            List::String($x) => $body,
+            List::Boxes($x) => $body,
+        }
+    };
+}
+
+pub(crate) use iter_floats;
+pub(crate) use iter_ints;
+pub(crate) use with_list;

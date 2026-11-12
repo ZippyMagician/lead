@@ -1,11 +1,15 @@
-#![allow(dead_code)]
+#![allow(unused)]
+use std::borrow::Cow;
+use std::boxed::Box;
 use std::cmp::PartialEq;
 use std::fmt::{self, Debug, Display};
+use std::hash::Hash;
 use std::hint::{/*cold_path,*/ unreachable_unchecked};
 use std::ops::*;
+use std::rc::Rc;
 
 use super::Type;
-use super::list::List;
+use super::list::{Array, List};
 use crate::utils::error::{Error, Status, err};
 use crate::utils::{Arena, display_boxed, fmt_float, fmt_num};
 
@@ -13,6 +17,371 @@ use num_traits::{AsPrimitive, Zero};
 use ordered_float::OrderedFloat;
 use typed_arena;
 
+pub trait Scalar:
+    Display + PartialEq + PartialOrd + Eq + Ord + Clone + Copy + Hash + Default
+{
+    fn size(&self) -> usize;
+    fn get_type() -> u8;
+    fn wrap(s: Array<Self>) -> List;
+
+    fn fmt_lead(&self) -> Cow<'static, str>;
+
+    fn cast_to<T: Scalar>(v: Rc<Self>, l: usize) -> Status<Rc<T>>;
+    fn to_num(&self) -> Status<i64>;
+    fn to_float(&self) -> Status<OrderedFloat<f64>>;
+    fn to_bool(&self) -> Status<bool>;
+    fn to_char(&self) -> Status<u8>;
+    fn unbox(&self) -> &Type;
+
+    fn get_fill() -> Status<Self>;
+}
+
+impl Scalar for i64 {
+    #[inline(always)]
+    fn size(&self) -> usize {
+        std::mem::size_of::<i64>()
+    }
+
+    #[inline(always)]
+    fn get_type() -> u8 {
+        b'I'
+    }
+
+    fn cast_to<T: Scalar>(v: Rc<i64>, l: usize) -> Status<Rc<T>> {
+        todo!("i64::cast_to")
+    }
+
+    #[inline(always)]
+    fn wrap(s: Array<i64>) -> List {
+        List::Integers(s)
+    }
+
+    #[inline(always)]
+    fn fmt_lead(&self) -> Cow<'static, str> {
+        fmt_num(*self).into()
+    }
+
+    #[inline(always)]
+    fn to_num(&self) -> Status<i64> {
+        Ok(*self)
+    }
+
+    #[inline(always)]
+    fn to_float(&self) -> Status<OrderedFloat<f64>> {
+        Ok(OrderedFloat(self.as_()))
+    }
+
+    #[inline(always)]
+    fn to_bool(&self) -> Status<bool> {
+        Ok(*self != 0)
+    }
+
+    #[inline(always)]
+    fn to_char(&self) -> Status<u8> {
+        if *self >= 0 && *self < 256 { Ok(*self as u8) } else { err!(ValueS, "Invalid character.") }
+    }
+
+    #[inline(always)]
+    fn get_fill() -> Status<i64> {
+        Ok(0)
+    }
+
+    #[inline(always)]
+    fn unbox(&self) -> &Type {
+        unreachable!()
+    }
+}
+
+impl Scalar for OrderedFloat<f64> {
+    #[inline(always)]
+    fn size(&self) -> usize {
+        std::mem::size_of::<f64>()
+    }
+
+    #[inline(always)]
+    fn get_type() -> u8 {
+        b'F'
+    }
+
+    fn cast_to<T: Scalar>(v: Rc<OrderedFloat<f64>>, l: usize) -> Status<Rc<T>> {
+        todo!("f64::cast_to")
+    }
+
+    #[inline(always)]
+    fn wrap(s: Array<OrderedFloat<f64>>) -> List {
+        List::Doubles(s)
+    }
+
+    #[inline(always)]
+    fn fmt_lead(&self) -> Cow<'static, str> {
+        fmt_float(*self)
+    }
+
+    #[inline(always)]
+    fn to_num(&self) -> Status<i64> {
+        Ok(self.as_())
+    }
+
+    #[inline(always)]
+    fn to_float(&self) -> Status<OrderedFloat<f64>> {
+        Ok(*self)
+    }
+
+    #[inline(always)]
+    fn to_bool(&self) -> Status<bool> {
+        Ok(*self != 0.)
+    }
+
+    #[inline(always)]
+    fn to_char(&self) -> Status<u8> {
+        if self.fract() == 0. {
+            let u: i32 = self.floor().as_();
+            if u >= 0 && u < 256 { Ok(u as u8) } else { err!(ValueS, "Invalid character.") }
+        } else {
+            err!(ValueS, "Float is not a whole number, cannot convert to character.")
+        }
+    }
+
+    #[inline(always)]
+    fn get_fill() -> Status<OrderedFloat<f64>> {
+        Ok(OrderedFloat(0.))
+    }
+
+    #[inline(always)]
+    fn unbox(&self) -> &Type {
+        unreachable!()
+    }
+}
+
+impl Scalar for bool {
+    #[inline(always)]
+    fn size(&self) -> usize {
+        std::mem::size_of::<bool>()
+    }
+
+    #[inline(always)]
+    fn get_type() -> u8 {
+        b'B'
+    }
+
+    fn cast_to<T: Scalar>(v: Rc<bool>, l: usize) -> Status<Rc<T>> {
+        todo!("bool::cast_to")
+    }
+
+    #[inline(always)]
+    fn wrap(s: Array<bool>) -> List {
+        List::Booleans(s)
+    }
+
+    #[inline(always)]
+    fn fmt_lead(&self) -> Cow<'static, str> {
+        if *self { Cow::Borrowed("1") } else { Cow::Borrowed("0") }
+    }
+
+    #[inline(always)]
+    fn to_num(&self) -> Status<i64> {
+        Ok(*self as u8 as i64)
+    }
+
+    #[inline(always)]
+    fn to_float(&self) -> Status<OrderedFloat<f64>> {
+        Ok(OrderedFloat(*self as u8 as f64))
+    }
+
+    #[inline(always)]
+    fn to_bool(&self) -> Status<bool> {
+        Ok(*self)
+    }
+
+    #[inline(always)]
+    fn to_char(&self) -> Status<u8> {
+        Ok(*self as u8)
+    }
+
+    #[inline(always)]
+    fn get_fill() -> Status<bool> {
+        Ok(false)
+    }
+
+    #[inline(always)]
+    fn unbox(&self) -> &Type {
+        unreachable!()
+    }
+}
+
+// Strings
+impl Scalar for u8 {
+    #[inline(always)]
+    fn size(&self) -> usize {
+        std::mem::size_of::<u8>()
+    }
+
+    #[inline(always)]
+    fn get_type() -> u8 {
+        b'C'
+    }
+
+    fn cast_to<T: Scalar>(v: Rc<u8>, l: usize) -> Status<Rc<T>> {
+        todo!("bool::cast_to")
+    }
+
+    #[inline(always)]
+    fn wrap(s: Array<u8>) -> List {
+        List::String(s)
+    }
+
+    // Should be handled separately
+    #[inline(always)]
+    fn fmt_lead(&self) -> Cow<'static, str> {
+        unreachable!()
+    }
+
+    #[inline(always)]
+    fn to_num(&self) -> Status<i64> {
+        Ok(*self as i64)
+    }
+
+    #[inline(always)]
+    fn to_float(&self) -> Status<OrderedFloat<f64>> {
+        Ok(OrderedFloat(*self as f64))
+    }
+
+    #[inline(always)]
+    fn to_bool(&self) -> Status<bool> {
+        Ok(*self != 0)
+    }
+
+    #[inline(always)]
+    fn to_char(&self) -> Status<u8> {
+        Ok(*self)
+    }
+
+    #[inline(always)]
+    fn get_fill() -> Status<u8> {
+        Ok(b' ')
+    }
+
+    #[inline(always)]
+    fn unbox(&self) -> &Type {
+        unreachable!()
+    }
+}
+
+impl Scalar for Boxed {
+    #[inline(always)]
+    fn size(&self) -> usize {
+        std::mem::size_of::<*const Type>()
+    }
+
+    #[inline(always)]
+    fn get_type() -> u8 {
+        b'X'
+    }
+
+    #[inline(always)]
+    fn cast_to<T: Scalar>(v: Rc<Boxed>, l: usize) -> Status<Rc<T>> {
+        err!(Domain)
+    }
+
+    #[inline(always)]
+    fn wrap(s: Array<Boxed>) -> List {
+        List::Boxes(s)
+    }
+
+    #[inline(always)]
+    fn fmt_lead(&self) -> Cow<'static, str> {
+        format!("{}", *self).into()
+    }
+
+    #[inline(always)]
+    fn to_num(&self) -> Status<i64> {
+        err!(ValueS, "Cannot convert from boxed value.")
+    }
+
+    #[inline(always)]
+    fn to_float(&self) -> Status<OrderedFloat<f64>> {
+        err!(ValueS, "Cannot convert from boxed value.")
+    }
+
+    #[inline(always)]
+    fn to_bool(&self) -> Status<bool> {
+        err!(ValueS, "Cannot convert from boxed value.")
+    }
+
+    #[inline(always)]
+    fn to_char(&self) -> Status<u8> {
+        err!(ValueS, "Cannot convert from boxed value.")
+    }
+
+    #[inline(always)]
+    fn get_fill() -> Status<Boxed> {
+        std::hint::cold_path();
+        err!(ValueS, "No valid fill type for boxes.")
+    }
+
+    #[inline(always)]
+    fn unbox(&self) -> &Type {
+        unsafe { &***self }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash, Default)]
+#[repr(transparent)]
+pub struct Boxed(*mut Type);
+
+impl Boxed {
+    #[inline]
+    pub(crate) unsafe fn steal_box(&self) -> Type {
+        std::mem::take(unsafe { &mut **&self.0 })
+    }
+}
+
+impl Deref for Boxed {
+    type Target = *mut Type;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Display for Boxed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.0.is_null() {
+            err!(MemoryFault, "Lost Box"; !);
+        }
+        // SAFETY: Pointer checked. Taking reference, so other pointers are still valid
+        let list: &Type = unsafe { &*self.0 };
+        write!(f, "{}", display_boxed(format!("{list}"), None, None)?)
+    }
+}
+
+#[inline]
+pub fn boxed(a: &Arena, l: List) -> Status<Boxed> {
+    let arena = a.borrow_mut();
+    let l = l.into();
+    let r = arena.alloc(l);
+    Ok(Boxed(r))
+}
+
+#[inline]
+pub fn boxed_t(a: &Arena, l: Type) -> Status<Boxed> {
+    let arena = a.borrow_mut();
+    let r = arena.alloc(l);
+    Ok(Boxed(r))
+}
+
+#[inline]
+pub fn boxed_custom(a: &mut typed_arena::Arena<Type>, l: Type) -> Status<Boxed> {
+    let r = a.alloc(l);
+    Ok(Boxed(r))
+}
+
+#[inline]
+pub fn boxed_leak(l: List) -> Status<Boxed> {
+    let l = l.into();
+    Ok(Boxed(Box::into_raw(Box::new(l))))
+}
+
+/*
 #[derive(Clone, Copy, Debug, Hash)]
 #[repr(C, u8)]
 pub enum Scalar {
@@ -182,7 +551,7 @@ impl Scalar {
     }
 
     #[inline]
-    pub fn get_fill(&self) -> Status<Scalar> {
+    pub fn get_fill() -> Status<Scalar> {
         match self {
             Self::Number(_) | Self::Float(_) => Ok(Self::Number(0)),
             Self::Char(_) => Ok(Self::Char(' ')),
@@ -468,4 +837,4 @@ impl Display for Scalar {
             }
         }
     }
-}
+}*/

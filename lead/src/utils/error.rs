@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::error;
-use std::io;
 use std::fmt::{self, Display};
+use std::io;
 use std::num::{ParseFloatError, ParseIntError};
 
 #[derive(Clone, Debug)]
@@ -88,6 +88,13 @@ impl From<io::Error> for Error {
     #[inline(always)]
     fn from(value: io::Error) -> Self {
         Error::Internal(value.to_string().into())
+    }
+}
+
+impl From<std::str::Utf8Error> for Error {
+    #[inline(always)]
+    fn from(value: std::str::Utf8Error) -> Self {
+        Error::ValueS(value.to_string().into())
     }
 }
 

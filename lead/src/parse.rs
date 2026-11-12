@@ -7,13 +7,13 @@ use crate::builtins::symbols;
 use crate::function::Function;
 use crate::lex::{Token, TokenTag};
 use crate::scope::{Scope, ScopeInternal};
-use crate::types::list::List;
-use crate::types::scalar::Scalar;
+use crate::types::list::{Array, List};
+use crate::types::scalar::{self, Boxed};
 use crate::utils::error::{Error, Status, err};
 use crate::utils::number::*;
 use crate::utils::{Arena, generate_block};
 
-use ecow::EcoVec;
+use ordered_float::OrderedFloat;
 
 #[derive(Clone)]
 pub enum Assignment<'a> {
@@ -131,8 +131,8 @@ impl<'a> Parser<'a> {
         use TokenTag::*;
 
         match t.0 {
-            Number => self.consume_primitive(Scalar::Number(parse_number(t.1)?)),
-            Float => self.consume_primitive(Scalar::Float(parse_float(t.1)?)),
+            Number => self.consume_primitive_int(parse_number(t.1)?),
+            Float => self.consume_primitive_float(parse_float(t.1)?),
             String => self.consume_primitive_string(t.1),
             Symbol | CloseBracket => {
                 let f = symbols::Symbol::get_symbol(t.1)
@@ -217,22 +217,29 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn consume_primitive(&mut self, s: Scalar) -> Status<Node<'a>> {
+    fn consume_primitive_int(&mut self, s: i64) -> Status<Node<'a>> {
         let mut tokens = vec![s];
-        while let Some((tag, s)) =
-            self.tokens.next_if(|(t, _)| *t == TokenTag::Number || *t == TokenTag::Float)
-        {
-            if *tag == TokenTag::Number {
-                tokens.push(Scalar::Number(parse_number(s)?));
-            } else {
-                tokens.push(Scalar::Float(parse_float(s)?));
-            }
+        while let Some((_, s)) = self.tokens.next_if(|(t, _)| *t == TokenTag::Number) {
+            tokens.push(parse_number(s)?);
         }
 
         if tokens.len() == 1 {
-            Ok(Node::Primitive(List::scalar(tokens[0])))
+            Ok(Node::Primitive(Array::<i64>::scalar(tokens[0])))
         } else {
-            List::from_vec(tokens.into()).map(Node::Primitive)
+            Ok(Node::Primitive(Array::<i64>::from_vec(tokens.into())))
+        }
+    }
+
+    fn consume_primitive_float(&mut self, s: OrderedFloat<f64>) -> Status<Node<'a>> {
+        let mut tokens = vec![s];
+        while let Some((_, s)) = self.tokens.next_if(|(t, _)| *t == TokenTag::Float) {
+            tokens.push(parse_float(s)?);
+        }
+
+        if tokens.len() == 1 {
+            Ok(Node::Primitive(Array::<OrderedFloat<f64>>::scalar(tokens[0])))
+        } else {
+            Ok(Node::Primitive(Array::<OrderedFloat<f64>>::from_vec(tokens.into())))
         }
     }
 
@@ -245,13 +252,12 @@ impl<'a> Parser<'a> {
         if strings.len() == 1 {
             Ok(Node::PrimitiveString(List::string(strings[0])))
         } else {
-            List::from_vec(
+            Ok(Node::PrimitiveBoxes(Array::<Boxed>::from_vec(
                 strings
                     .iter()
-                    .map(|s| Scalar::boxed(&self.arena, List::string(s)))
-                    .collect::<Status<EcoVec<Scalar>>>()?,
-            )
-            .map(Node::PrimitiveBoxes)
+                    .map(|s| scalar::boxed(&self.arena, List::string(s)))
+                    .collect::<Status<std::rc::Rc<[Boxed]>>>()?,
+            )))
         }
     }
 

@@ -19,7 +19,7 @@ macro_rules! define_syms {
             pub fn get_symbol(s: &str) -> Option<Self> {
                 match s.as_bytes() {
                     $($tok => Some(Self::$rep)),*,
-                    _ => None
+                    _ => None,
                 }
             }
 
@@ -108,12 +108,12 @@ define_syms! {
     Pipe            => (b"|", 0, true, false, symbols::not; [0, 0], true, false, symbols::residue);
     PipeColon       => (b"|:", 0, true, false, symbols::descend; [1, 99], true, false, symbols::axes);
     PipeDot         => (b"|.", 99, true, false, symbols::rev; [0, 99], true, false, symbols::rot);
-    Exclamation     => (b"!", 0, true, false, symbols::factorial; [0, 0], true, false, symbols::bitor);
+    Exclamation     => (b"!", 0, true, false, symbols::factorial; [0, 0], true, false, symbols::bor);
     LeftArrow       => (b"<", 99, false, true, symbols::boxed; [0, 0], true, false, symbols::lt);
     LeftArrowColon  => (b"<:", 99, true, false, symbols::gradeup; [0, 0], true, false, symbols::lte);
     RightArrow      => (b">", 99, false, true, symbols::unbox; [0, 0], true, false, symbols::gt);
     RightArrowColon => (b">:", 99, true, false, symbols::gradedown; [0, 0], true, false, symbols::gte);
-    Caret           => (b"^", 0, true, false, symbols::exp; [0, 0], true, false, symbols::bitand);
+    Caret           => (b"^", 0, true, false, symbols::exp; [0, 0], true, false, symbols::pow);
     Dollar          => (b"$", 99, true, false, symbols::shape; [1, 99], true, false, symbols::reshape);
     LeftBracket     => (b"[", 99, false, true, symbols::identity; [99, 99], true, true, symbols::left);
     RightBracket    => (b"]", 99, false, true, symbols::identity; [99, 99], true, true, symbols::right);
@@ -132,9 +132,9 @@ define_op! {
     HookDefault => (b"&:", false, operators::hook_default);
     OverRank => (b"@", false, operators::over_rank);
     Fold => (b"/", true, operators::fold);
+    ScanTable => (b"\\", true, operators::scan_table);
     TieCommute => (b"`", true, operators::tie_commute);
     Each => (b"\"", true, operators::each);
     EachAtom => (b"\":", true, operators::eachatom);
     RepeatUntil => (b"\".", false, operators::repeat_until);
-    ScanTable => (b"\\", true, operators::scan_table);
 }

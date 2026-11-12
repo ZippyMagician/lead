@@ -2,21 +2,19 @@ use std::collections::HashMap;
 use std::fmt::{self, Display};
 
 use super::Type;
-use super::list::List;
-use super::scalar::Scalar;
+use super::list::{Array, List};
+use super::scalar::{self, Boxed};
 use crate::function::Function;
 use crate::scope::Scope;
 use crate::utils;
 use crate::utils::error::Status;
 
-use ecow::EcoVec;
-use smallvec::smallvec;
 use typed_arena::Arena;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Map {
-    pub internal: HashMap<String, *mut Type>,
+    pub internal: HashMap<String, Boxed>,
 }
 
 impl Map {
@@ -24,9 +22,7 @@ impl Map {
     pub fn from_scope(s: Scope, a: &utils::Arena) -> Status<Self> {
         let mut internal = HashMap::new();
         for (key, t) in s.take().into_inner() {
-            let Scalar::Box(p) = Scalar::boxed_t(a, t)? else {
-                unsafe { std::hint::unreachable_unchecked() }
-            };
+            let p = scalar::boxed_t(a, t)?;
             internal.insert(key, p);
         }
         Ok(Self { internal })
@@ -39,30 +35,26 @@ impl Map {
 
     #[inline]
     pub fn insert(&mut self, key: String, value: Type, a: &utils::Arena) -> Status {
-        let Scalar::Box(p) = Scalar::boxed_t(a, value)? else {
-            unsafe { std::hint::unreachable_unchecked() }
-        };
+        let p = scalar::boxed_t(a, value)?;
         self.internal.insert(key.to_string(), p);
         Ok(())
     }
 
     #[inline]
     pub fn insert_function(&mut self, key: String, value: Function, a: &utils::Arena) -> Status {
-        let Scalar::Box(p) = Scalar::boxed_t(a, Type::Function(value))? else {
-            unsafe { std::hint::unreachable_unchecked() }
-        };
+        let p = scalar::boxed_t(a, Type::Function(value))?;
         self.internal.insert(key.to_string(), p);
         Ok(())
     }
 
     #[inline]
     pub fn get(&self, key: &str) -> Option<&Type> {
-        self.internal.get(key).map(|n| unsafe { &**n })
+        self.internal.get(key).map(|n| unsafe { &***n })
     }
 
     #[inline]
     pub fn get_mut(&mut self, key: &str) -> Option<&mut Type> {
-        self.internal.get_mut(key).map(|n| unsafe { &mut **n })
+        self.internal.get_mut(key).map(|n| unsafe { &mut ***n })
     }
 
     #[inline]
@@ -93,13 +85,18 @@ impl Map {
         if self.is_empty() {
             return (None, List::empty());
         }
-        let mut pairs = EcoVec::with_capacity(self.internal.len() * 2);
+
         let mut arena = Arena::new();
-        for (key, value) in &self.internal {
-            pairs.push(Scalar::boxed_custom(&mut arena, List::string(key).into()).unwrap());
-            pairs.push(Scalar::Box(*value));
-        }
-        (Some(arena), List::mat(pairs, 2, smallvec![2, self.internal.len()]).unwrap())
+        let boxes = unsafe {
+            Array::<Boxed>::try_alloc_iter(
+                &[2, self.internal.len()],
+                self.internal.iter().flat_map(|(k, v)| {
+                    [scalar::boxed_custom(&mut arena, List::string(k).into()), Ok(*v)]
+                }),
+            )
+            .unwrap()
+        };
+        (Some(arena), List::Boxes(boxes))
     }
 
     #[inline]
@@ -108,11 +105,13 @@ impl Map {
             return Ok(List::empty());
         }
 
-        let mut keys = EcoVec::with_capacity(self.internal.len());
-        for key in self.internal.keys() {
-            keys.push(Scalar::boxed(a, List::string(key))?);
+        unsafe {
+            Array::<Boxed>::try_alloc_iter(
+                &[self.internal.len()],
+                self.internal.keys().map(|v| scalar::boxed(a, List::string(v))),
+            )
+            .map(List::Boxes)
         }
-        List::from_vec(keys)
     }
 
     #[inline]
@@ -121,11 +120,9 @@ impl Map {
             return Ok(List::empty());
         }
 
-        let mut values = EcoVec::with_capacity(self.internal.len());
-        for value in self.internal.values() {
-            values.push(Scalar::Box(*value));
+        unsafe {
+            Array::<Boxed>::alloc_iter(&[self.internal.len()], self.internal.values().copied())
         }
-        List::from_vec(values)
     }
 
     #[inline]
@@ -134,12 +131,13 @@ impl Map {
             return Ok(List::empty());
         }
 
-        let mut pairs = EcoVec::with_capacity(self.internal.len() * 2);
-        for (key, value) in &self.internal {
-            pairs.push(Scalar::boxed(a, List::string(key))?);
-            pairs.push(Scalar::Box(*value));
+        unsafe {
+            Array::<Boxed>::try_alloc_iter(
+                &[2, self.internal.len()],
+                self.internal.iter().flat_map(|(k, v)| [scalar::boxed(a, List::string(k)), Ok(*v)]),
+            )
+            .map(List::Boxes)
         }
-        List::mat(pairs, 2, smallvec![2, self.internal.len()])
     }
 }
 
@@ -178,7 +176,7 @@ impl Display for Map {
         let mut arena = Arena::new();
         if self.internal.is_empty() {
             let mut formatted =
-                format!("{}", Scalar::boxed_custom(&mut arena, Default::default()).unwrap());
+                format!("{}", scalar::boxed_custom(&mut arena, Default::default()).unwrap());
             let Some(first) = formatted.chars().next() else {
                 unsafe { std::hint::unreachable_unchecked() }
             };

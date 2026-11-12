@@ -3,19 +3,25 @@
 use std::collections::{HashMap, HashSet};
 use std::hint::cold_path;
 use std::ops::*;
+use std::rc::Rc;
+
+use crate::array::arith::*;
+use crate::array::cast::Castable;
+use crate::array::manip;
+use crate::array::ord;
+use crate::array::each;
 
 use crate::function::Opts;
 use crate::types::Type;
-use crate::types::list::{INLINE_SIZE, List};
-use crate::types::scalar;
-use crate::utils::error::{Error, Status, err};
+use crate::types::list::{Array, INLINE_SIZE, List};
+use crate::types::scalar::{self, Boxed, Scalar};
+use crate::utils::error::{Status, err};
 use crate::utils::function::*;
-use crate::utils::symbols::{
-    for_0, for_1, for_n, for_n2, maybe_apply, pad_rank, scalar_op, with_eco,
-};
-use scalar::Scalar::{self, Boolean, Char, Float, Number};
+use crate::utils::list::*;
+use crate::utils::symbols::*;
 
-use ecow::{EcoVec, eco_vec};
+use List::*;
+
 use num_traits::{AsPrimitive, Zero};
 use ordered_float::{Float as OrderFloat, OrderedFloat};
 use smallvec::{SmallVec, smallvec};
@@ -78,131 +84,142 @@ pub enum Symbol {
 }
 
 // plusm | + | 0 | Absolute value / Cast to int
-pub(super) fn abs(mut a: List, _: &Opts) -> Status<List> {
-    for_0!(a; [v] = match v {
-        Number(n) => Number(n.abs()),
-        Float(f) => Float(f.abs()),
-        Boolean(n) => Number(*n as i64),
-        Char(c) => Number(*c as u32 as i64),
-        Scalar::Box(ptr) => Number(ptr.addr() as i64),
-    });
-    Ok(a)
+pub(super) fn abs(a: List, _: &Opts) -> Status<List> {
+    match a {
+        Integers(mut l) => {
+            for_0!(l; [v] = v.abs());
+            Ok(Integers(l))
+        }
+        Doubles(mut l) => {
+            for_0!(l; [v] = v.abs());
+            l.cast_i64().map(Integers)
+        }
+        Booleans(b) => b.cast_i64().map(Integers),
+        String(s) => s.cast_i64().map(Integers),
+        Boxes(b) => unsafe {
+            Array::alloc_iter(b.rank(), b.list().into_iter().map(|b| b.addr() as i64))
+        },
+    }
 }
 
 // plusd | + | 0, 0 | Addition
-pub(super) fn add(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+pub(super) fn add(a: List, b: List, o: &Opts) -> Status<List> {
     if a.is_empty() {
         cold_path();
         Ok(b)
     } else if b.is_empty() {
         cold_path();
         Ok(a)
-    } else if matches!(a.list()[0], Scalar::Char(_)) || matches!(b.list()[0], Scalar::Char(_)) {
-        maybe_apply!([scalar] o, a, b, {
-            scalar_op!(a, b,
-                [l, r] = { Scalar::Char(char::from_u32(
-                    l.to_num()? as u32 + r.to_num()? as u32
-                ).ok_or(Error::NaN)?) };
-                { Scalar::Char(char::from_u32(
-                    l.to_num()? as u32 + r.to_num()? as u32
-                ).ok_or(Error::NaN)?) };
-                { Scalar::Char(char::from_u32(
-                    l.to_num()? as u32 + r.to_num()? as u32
-                ).ok_or(Error::NaN)?) };
-            )
-        })
     } else {
-        maybe_apply!([scalar] o, a, b, scalar_op!(a, b, add))
+        maybe_apply!([scalar] o, a, b, add::generic_op(a, b))
     }
 }
 
 // pluscolonm | +: | 0 | Double
-pub(super) fn double(mut a: List, _: &Opts) -> Status<List> {
-    for_0!(a; [v] = match v {
-        Char(c) => Number(*c as u32 as i64 * 2),
-        Number(n) => Number(*n * 2),
-        Float(f) => Float(*f * 2.),
-        Boolean(false) => Number(0),
-        Boolean(true) => Number(2),
-        Scalar::Box(_) => return err!(Box),
-    });
-    Ok(a)
+pub(super) fn double(a: List, _: &Opts) -> Status<List> {
+    match a {
+        Integers(mut l) => {
+            for_0!(l; [v] = *v * 2);
+            Ok(Integers(l))
+        }
+        Doubles(mut l) => {
+            for_0!(l; [v] = *v * 2.);
+            Ok(Doubles(l))
+        }
+        Booleans(b) => unsafe {
+            Array::alloc_iter(b.rank(), b.list().into_iter().map(|b| *b as u8 as i64 * 2))
+        },
+        String(mut s) => {
+            for_0!(s; [v] = *v * 2);
+            Ok(String(s))
+        }
+        Boxes(b) => err!(Box),
+    }
 }
 
-// pluscolond | +: | 0, 0 | Abs sum
-pub(super) fn abssum(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+// pluscolond | +: | 0, 0 | Wrapping add / Boolean XOR
+pub(super) fn abssum(a: List, b: List, o: &Opts) -> Status<List> {
     if a.is_empty() {
         cold_path();
         Ok(b)
     } else if b.is_empty() {
         cold_path();
         Ok(a)
+    } else if a.get_type() == b'B' && b.get_type() == b'B' {
+        maybe_apply!([scalar] o, a, b, unsafe { each::scalar_xor(a, b) })
     } else {
-        maybe_apply!([scalar] o, a, b, {
-            scalar_op!(a, b,
-                [l, r] = { (*l + *r)?.abs() };
-                { (l + *r)?.abs() }; { (*l + r)?.abs() };
-            )
-        })
+        maybe_apply!([scalar] o, a, b, wrapping_add::generic_op(a, b))
     }
 }
 
 // dashm | - | 0 | Negate / Swap case / Boolean NOT
-pub(super) fn negate(mut a: List, _: &Opts) -> Status<List> {
-    for_0!(a; [v] = match v {
-        Char(c) if c.is_lowercase() => Char(c.to_ascii_uppercase()),
-        Char(c) => Char(c.to_ascii_lowercase()),
-        Number(n) => Number(-*n),
-        Float(n) => Float(-*n),
-        Boolean(b) => Boolean(!*b),
-        Scalar::Box(ptr) => return err!(Box),
-    });
-    Ok(a)
+pub(super) fn negate(a: List, _: &Opts) -> Status<List> {
+    match a {
+        Integers(mut l) => {
+            for_0!(l; [v] = v.neg());
+            Ok(Integers(l))
+        }
+        Doubles(mut l) => {
+            for_0!(l; [v] = v.neg());
+            Ok(Doubles(l))
+        }
+        Booleans(mut b) => {
+            for_0!(b; [v] = !*v);
+            Ok(Booleans(b))
+        }
+        String(mut s) => {
+            for_0!(s; [v] = if v.is_ascii_uppercase() {
+                v.to_ascii_lowercase()
+            } else {
+                v.to_ascii_uppercase()
+            });
+            Ok(String(s))
+        }
+        Boxes(b) => err!(Box),
+    }
 }
 
 // dashd | - | 0, 0 | Subtraction
-pub(super) fn sub(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+pub(super) fn sub(a: List, b: List, o: &Opts) -> Status<List> {
     if a.is_empty() {
         cold_path();
         Ok(b)
     } else if b.is_empty() {
         cold_path();
         Ok(a)
-    } else if matches!(a.list()[0], Scalar::Char(_)) || matches!(b.list()[0], Scalar::Char(_)) {
-        maybe_apply!([scalar] o, a, b, {
-            scalar_op!(a, b,
-                [l, r] = { Scalar::Char(char::from_u32(
-                    l.to_num()? as u32 - r.to_num()? as u32
-                ).ok_or(Error::NaN)?) };
-                { Scalar::Char(char::from_u32(
-                    l.to_num()? as u32 - r.to_num()? as u32
-                ).ok_or(Error::NaN)?) };
-                { Scalar::Char(char::from_u32(
-                    l.to_num()? as u32 - r.to_num()? as u32
-                ).ok_or(Error::NaN)?) };
-            )
-        })
     } else {
-        maybe_apply!([scalar] o, a, b, scalar_op!(a, b, sub))
+        maybe_apply!([scalar] o, a, b, sub::generic_op(a, b))
     }
 }
 
 // dashcolonm | -: | 0 | Halve
-pub(super) fn halve(mut a: List, _: &Opts) -> Status<List> {
-    for_0!(a; [v] = match v {
-        Char(c) => Number(*c as u32 as i64 / 2),
-        Number(n) if *n % 2 == 0 => Number(*n / 2),
-        Number(n) => Float(OrderedFloat(*n as f64 / 2.)),
-        Float(f) => Float(*f / 2.),
-        Boolean(false) => Number(0),
-        Boolean(true) => Float(OrderedFloat(0.5)),
-        Scalar::Box(_) => return err!(Box),
-    });
-    Ok(a)
+pub(super) fn halve(a: List, _: &Opts) -> Status<List> {
+    match a {
+        Integers(l) => {
+            let mut l = l.cast_f64().unwrap();
+            for_0!(l; [v] = *v / 2.);
+            Ok(Doubles(l))
+        }
+        Doubles(mut l) => {
+            for_0!(l; [v] = *v / 2.);
+            Ok(Doubles(l))
+        }
+        Booleans(b) => unsafe {
+            Array::alloc_iter(
+                b.rank(),
+                b.list().into_iter().map(|b| OrderedFloat(if *b { 0.5 } else { 0. })),
+            )
+        },
+        String(mut s) => {
+            for_0!(s; [v] = *v / 2);
+            Ok(String(s))
+        }
+        Boxes(b) => err!(Box),
+    }
 }
 
 // dashcolond | -: | 0, 0 | Abs diff
-pub(super) fn absdiff(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+pub(super) fn absdiff(a: List, b: List, o: &Opts) -> Status<List> {
     if a.is_empty() {
         cold_path();
         Ok(b)
@@ -210,136 +227,214 @@ pub(super) fn absdiff(mut a: List, mut b: List, o: &Opts) -> Status<List> {
         cold_path();
         Ok(a)
     } else {
-        maybe_apply!([scalar] o, a, b, scalar_op!(a, b, abs_diff))
+        maybe_apply!([scalar] o, a, b, {
+            let mut res = sub::generic_op(a, b)?;
+            if let Ok(ints) = res.listi_mut() {
+                for i in ints.iter_mut() {
+                    *i = i.abs();
+                }
+            } else if let Ok(floats) = res.listf_mut() {
+                for i in floats.iter_mut() {
+                    *i = i.abs();
+                }
+            }
+
+            Ok(res)
+        })
     }
 }
 
 // starm | * | 0 | Sign / Case
-pub(super) fn signum(mut a: List, _: &Opts) -> Status<List> {
-    for_0!(a; [v] = match v {
-        Char(c) if c.is_lowercase() => Number(-1),
-        Char(c) if c.is_uppercase() => Number(1),
-        Char(_) => Number(0),
-        Number(n) => Number(n.signum()),
-        Float(n) => Number(n.signum().as_()),
-        Boolean(b) if *b => Number(1),
-        Boolean(_) => Number(0),
-        Scalar::Box(ptr) => Number(0),
-    });
-    Ok(a)
-}
-
-// stard | * | 0, 0 | Multiplication / Boolean AND
-pub(super) fn mul(mut a: List, mut b: List, o: &Opts) -> Status<List> {
-    if a.is_empty() {
-        cold_path();
-        return Ok(b);
-    } else if b.is_empty() {
-        cold_path();
-        return Ok(a);
-    } else if matches!(a.list()[0], Scalar::Boolean(_)) && matches!(b.list()[0], Scalar::Boolean(_))
-    {
-        maybe_apply!([scalar] o, a, b, {
-            scalar_op!(a, b,
-                [l, r] = { Scalar::Boolean(
-                    unsafe { l.to_bool_unchecked() && r.to_bool_unchecked() }
-                ) };
-                { Scalar::Boolean(
-                    unsafe { l.to_bool_unchecked() && r.to_bool_unchecked() }
-                ) };
-                { Scalar::Boolean(
-                    unsafe { l.to_bool_unchecked() && r.to_bool_unchecked() }
-                ) };
+pub(super) fn signum(a: List, _: &Opts) -> Status<List> {
+    match a {
+        Integers(mut l) => {
+            for_0!(l; [v] = v.signum());
+            Ok(Integers(l))
+        }
+        Doubles(mut l) => {
+            for_0!(l; [v] = v.signum());
+            l.cast_i64().map(Integers)
+        }
+        Booleans(b) => b.cast_i64().map(Integers),
+        String(s) => unsafe {
+            Array::alloc_iter(
+                s.rank(),
+                s.list().into_iter().map(|c| match c {
+                    c if c.is_ascii_lowercase() => -1i64,
+                    c if c.is_ascii_uppercase() => 1i64,
+                    _ => 0i64,
+                }),
             )
-        })
-    } else {
-        maybe_apply!([scalar] o, a, b, scalar_op!(a, b, mul))
+        },
+        Boxes(b) => unsafe { Array::alloc_iter(b.rank(), std::iter::repeat_n(0i64, b.len())) },
     }
 }
 
-// percentm | % | 0 | Reciprocal
-pub(super) fn reciprocal(mut a: List, _: &Opts) -> Status<List> {
-    for_0!(a; [v] = match v {
-        Char('\0') | Number(0) | Float(OrderedFloat(0.)) | Boolean(false) => {
-            std::hint::cold_path();
-            return err!(NaN);
-        }
-        Char(c) => Float(OrderedFloat(*c as u32 as f64).recip()),
-        Number(n) => Float(OrderedFloat(*n as f64).recip()),
-        Float(f) => Float(f.recip()),
-        Boolean(_) => Float(OrderedFloat(1.0)),
-        _ => return err!(NaN),
-    });
-    Ok(a)
-}
-
-// percentd | % | 0, 0 | Division
-pub(super) fn div(mut a: List, mut b: List, o: &Opts) -> Status<List> {
-    maybe_apply!([scalar] o, a, b, scalar_op!(a, b, div))
-}
-
-// pipem | | | 0 | Boolean not
-pub(super) fn not(mut a: List, _: &Opts) -> Status<List> {
-    for_0!(a; [v] = match v {
-        Char(c) if *c == '\0' => Boolean(true),
-        Number(n) if *n == 0 => Boolean(true),
-        Float(f) if *f == 0. => Boolean(true),
-        Boolean(b) => Boolean(!*b),
-        Scalar::Box(_) => return err!(Box),
-        _ => Boolean(false),
-    });
-    Ok(a)
-}
-
-// piped | | | 0, 0 | Residue (Modulus) / Boolean Or
-pub(super) fn residue(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+// stard | * | 0, 0 | Multiplication / Boolean AND
+pub(super) fn mul(a: List, b: List, o: &Opts) -> Status<List> {
     if a.is_empty() {
         cold_path();
         Ok(b)
     } else if b.is_empty() {
         cold_path();
         Ok(a)
-    } else if matches!(a.list()[0], Scalar::Boolean(_)) && matches!(b.list()[0], Scalar::Boolean(_))
-    {
-        maybe_apply!([scalar] o, a, b, {
-            scalar_op!(a, b,
-                [l, r] = { Scalar::Boolean(
-                    unsafe { l.to_bool_unchecked() || r.to_bool_unchecked() }
-                ) };
-                { Scalar::Boolean(
-                    unsafe { l.to_bool_unchecked() || r.to_bool_unchecked() }
-                ) };
-                { Scalar::Boolean(
-                    unsafe { l.to_bool_unchecked() || r.to_bool_unchecked() }
-                ) };
-            )
-        })
+    } else if a.get_type() == b'B' && b.get_type() == b'B' {
+        maybe_apply!([scalar] o, a, b, unsafe { each::scalar_and(a, b) })
     } else {
-        maybe_apply!([scalar] o, a, b, scalar_op!(b, a, rem))
+        maybe_apply!([scalar] o, a, b, mul::generic_op(a, b))
+    }
+}
+
+// percentm | % | 0 | Reciprocal / Mask
+pub(super) fn reciprocal(a: List, o: &Opts) -> Status<List> {
+    match a {
+        Integers(l) => {
+            let mut l = l.cast_f64().unwrap();
+            for_0!(l; [v] = v.recip());
+            Ok(Doubles(l))
+        }
+        Doubles(mut l) => {
+            for_0!(l; [v] = v.recip());
+            Ok(Doubles(l))
+        }
+        Booleans(b) => {
+            let ranks = b.ranked(1)?;
+            match b.rank()[0] {
+                0..=8 => {
+                    let mut rank: SmallVec<[usize; 2]> = b.rank().iter().skip(1).copied().collect();
+                    if rank.is_empty() {
+                        rank.push(1);
+                    }
+                    let count = ranks.len();
+
+                    let rc: Rc<[u8]> = ranks
+                        .iter()
+                        .map(|a| {
+                            let len = a.len() - 1;
+                            a.list()
+                                .iter()
+                                .enumerate()
+                                .fold(0u8, |acc, (i, &b)| acc | ((b as u8) << (len - i)))
+                        })
+                        .take(count)
+                        .collect();
+                    Ok(List::String(Array::<u8>::new(rc, rank.len(), rank)))
+                }
+                9..=64 => {
+                    let mut rank: SmallVec<[usize; 2]> = b.rank().iter().skip(1).copied().collect();
+                    if rank.is_empty() {
+                        rank.push(1);
+                    }
+                    let count = ranks.len();
+
+                    let rc: Rc<[i64]> = ranks
+                        .iter()
+                        .map(|a| {
+                            let len = a.len() - 1;
+                            a.list()
+                                .iter()
+                                .enumerate()
+                                .fold(0i64, |acc, (i, &b)| acc | ((b as u8 as i64) << (len - i)))
+                        })
+                        .take(count)
+                        .collect();
+                    Ok(List::Integers(Array::new(rc, rank.len(), rank)))
+                }
+                _ => err!(Domain),
+            }
+        }
+        String(s) => {
+            let mut l = s.cast_f64().unwrap();
+            for_0!(l; [v] = v.recip());
+            Ok(Doubles(l))
+        }
+        Boxes(b) => err!(Box),
+    }
+}
+
+// percentd | % | 0, 0 | Division
+pub(super) fn div(a: List, b: List, o: &Opts) -> Status<List> {
+    maybe_apply!([scalar] o, a, b, div::generic_op(a, b))
+}
+
+// pipem | | | 0 | Boolean NOT
+pub(super) fn not(a: List, _: &Opts) -> Status<List> {
+    match a {
+        Integers(l) => {
+            let mut l = l.cast_bool().unwrap();
+            for_0!(l; [v] = !*v);
+            Ok(Booleans(l))
+        }
+        Doubles(l) => {
+            let mut l = l.cast_bool().unwrap();
+            for_0!(l; [v] = !*v);
+            Ok(Booleans(l))
+        }
+        Booleans(mut b) => {
+            for_0!(b; [v] = !*v);
+            Ok(Booleans(b))
+        }
+        #[allow(unnecessary_transmutes)]
+        String(s) => {
+            let mut b: Array<bool> = unsafe { std::mem::transmute(s) };
+            for_0!(b; [v] = unsafe { !std::mem::transmute::<bool, u8>(*v).to_bool().unwrap() });
+            Ok(Booleans(b))
+        }
+        Boxes(b) => err!(Box),
+    }
+}
+
+// piped | | | 0, 0 | Residue (Modulus) / Boolean OR
+pub(super) fn residue(a: List, b: List, o: &Opts) -> Status<List> {
+    if a.is_empty() {
+        cold_path();
+        Ok(b)
+    } else if b.is_empty() {
+        cold_path();
+        Ok(a)
+    } else if a.get_type() == b'B' && b.get_type() == b'B' {
+        maybe_apply!([scalar] o, a, b, unsafe { each::scalar_or(a, b) })
+    } else {
+        maybe_apply!([scalar] o, a, b, rem::generic_op(b, a))
     }
 }
 
 // pipecolonm | |: | 0 | Descend
-pub(super) fn descend(mut a: List, o: &Opts) -> Status<List> {
+pub(super) fn descend(a: List, o: &Opts) -> Status<List> {
     maybe_apply!([scalar] o, a, {
         if a.is_scalar() {
-            let end = a.list()[0];
-            if end.is_char() {
-                List::range(if end.to_num()? < 97 { Scalar::Char('A') } else { Scalar::Char('a') }, end, true)
+            if a.get_type() == b'C' {
+                let end = unsafe { a.listc_unchecked()[0] };
+                Array::<u8>::range(if end < 97 { b'A' } else { b'a' }, end, true)
+            } else if a.get_type() == b'I' {
+                let end = unsafe { a.listi_unchecked()[0] };
+                Array::<i64>::range(1, end, true)
             } else {
-                List::range(Scalar::Number(1), end, true)
+                iter_ints!(a, |it| {
+                    let end = it.next().unwrap();
+                    Array::<i64>::range(1, end, true)
+                })
+            }
+        } else if a.get_type() == b'C' {
+            unsafe {
+                let list = a.listc_unchecked();
+                Array::try_alloc_iter(a.rank(), list.iter().map(|&end| {
+                    scalar::boxed(&o.a, Array::<u8>::range(if end < 97 { b'A' } else { b'a' }, end, true)?)
+                })).map(List::Boxes)
+            }
+        } else if a.get_type() == b'I' {
+            unsafe {
+                let list = a.listi_unchecked();
+                Array::try_alloc_iter(a.rank(), list.iter().map(|&end| {
+                    scalar::boxed(&o.a, Array::<i64>::range(1, end, true)?)
+                })).map(List::Boxes)
             }
         } else {
-            for_0!(a; [v] = Scalar::boxed(
-                &o.a, List::range({
-                    if v.is_char() {
-                        if v.to_num()? < 97 { Scalar::Char('A') } else { Scalar::Char('a') }
-                    } else {
-                        Scalar::Number(1)
-                    }
-                }, *v, true)?)?
-            );
-            Ok(a)
+            iter_ints!(a, |list| unsafe {
+                Array::try_alloc_iter(a.rank(), list.map(|end| {
+                    scalar::boxed(&o.a, Array::<i64>::range(1, end, true)?)
+                })).map(List::Boxes)
+            })
         }
     })
 }
@@ -349,117 +444,157 @@ pub(super) fn axes(a: List, b: List, o: &Opts) -> Status<List> {
     maybe_apply!([within] o, a, b, {
         let rank = b.rank();
         let mut f = Vec::with_capacity(a.len());
-        let indices = a.list().iter().map(|n| n.to_num());
-        for (i, idx) in indices.enumerate() {
-            let idx = idx?;
-            if i >= b.dims() || idx < 0 {
-                return err!(Domain);
+        iter_ints!(a, |indices| {
+            for (i, idx) in indices.enumerate() {
+                if i >= b.dims() || idx < 0 {
+                    return err!(Domain);
+                }
+                let idx = idx as usize;
+                f.push(rank[idx]);
             }
-            let idx = idx as usize;
-            f.push(rank[idx]);
-        }
+        });
         b.with_rank(&f)
     })
 }
 
 // pipedotm | |. | 99 | Reverse
-pub(super) fn rev(mut a: List, o: &Opts) -> Status<List> {
+pub(super) fn rev(a: List, o: &Opts) -> Status<List> {
     maybe_apply!([within] o, a, {
         if a.is_scalar() {
             std::hint::cold_path();
             return Ok(a);
         }
         let dims = a.dims();
-        let (mut runs, r) = applym(&mut a, dims as u8 - 1);
-        let size: usize = r.iter().product();
-        while !runs.is_empty() {
-            let Some(left) = runs.pop_front() else {
-                return err!(Domain);
-            };
-            if let Some(right) = runs.pop_back() {
-                unsafe {
-                    let l = left.as_mut_ptr();
-                    let r = right.as_mut_ptr();
-                    // SAFETY: chunks_exact_mut returns non-overlapping mutable slices of size based
-                    // on provided rank, this is calculated from the returned `r`, ensuring the size
-                    // is correct.
-                    std::ptr::swap_nonoverlapping(l, r, size);
+        with_list!(a, |a| {
+            let mut a = a;
+            let (mut runs, r) = applym(&mut a, dims as u8 - 1);
+            let size: usize = r.iter().product();
+            while !runs.is_empty() {
+                let Some(left) = runs.pop_front() else {
+                    return err!(Domain);
+                };
+                if let Some(right) = runs.pop_back() {
+                    unsafe {
+                        let l = left.as_mut_ptr();
+                        let r = right.as_mut_ptr();
+                        // SAFETY: chunks_exact_mut returns non-overlapping mutable slices of size based
+                        // on provided rank, this is calculated from the returned `r`, ensuring the size
+                        // is correct.
+                        std::ptr::swap_nonoverlapping(l, r, size);
+                    }
                 }
             }
-        }
-        Ok(a)
+            Ok(List::from(a))
+        })
     })
 }
 
 // pipedotd | |. | 0, 99 | Rotate
-pub(super) fn rot(a: List, mut b: List, o: &Opts) -> Status<List> {
+pub(super) fn rot(a: List, b: List, o: &Opts) -> Status<List> {
     maybe_apply!(o.rd[1] as usize >= b.dims(), &o.a, b, o.rd[1], {
         let trailing_rank = a.rank();
         let dims = b.dims() as u8;
-        let v = with_eco(a.len() * b.len(), |v| {
-            let (runs, r) = applym(&mut b, dims - 1);
-            let size: usize = r.iter().product();
-            for_0!(a; [c] {
-                let c = c.to_num()?;
-                let rev = c < 0;
-                let l = runs.len();
-                let i = c.abs() as usize % l;
-                if !rev {
-                    for j in (i..l).chain(0..i) {
-                        v.extend(runs[j]);
+        with_list!(b, |b| {
+            let mut b = b;
+            let v = with_eco(a.len() * b.len(), |v| {
+                let (runs, r) = applym(&mut b, dims - 1);
+                let size: usize = r.iter().product();
+                iter_ints!(a, |it| for c in it {
+                    let c = c.to_num()?;
+                    let rev = c < 0;
+                    let l = runs.len();
+                    let i = c.abs() as usize % l;
+                    if !rev {
+                        for j in (i..l).chain(0..i) {
+                            v.extend(runs[j]);
+                        }
+                    } else {
+                        for j in (l - i..l).chain(0..l - i) {
+                            v.extend(runs[j])
+                        }
                     }
-                } else {
-                    for j in (l - i..l).chain(0..l - i) {
-                        v.extend(runs[j])
-                    }
-                }
-            });
-            Ok(())
-        })?;
-        let mut rank = SmallVec::from_slice(b.rank());
-        rank.extend_from_slice(trailing_rank);
-        List::mat(v, rank.len(), rank)
+                });
+                Ok(())
+            })?;
+            let mut rank = SmallVec::from_slice(b.rank());
+            rank.extend_from_slice(trailing_rank);
+            Ok(List::from(Array::new(v, rank.len(), rank)))
+        })
     })
 }
 
 // exclamationm | ! | 0 | Factorial
-pub(super) fn factorial(mut a: List, o: &Opts) -> Status<List> {
-    for_0!(a; [v] = {
-        let n = v.to_num()?;
-        if n < 0 {
-            return err!(Value);
-        } else if n == 0 {
-            Scalar::Number(1)
-        } else {
-            Scalar::Number((1..n).product())
+pub(super) fn factorial(a: List, o: &Opts) -> Status<List> {
+    match a {
+        List::Integers(mut i) => {
+            for_0!(i; [n] = if *n < 0 { return err!(Value); } else if *n == 0 { 1 } else { (1..*n).product() });
+            Ok(List::Integers(i))
         }
-    });
-    Ok(a)
+        List::Doubles(d) => {
+            let mut i = d.cast_i64().unwrap();
+            for_0!(i; [n] = if *n < 0 { return err!(Value); } else if *n == 0 { 1 } else { (1..*n).product() });
+            Ok(List::Integers(i))
+        }
+        a => {
+            let rank = a.rank();
+            iter_ints!(a, |it| unsafe {
+                Array::try_alloc_iter(
+                    rank,
+                    it.map(|n| {
+                        if n < 0 {
+                            err!(Value)
+                        } else if n == 0 {
+                            Ok(1)
+                        } else {
+                            Ok((1..n).product())
+                        }
+                    }),
+                )
+            }
+            .map(List::from))
+        }
+    }
 }
 
 // exclamationd | ! | 0, 0 | Boolean OR
-pub(super) fn bitor(mut a: List, mut b: List, o: &Opts) -> Status<List> {
+pub(super) fn bor(a: List, b: List, o: &Opts) -> Status<List> {
     maybe_apply!([scalar] o, a, b, {
-        // SAFETY: Underlying `apply_loosem` will take ownership if necessary
-        scalar_op!(a, b, [l, r] = { Scalar::Boolean(l.to_bool()? || r.to_bool()?) })
+        if a.get_type() == b'B' && b.get_type() == b'B' {
+            let mut a = unsafe { a.arrayb_unchecked() };
+            let mut b = unsafe { b.arrayb_unchecked() };
+            scalar_op!(a, b,
+                [l, r] = { *l || *r }; { *r || l }; { *l || r };
+            ).map(List::Booleans)
+        } else if a.get_type() == b'B' {
+            let mut b = unsafe { b.to_cast(b'B')?.arrayb_unchecked() };
+            let mut a = unsafe { a.arrayb_unchecked() };
+            scalar_op!(a, b,
+                [l, r] = { *l || *r }; { *r || l }; { *l || r };
+            ).map(List::Booleans)
+        } else if b.get_type() == b'B' {
+            let mut a = unsafe { a.to_cast(b'B')?.arrayb_unchecked() };
+            let mut b = unsafe { b.arrayb_unchecked() };
+            scalar_op!(a, b,
+                [l, r] = { *l || *r }; { *r || l }; { *l || r };
+            ).map(List::Booleans)
+        } else {
+            let mut a = unsafe { a.to_cast(b'B')?.arrayb_unchecked() };
+            let mut b = unsafe { b.to_cast(b'B')?.arrayb_unchecked() };
+            scalar_op!(a, b,
+                [l, r] = { *l || *r }; { *r || l }; { *l || r };
+            ).map(List::Booleans)
+        }
     })
 }
 
 // leftarrowm | < | 99 | Box
 pub(crate) fn boxed(a: Type, o: &Opts) -> Status<Type> {
-    Ok(Scalar::boxed_t(&o.a, a)?.into())
+    Ok(scalar::boxed_t(&o.a, a)?.into())
 }
 
 // leftarrowd | < | 0, 0 | Less than
-pub(crate) fn lt(mut a: List, mut b: List, o: &Opts) -> Status<List> {
-    maybe_apply!([scalar] o, a, b, {
-        scalar_op! {
-            a, b, [l, r] =
-            { Scalar::Boolean(*l < *r) };
-            { Scalar::Boolean(l < *r)  };
-            { Scalar::Boolean(*l < r)  };
-        }
-    })
+pub(crate) fn lt(a: List, b: List, o: &Opts) -> Status<List> {
+    ord::lt(a, b, o)
 }
 
 // leftarrowcolonm | <: | 99 | Grade Up
@@ -471,7 +606,7 @@ pub(crate) fn gradeup(a: List, o: &Opts) -> Status<List> {
         let len = a.rank()[a.dims() - 1];
         let indices = with_eco(len, |v| {
             for i in 0..len as i64 {
-                v.push(Scalar::Number(i));
+                v.push(i);
             }
             Ok(())
         })?;
@@ -479,58 +614,41 @@ pub(crate) fn gradeup(a: List, o: &Opts) -> Status<List> {
         // SAFETY: indices isn't shared, so this is fine (to the degree that is expected from this
         // awful code)
         let s = unsafe {
-            std::slice::from_raw_parts_mut(indices.as_ptr() as *mut Scalar, len)
+            std::slice::from_raw_parts_mut(indices.as_ptr() as *mut i64, len)
         };
 
         let l = a.ranked(a.dims() - 1)?;
-        s.sort_by(|a, b| unsafe { 
-            let i = a.to_num_unchecked();
-            let j = b.to_num_unchecked();
+        s.sort_by(|&i, &j| unsafe {
             std::hint::assert_unchecked(i >= 0 && j >= 0);
             l[i as usize].cmp(&l[j as usize])
         });
 
-        List::from_vec(indices)
+        Ok(Array::from_vec(indices))
     })
 }
 
 // leftarrowcolond | <: | 0, 0 | LTE
-pub(crate) fn lte(mut a: List, mut b: List, o: &Opts) -> Status<List> {
-    maybe_apply!([scalar] o, a, b, {
-        scalar_op! {
-            a, b, [l, r] =
-            { Scalar::Boolean(*l <= *r) };
-            { Scalar::Boolean(l <= *r)  };
-            { Scalar::Boolean(*l <= r)  };
-        }
-    })
+pub(crate) fn lte(a: List, b: List, o: &Opts) -> Status<List> {
+    ord::lte(a, b, o)
 }
 
 // rightarrowm | > | 99 | Unbox / First
 pub(crate) fn unbox(a: Type, o: &Opts) -> Status<Type> {
-    let a = a.to_list()?;
-    if a.is_scalar() {
-        let f = &a.list()[0];
-        if f.is_box() { unsafe { Ok(f.unbox_unchecked()) } } else { Ok(a.into()) }
+    let mut a = a.to_list()?;
+    if a.get_type() == b'X' && a.is_scalar() {
+        let f = &unsafe { a.listx_unchecked()[0] };
+        Ok(unsafe { f.read() })
     } else if a.is_empty() {
         cold_path();
         Ok(a.into())
     } else {
-        Ok(a.list()[0].into())
+        a.nth(0).map(Type::from)
     }
 }
 
 // rightarrowd | > | 0, 0 | Greater than
-pub(crate) fn gt(mut a: List, mut b: List, o: &Opts) -> Status<List> {
-    maybe_apply!([scalar] o, a, b, {
-        // SAFETY: Underlying `apply_loosem` will take ownership if necessary
-        scalar_op! {
-            a, b, [l, r] =
-            { Scalar::Boolean(*l > *r) };
-            { Scalar::Boolean(l > *r) };
-            { Scalar::Boolean(*l < r) };
-        }
-    })
+pub(crate) fn gt(a: List, b: List, o: &Opts) -> Status<List> {
+    ord::gt(a, b, o)
 }
 
 // rightarrowcolonm | >: | 99 | Grade Down
@@ -542,7 +660,7 @@ pub(crate) fn gradedown(a: List, o: &Opts) -> Status<List> {
         let len = a.rank()[a.dims() - 1];
         let indices = with_eco(len, |v| {
             for i in 0..len as i64 {
-                v.push(Scalar::Number(i));
+                v.push(i);
             }
             Ok(())
         })?;
@@ -550,85 +668,90 @@ pub(crate) fn gradedown(a: List, o: &Opts) -> Status<List> {
         // SAFETY: indices isn't shared, so this is fine (to the degree that is expected from this
         // awful code)
         let s = unsafe {
-            std::slice::from_raw_parts_mut(indices.as_ptr() as *mut Scalar, len)
+            std::slice::from_raw_parts_mut(indices.as_ptr() as *mut i64, len)
         };
 
         let l = a.ranked(a.dims() - 1)?;
-        s.sort_by(|a, b| unsafe { 
-            let i = a.to_num_unchecked();
-            let j = b.to_num_unchecked();
+        s.sort_by(|&i, &j| unsafe {
             std::hint::assert_unchecked(i >= 0 && j >= 0);
             l[j as usize].cmp(&l[i as usize])
         });
 
-        List::from_vec(indices)
+        Ok(Array::from_vec(indices))
     })
 }
 
 // rightarrowcolond | >: | 0, 0 | GTE
-pub(crate) fn gte(mut a: List, mut b: List, o: &Opts) -> Status<List> {
-    maybe_apply!([scalar] o, a, b, {
-        scalar_op! {
-            a, b, [l, r] =
-            { Scalar::Boolean(*l >= *r) };
-            { Scalar::Boolean(l >= *r)  };
-            { Scalar::Boolean(*l >= r)  };
-        }
-    })
+pub(crate) fn gte(a: List, b: List, o: &Opts) -> Status<List> {
+    ord::gte(a, b, o)
 }
 
 // caretm | ^ | 0 | Exponential
-pub(super) fn exp(mut a: List, o: &Opts) -> Status<List> {
-    for_0!(a; [v] = Float(v.to_float()?.exp()));
-    Ok(a)
+pub(super) fn exp(a: List, o: &Opts) -> Status<List> {
+    match a {
+        Integers(l) => {
+            let mut l = l.cast_f64().unwrap();
+            for_0!(l; [v] = v.exp());
+            Ok(Doubles(l))
+        }
+        Doubles(mut l) => {
+            for_0!(l; [v] = v.exp());
+            Ok(Doubles(l))
+        }
+        Booleans(b) => unsafe {
+            Array::alloc_iter(
+                b.rank(),
+                b.list().into_iter().map(|&b| OrderedFloat(b as u8 as f64).exp()),
+            )
+        },
+        String(s) => unsafe {
+            Array::alloc_iter(s.rank(), s.list().into_iter().map(|&c| OrderedFloat(c as f64).exp()))
+        },
+        Boxes(b) => err!(Box),
+    }
 }
 
 // caretd | ^ | 0, 0 | Pow
-pub(super) fn bitand(mut a: List, mut b: List, o: &Opts) -> Status<List> {
-    maybe_apply!([scalar] o, a, b, {
-        scalar_op!(a, b, [l, r] = { Scalar::Float(l.to_float()?.powf(r.to_float()?)) })
-    })
+pub(super) fn pow(a: List, b: List, o: &Opts) -> Status<List> {
+    maybe_apply!([scalar] o, a, b, pow::generic_op(b, a))
 }
 
 // dollarm | $ | 99 | Shape
 pub(crate) fn shape(a: List, o: &Opts) -> Status<List> {
     maybe_apply!(o.rm as usize >= a.dims(), &o.a, a, o.rm, unsafe {
-        List::alloc_iter(&[a.dims()], a.rank().iter().map(|n| Scalar::Number(*n as i64)))
+        Array::alloc_iter(&[a.dims()], a.rank().iter().map(|n| *n as i64))
     })
 }
 
 // For dyadic '$'
 macro_rules! calc_shape {
     ($a:ident, $b:ident) => {{
-        let r = $a
-            .list()
-            .iter()
-            .map(|n| n.to_float())
-            .collect::<Status<SmallVec<[OrderedFloat<f64>; $crate::types::list::INLINE_SIZE]>>>()?;
-        // Check for interpreted rank values
-        let mut rank: SmallVec<[usize; $crate::types::list::INLINE_SIZE]> =
-            SmallVec::with_capacity(r.len());
-        let mut prod = 1;
-        let mut i = None;
-        for (j, &r) in r.iter().enumerate() {
-            if r != OrderedFloat::infinity() && r != OrderedFloat::neg_infinity() && r != -1. {
-                let r: usize = num_traits::Float::max(OrderedFloat::<f64>::zero(), r).as_();
-                rank.push(r);
-                prod *= r;
-            } else {
-                rank.push(0);
-                i = Some(j);
+        iter_floats!($a, |r| {
+            // Check for interpreted rank values
+            let mut rank: SmallVec<[usize; $crate::types::list::INLINE_SIZE]> =
+                SmallVec::with_capacity($a.len());
+            let mut prod = 1;
+            let mut i = None;
+            for (j, r) in r.enumerate() {
+                if r != OrderedFloat::infinity() && r != OrderedFloat::neg_infinity() && r != -1. {
+                    let r: usize = num_traits::Float::max(OrderedFloat::<f64>::zero(), r).as_();
+                    rank.push(r);
+                    prod *= r;
+                } else {
+                    rank.push(0);
+                    i = Some(j);
+                }
             }
-        }
-        i.map_or(Ok(()), |i| {
-            if $b.len() % prod != 0 {
-                err!(Domain)
-            } else {
-                rank[i] = $b.len() / prod;
-                Ok(())
-            }
-        })?;
-        rank
+            i.map_or(Ok(()), |i| {
+                if $b.len() % prod != 0 {
+                    err!(Domain)
+                } else {
+                    rank[i] = $b.len() / prod;
+                    Ok(())
+                }
+            })?;
+            rank
+        })
     }};
 }
 
@@ -639,19 +762,21 @@ pub(crate) fn reshape(a: List, b: List, o: &Opts) -> Status<List> {
         if b.dims() <= o.rd[1] as usize {
             return b.with_rank(&rank);
         } else {
-            let r = &b.rank()[0..o.rd[1] as usize];
-            let v = with_eco(
-                b.len() / r.iter().product::<usize>() * rank.iter().product::<usize>(),
-                |v| {
-                    for_n!(b, o.rd[1] as usize; [(b, r)] {
-                        let size = rank.iter().product();
-                        v.extend_iter(b.into_iter().copied().cycle().take(size));
-                    });
-                    Ok(())
-                },
-            )?;
-            rank.extend(b.rank()[o.rd[1] as usize..].iter().copied());
-            return List::mat(v, rank.len(), rank);
+            with_list!(b, |b| {
+                let r = &b.rank()[0..o.rd[1] as usize];
+                let v = with_eco(
+                    b.len() / r.iter().product::<usize>() * rank.iter().product::<usize>(),
+                    |v| {
+                        for_n!(b, o.rd[1] as usize; [(b, r)] {
+                            let size = rank.iter().product();
+                            v.extend_iter(b.into_iter().copied().cycle().take(size));
+                        });
+                        Ok(())
+                    },
+                )?;
+                rank.extend(b.rank()[o.rd[1] as usize..].iter().copied());
+                return Ok(List::from(Array::new(v, rank.len(), rank)));
+            });
         }
     }
 
@@ -675,8 +800,8 @@ pub(super) fn left(a: Type, b: Type, o: &Opts) -> Status<Type> {
         Ok(a)
     } else if !a.is_list() {
         let b = b.to_list()?;
-        let boxed = Scalar::boxed_t(&o.a, a)?;
-        maybe_apply!(o.rd[1] as usize >= b.dims(), &o.a, b, o.rd[1], Ok(List::scalar(boxed)))
+        let boxed = scalar::boxed_t(&o.a, a)?;
+        maybe_apply!(o.rd[1] as usize >= b.dims(), &o.a, b, o.rd[1], Ok(Array::scalar(boxed)))
             .map(Type::List)
     } else {
         let a = a.to_list()?;
@@ -700,8 +825,8 @@ pub(super) fn right(a: Type, b: Type, o: &Opts) -> Status<Type> {
         Ok(b)
     } else if !b.is_list() {
         let a = a.to_list()?;
-        let boxed = Scalar::boxed_t(&o.a, b)?;
-        maybe_apply!(o.rd[0] as usize >= a.dims(), &o.a, a, o.rd[0], Ok(List::scalar(boxed)))
+        let boxed = scalar::boxed_t(&o.a, b)?;
+        maybe_apply!(o.rd[0] as usize >= a.dims(), &o.a, a, o.rd[0], Ok(Array::scalar(boxed)))
             .map(Type::List)
     } else if !a.is_list() {
         Ok(b)
@@ -723,18 +848,22 @@ pub(super) fn right(a: Type, b: Type, o: &Opts) -> Status<Type> {
 // questionm | ? | 99 | Dedup sieve
 pub(super) fn dedup_sieve(a: List, o: &Opts) -> Status<List> {
     if o.rm == 0 {
-        let mut m = HashSet::new();
-        let new = with_eco(a.len(), |new| {
-            for s in a.list() {
-                if m.contains(s) {
-                    continue;
-                }
-                m.insert(*s);
-                new.push(*s);
-            }
-            Ok(())
-        })?;
-        List::from_vec(new)
+        with_list!(a, |a| {
+            let mut m = HashSet::new();
+            let it = a
+                .list()
+                .iter()
+                .copied()
+                .filter(|s| {
+                    if m.contains(s) {
+                        return false;
+                    }
+                    m.insert(*s);
+                    true
+                })
+                .collect::<Rc<[_]>>();
+            Ok(List::from(Array::new(it, 1, smallvec![m.len()])))
+        })
     } else {
         let rank: SmallVec<[usize; 4]> = SmallVec::from(a.rank());
         let ldims = usize::min(o.rm as usize, usize::max(a.dims(), 1) - 1);
@@ -768,34 +897,60 @@ pub(super) fn group(a: List, b: List, o: &Opts) -> Status<List> {
     let runs = a.ranked(ldims)?;
 
     let mut build: Vec<List> = Vec::with_capacity(b.len() / b.rank()[0]);
-    for_1!(b; [b, r] {
+    let r = b.rank()[0];
+    for b in b.ranked(1)? {
         if rank[ldims] != b.len() {
             return err!(Domain);
         }
-        let mut map: HashMap<usize, Vec<&[Scalar]>> = HashMap::new();
-        let bucket = b.into_iter().map(|n| n.to_num().map(|n| n as usize))
-            .collect::<Status<Vec<usize>>>()?;
+        let mut map: HashMap<usize, Vec<List>> = HashMap::new();
+        let bucket = iter_ints!(b, |it| it
+            .map(|n| if n < 0 { err!(Value) } else { Ok(n as usize) })
+            .collect::<Status<Vec<usize>>>()?);
         for i in 0..=*bucket.iter().max().unwrap() {
             map.insert(i, vec![]);
         }
-        for (run, i) in runs.iter().zip(0..) {
-            map.get_mut(&bucket[i]).unwrap().push(run.list());
+        for (i, run) in runs.iter().cloned().enumerate() {
+            map.get_mut(&bucket[i]).unwrap().push(run);
         }
-        let mut construct = vec![List::empty(); map.len()];
+
+        let len = map.len();
+        let mut construct = vec![List::empty(); len];
         for (key, value) in map.into_iter() {
             if !value.is_empty() {
-                construct[key] = List::unranked(&o.a, ldims, &rank[..ldims],
-                    value.into_iter().map(|v| List::mat_ref(v, ldims, &rank[..ldims]))
-                        .collect::<Status<Vec<List>>>()?
-                )?
+                construct[key] = List::unranked(&o.a, ldims, &rank[..ldims], value)?;
             };
         }
-        build.push(List::from_vec(construct.into_iter().map(
-            |n| Scalar::boxed(&o.a, n)
-        ).collect::<Status<EcoVec<Scalar>>>()?)?);
-    });
+        build.push(List::Boxes(unsafe {
+            Array::try_alloc_iter(&[len], construct.into_iter().map(|n| scalar::boxed(&o.a, n)))?
+        }));
+    }
 
-    List::unranked(&o.a, dims, &rank, build)
+    if build.len() == 1 {
+        let b = build.remove(0);
+        Ok(b)
+    } else {
+        List::unranked(&o.a, dims, &rank, build)
+    }
+}
+
+macro_rules! equalm_return {
+    ($trailing:ident, $leading:ident, $rank:ident, $name:ident) => {{
+        let size = $rank.iter().product();
+        Array::new(
+            unsafe {
+                $trailing[0]
+                    .$name()
+                    .iter()
+                    .zip(0..)
+                    .flat_map(|(_, i)| $trailing.iter().map(move |v| v.$name()[i]))
+                    .take(size)
+                    .collect::<Rc<[_]>>()
+            },
+            $leading,
+            $rank.into(),
+        )
+        .into()
+    }};
 }
 
 // equalm | = | 2 / 99 | Transpose / Keys
@@ -843,72 +998,81 @@ pub(super) fn transpose_keys(a: Type, o: &Opts) -> Status<Type> {
         }
 
         let trailing = a.ranked(leading - 1)?;
-        List::mat(
-            trailing[0]
-                .list()
-                .iter()
-                .zip(0..)
-                .flat_map(|(_, i)| trailing.iter().map(move |v| v.list()[i]))
-                .collect::<EcoVec<Scalar>>(),
-            leading,
-            rank.into(),
-        )
+        Ok(match trailing[0].get_type() {
+            b'I' => equalm_return!(trailing, leading, rank, listi_unchecked),
+            b'F' => equalm_return!(trailing, leading, rank, listf_unchecked),
+            b'B' => equalm_return!(trailing, leading, rank, listb_unchecked),
+            b'C' => equalm_return!(trailing, leading, rank, listc_unchecked),
+            b'X' => equalm_return!(trailing, leading, rank, listx_unchecked),
+            _ => unreachable!(),
+        })
     })
     .map(Type::from)
 }
 
 // equald | = | 0, 0 | Equals
 #[inline(always)]
-pub(super) fn equal(mut a: List, mut b: List, o: &Opts) -> Status<List> {
-    if o.rd[0] == 0 && o.rd[1] == 0 {
-        scalar_op! {
-            a, b, [l, r] =
-            { Scalar::Boolean(*l == *r) };
-            { Scalar::Boolean(l == *r)  };
-            { Scalar::Boolean(*l == r)  };
-        }
-    } else {
-        std::hint::cold_path();
-        err!(Internal, "TODO: Non rank [0, 0] for dyadic '='.")
-    }
+pub(super) fn equal(a: List, b: List, o: &Opts) -> Status<List> {
+    ord::eq(a, b, o)
 }
 
 // tildem | ~ | 0 | 1-range / Rising alphabet
-pub(super) fn range(mut a: List, o: &Opts) -> Status<List> {
+pub(super) fn range(a: List, o: &Opts) -> Status<List> {
     maybe_apply!([scalar] o, a, {
         if a.is_scalar() {
-            let end = a.list()[0];
-            if end.is_char() {
-                List::range(if end.to_num()? < 97 { Scalar::Char('A') } else { Scalar::Char('a') }, end, false)
+            if a.get_type() == b'C' {
+                let end = unsafe { a.listc_unchecked()[0] };
+                Array::<u8>::range(if end < 97 { b'A' } else { b'a' }, end, false)
+            } else if a.get_type() == b'I' {
+                let end = unsafe { a.listi_unchecked()[0] };
+                Array::<i64>::range(1, end, false)
             } else {
-                List::range(Scalar::Number(1), end, false)
+                iter_ints!(a, |it| {
+                    let end = it.next().unwrap();
+                    Array::<i64>::range(1, end, false)
+                })
+            }
+        } else if a.get_type() == b'C' {
+            unsafe {
+                let list = a.listc_unchecked();
+                Array::try_alloc_iter(a.rank(), list.iter().map(|&end| {
+                    scalar::boxed(&o.a, Array::<u8>::range(if end < 97 { b'A' } else { b'a' }, end, false)?)
+                })).map(List::Boxes)
+            }
+        } else if a.get_type() == b'I' {
+            unsafe {
+                let list = a.listi_unchecked();
+                Array::try_alloc_iter(a.rank(), list.iter().map(|&end| {
+                    scalar::boxed(&o.a, Array::<i64>::range(1, end, false)?)
+                })).map(List::Boxes)
             }
         } else {
-            for_0!(a; [v] = Scalar::boxed(
-                &o.a, List::range({
-                    if v.is_char() {
-                        if v.to_num()? < 97 { Scalar::Char('A') } else { Scalar::Char('a') }
-                    } else {
-                        Scalar::Number(1)
-                    }
-                }, *v, false)?)?
-            );
-            Ok(a)
+            iter_ints!(a, |list| unsafe {
+                Array::try_alloc_iter(a.rank(), list.map(|end| {
+                    scalar::boxed(&o.a, Array::<i64>::range(1, end, false)?)
+                })).map(List::Boxes)
+            })
         }
     })
 }
 
 // tilded | ~ | 99, 0 | Index
 pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
-    apply_loosed(&o.a, a, b, o.rd, |a, b| {
+    apply_loosed(&o.a, a, b, o.rd, |a, index| {
         if a.is_empty() {
+            cold_path();
+            return err!(Domain);
+        } else if !index.is_scalar() {
             cold_path();
             return err!(Domain);
         }
 
-        let index = b.list()[0];
-        if !index.is_box() {
-            let i = index.to_num()? as usize;
+        if index.get_type() != b'X' {
+            let i = iter_ints!(index, |it| it.next().unwrap());
+            if i < 0 {
+                return err!(Domain);
+            }
+            let i = i as usize;
             let rank: SmallVec<[usize; 4]> = if a.dims() == 0 {
                 smallvec![1]
             } else {
@@ -921,12 +1085,11 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
             let values = unsafe { a.sliced(i * r, i * r + r, &rank) };
             Ok(values)
         } else {
-            let index = unsafe { index.unbox_unchecked() }
-                .to_list()?
-                .list()
-                .iter()
-                .map(|n| n.to_num().map(|n| n as usize))
-                .collect::<Status<Vec<usize>>>()?;
+            let list = unsafe { index.listx_unchecked()[0].read() }.to_list()?;
+            let index = iter_ints!(list, |it| {
+                it.map(|n| if n < 0 { err!(Domain) } else { Ok(n as usize) })
+                    .collect::<Status<Vec<usize>>>()
+            })?;
 
             if a.dims() < index.len() {
                 return err!(Domain);
@@ -941,9 +1104,9 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
             }
 
             let rank = &rank[0..a.dims() - index.len()];
-            let ct: usize = rank.iter().copied().product();
+            let ct: usize = rank.iter().product();
             if ct == 0 {
-                Ok(List::scalar(a.list()[i]))
+                Ok(unsafe { a.sliced(i, i + 1, &[1]) })
             } else {
                 let values = unsafe { a.sliced(i, i + ct, &rank) };
                 Ok(values)
@@ -961,192 +1124,84 @@ pub(crate) fn ravel(a: Type, o: &Opts) -> Status<Type> {
         return m.values().map(Type::from);
     }
 
-    if a.is_scalar_strict() {
-        return Ok(unsafe { a.to_scalar_unchecked() }.into());
-    }
-    let mut a = unsafe { a.to_list_unchecked() };
+    let a = unsafe { a.to_list_unchecked() };
     if a.is_scalar() {
         return Ok(a.into());
     }
-    a.ds = 1;
-    a.rk = smallvec![a.len()];
-    Ok(a.into())
+
+    let size = a.len();
+    a.with_rank(&[size]).map(Type::List)
 }
 
 // commad | , | 1, 1 | Concatenate
-pub(crate) fn concat(mut a: List, mut b: List, o: &Opts) -> Status<List> {
-    if a.is_empty() {
-        return Ok(b);
-    } else if b.is_empty() {
-        return Ok(a);
+pub(crate) fn concat(mut al: List, mut bl: List, o: &Opts) -> Status<List> {
+    if al.is_empty() {
+        return Ok(bl);
+    } else if bl.is_empty() {
+        return Ok(al);
     }
 
-    let boxit = a.get_type() != b.get_type();
-    let box_a = boxit && b.get_type() == 3 && a.get_type() != 3;
-    let box_b = boxit && a.get_type() == 3 && b.get_type() != 3;
+    let boxit = al.get_type() != bl.get_type();
+    let box_a = boxit && al.get_type() != b'X';
+    let box_b = boxit && bl.get_type() != b'X';
 
     if box_a {
-        for_0!(a; [l] = Scalar::boxed_t(&o.a, Type::Scalar(*l))?);
+        al = List::Boxes(with_list!(al, |a| a.box_elems(&o.a)?));
     }
     if box_b {
-        for_0!(b; [l] = Scalar::boxed_t(&o.a, Type::Scalar(*l))?);
+        bl = List::Boxes(with_list!(bl, |b| b.box_elems(&o.a)?));
     }
 
-    if o.rd[0] == 1 && o.rd[1] == 1 {
-        if a.dims() < 2 && b.dims() < 2 {
-            let v = with_eco(a.len() + b.len(), |v| {
-                v.extend(a.list());
-                v.extend(b.list());
-                Ok(())
-            })?;
-            return List::from_vec(v);
-        } else if b.dims() < 2 {
-            let mut rank = SmallVec::from(a.rank());
-            rank[0] += b.len();
-            let build = with_eco(rank.iter().product(), |build| {
-                for_1!(a; [r, rk] {
-                    build.extend(r);
-                    build.extend(b.list());
-                });
-                Ok(())
-            })?;
-            return List::mat(build, a.dims(), rank);
-        } else if a.dims() < 2 {
-            let mut rank = SmallVec::from(b.rank());
-            rank[0] += a.len();
-            let build = with_eco(rank.iter().product(), |build| {
-                for_1!(b; [r, rk] {
-                    build.extend(a.list());
-                    build.extend(r);
-                });
-                Ok(())
-            })?;
-            return List::mat(build, b.dims(), rank);
-        }
-    } else if a.dims() == b.dims() {
-        if a.dims() <= o.rd[0] as usize && b.dims() <= o.rd[1] as usize {
-            let mut r = SmallVec::from(a.rank());
-            let last = r.len() - 1;
-            if r[0..last].iter().zip(&b.rank()[0..last]).any(|(a, b)| a != b) {
-                return err!(Domain);
+    // SAFETY: See above, if they are not the same, they are cast to boxes and
+    // there now the same
+    unsafe {
+        match al.get_type() {
+            b'I' => {
+                manip::concat(al.treat_as::<i64>(), bl.treat_as::<i64>(), o).map(List::Integers)
             }
-            r[last] += b.rank()[last];
-
-            let v = with_eco(a.len() + b.len(), |v| {
-                v.extend(a.list());
-                v.extend(b.list());
-                Ok(())
-            })?;
-            return List::mat(v, r.len(), r);
-        } else if b.dims() <= o.rd[1] as usize && o.rd[0] == 1 {
-            let mut r = SmallVec::from(a.rank());
-            let last = b.dims() - 1;
-            if r[0..last].iter().zip(&b.rank()[0..last]).any(|(a, b)| a != b) {
-                return err!(Domain);
+            b'F' => manip::concat(
+                al.treat_as::<OrderedFloat<f64>>(),
+                bl.treat_as::<OrderedFloat<f64>>(),
+                o,
+            )
+            .map(List::Doubles),
+            b'C' => manip::concat(al.treat_as::<u8>(), bl.treat_as::<u8>(), o).map(List::String),
+            b'B' => {
+                manip::concat(al.treat_as::<bool>(), bl.treat_as::<bool>(), o).map(List::Booleans)
             }
-            r[last] += b.rank()[last];
-
-            let v = with_eco(r.iter().product(), |v| {
-                for_1!(a; [l, rk] {
-                    v.extend(l);
-                    v.extend(b.list());
-                });
-                Ok(())
-            })?;
-            return List::mat(v, a.dims(), r);
-        } else if a.dims() <= o.rd[0] as usize && o.rd[1] == 1 {
-            let mut r = SmallVec::from(b.rank());
-            let last = a.dims() - 1;
-            if r[0..last].iter().zip(&a.rank()[0..last]).any(|(a, b)| a != b) {
-                return err!(Domain);
+            b'X' => {
+                manip::concat(al.treat_as::<Boxed>(), bl.treat_as::<Boxed>(), o).map(List::Boxes)
             }
-            r[last] += a.rank()[last];
-
-            let v = with_eco(r.iter().product(), |v| {
-                for_1!(b; [l, rk] {
-                    v.extend(a.list());
-                    v.extend(l);
-                });
-                Ok(())
-            })?;
-            return List::mat(v, b.dims(), r);
+            _ => std::hint::unreachable_unchecked(),
         }
     }
-
-    let ad = usize::min(a.dims(), o.rd[0] as usize);
-    let bd = usize::min(b.dims(), o.rd[1] as usize);
-    let counter = usize::max(
-        a.rank()[ad..].iter().chain(&[1]).product(),
-        b.rank()[bd..].iter().chain(&[1]).product(),
-    );
-    let size_a: usize = a.rank()[0..ad].iter().chain(&[1]).product();
-    let size_b: usize = b.rank()[0..bd].iter().chain(&[1]).product();
-    // Sanity check
-    if ad != bd
-        && (ad > bd && (ad - bd > 1 || b.rank()[0..bd].iter().zip(a.rank()).any(|(a, b)| *a != *b))
-            || bd > ad
-                && (bd - ad > 1 || a.rank()[0..ad].iter().zip(b.rank()).any(|(a, b)| *a != *b)))
-    {
-        std::hint::cold_path();
-        return err!(Domain);
-    }
-
-    let v = with_eco(counter * (size_a + size_b), |v| {
-        for_n2!(ad, a, bd, b; [(l, lk), (r, rk)] {
-            if lk.is_empty() && rk.len() > 1 || rk.is_empty() && lk.len() > 1 {
-                std::hint::cold_path();
-                return err!(Domain);
-            }
-            v.extend(l);
-            v.extend(r);
-        });
-        Ok(())
-    })?;
-
-    let ldim = usize::max(ad, bd);
-    let r = if a.dims() < b.dims() {
-        b.rank()
-    } else if a.dims() == b.dims() {
-        if a.len() > b.len() { a.rank() } else { b.rank() }
-    } else {
-        a.rank()
-    };
-    let mut rank: SmallVec<[usize; INLINE_SIZE]> = smallvec![];
-
-    if ad == 0 || bd == 0 {
-        rank.push(2);
-    }
-    if ad == 0 && bd == 0 {
-        rank.extend(r.iter().copied());
-    } else {
-        for i in 0..usize::max(ldim, r.len()) {
-            if i + 1 == ldim {
-                rank.push(a.rank().get(i).unwrap_or(&1) + b.rank().get(i).unwrap_or(&1));
-            } else {
-                rank.push(*r.get(i).unwrap_or(&1));
-            }
-        }
-    }
-
-    List::mat(v, rank.len(), rank)
 }
 
 // semicolonm | ; | 1 | Mold
 pub(crate) fn mold(a: List, _: &Opts) -> Status<List> {
     if a.is_empty() {
         return Ok(a);
-    } else if !a.list()[0].is_box() {
+    } else if a.get_type() != b'X' {
         return Ok(a);
     }
 
-    let lists = a
-        .list()
-        .iter()
-        .map(|b| unsafe { b.as_unboxed_unchecked() }.as_list())
-        .collect::<Status<Vec<&List>>>()?;
+    let lists = unsafe {
+        a.as_arrayx_unchecked()
+            .list()
+            .iter()
+            .map(|b| (&***b).as_list())
+            .collect::<Status<Vec<&List>>>()?
+    };
 
     let mut rank: SmallVec<[usize; INLINE_SIZE]> = SmallVec::new();
+    let tag = lists[0].get_type();
     for list in &lists {
+        // FIXME: Maybe make this error?
+        if list.get_type() != tag {
+            std::hint::cold_path();
+            return Ok(a);
+        }
+
         for i in 0..list.dims() {
             if i == rank.len() {
                 rank.push(1);
@@ -1155,13 +1210,22 @@ pub(crate) fn mold(a: List, _: &Opts) -> Status<List> {
         }
     }
 
-    if lists.iter().any(|v| !v.is_empty() && v.list()[0].is_box()) {
+    if lists.iter().any(|v| !v.is_empty() && v.get_type() == b'X') {
         return err!(ValueS, "No fill character exists for boxes");
     }
-    let flattened: EcoVec<Scalar> =
-        lists.iter().map(|v| pad_rank((v.list(), v.rank()), &rank).unwrap()).flatten().collect();
-    rank.push(flattened.len() / rank.iter().product::<usize>());
-    List::mat(flattened, rank.len(), rank)
+
+    treat_as!(
+        tag,
+        flattened = lists
+            .iter()
+            .map(|v| pad_rank((unsafe { v.treat_as_ref().list() }, v.rank()), &rank).unwrap())
+            .flatten()
+            .collect(),
+        {
+            rank.push(flattened.len() / rank.iter().product::<usize>());
+            Ok(List::from(Array::new(flattened, rank.len(), rank)))
+        }
+    )
 }
 
 // semicolond | ; | 99, 99 | Table
@@ -1172,53 +1236,66 @@ pub(crate) fn table(a: List, b: List, o: &Opts) -> Status<List> {
         return Ok(a);
     }
 
-    if a.list()[0].repr() != b.list()[0].repr() {
-        return List::from_vec(eco_vec![Scalar::boxed(&o.a, a)?, Scalar::boxed(&o.a, b)?]);
-    } else if a.rank() == b.rank() {
-        let v = with_eco(a.len() + b.len(), |v| {
-            v.extend(a.list());
-            v.extend(b.list());
-            Ok(())
-        })?;
-        let mut r = SmallVec::from(a.rank());
-        r.push(2);
-        return List::mat(v, a.dims() + 1, r);
+    if a.get_type() != b.get_type() {
+        return Ok(List::Boxes(Array::new(
+            with_eco(2, |v| {
+                v.extend(&[scalar::boxed(&o.a, a)?, scalar::boxed(&o.a, b)?]);
+                Ok(())
+            })?,
+            1,
+            smallvec![2],
+        )));
     }
 
-    let dims = usize::max(a.dims(), b.dims());
-    let mut rank = SmallVec::with_capacity(dims);
-    for i in 0..dims {
-        rank.push(usize::max(*a.rank().get(i).unwrap_or(&1), *b.rank().get(i).unwrap_or(&1)));
+    // SAFETY: Type is checked
+    unsafe {
+        match a.get_type() {
+            b'I' => {
+                maybe_apply!([within] o, a, b, manip::table(a.treat_as::<i64>(), b.treat_as::<i64>()).map(List::Integers))
+            }
+            b'F' => {
+                maybe_apply!([within] o, a, b, manip::table(a.treat_as::<OrderedFloat<f64>>(), b.treat_as::<OrderedFloat<f64>>())
+                    .map(List::Doubles))
+            }
+            b'C' => {
+                maybe_apply!([within] o, a, b, manip::table(a.treat_as::<u8>(), b.treat_as::<u8>()).map(List::String))
+            }
+            b'B' => {
+                maybe_apply!([within] o, a, b, manip::table(a.treat_as::<bool>(), b.treat_as::<bool>()).map(List::Booleans))
+            }
+            b'X' => {
+                maybe_apply!([within] o, a, b, manip::table(a.treat_as::<Boxed>(), b.treat_as::<Boxed>()).map(List::Boxes))
+            }
+            _ => std::hint::unreachable_unchecked(),
+        }
     }
-
-    let size: usize = rank.iter().product();
-    let v = with_eco(size * 2, |v| {
-        v.extend_iter(pad_rank((a.list(), a.rank()), &rank).unwrap());
-        v.extend_iter(pad_rank((b.list(), b.rank()), &rank).unwrap());
-        Ok(())
-    })?;
-    rank.push(2);
-    List::mat(v, rank.len(), rank)
 }
 
 // hashtagm | # | 99 | Tally
 pub(crate) fn tally(a: Type, o: &Opts) -> Status<Type> {
     if a.is_empty() {
         cold_path();
-        return Ok(Scalar::Number(0).into());
+        return Ok(Array::scalar(0i64).into());
     }
 
     if let Ok(m) = a.as_map() {
-        return Ok(Scalar::Number(m.internal.len() as i64).into());
+        return Ok(Array::scalar(m.internal.len() as i64).into());
     }
 
-    let mut a = unsafe { a.to_list_unchecked() };
+    let a = unsafe { a.to_list_unchecked() };
     if o.rm as usize >= a.dims() {
-        Ok(Scalar::Number(unsafe { *a.rank().last().unwrap_unchecked() } as i64).into())
+        Ok(Array::scalar(unsafe { *a.rank().last().unwrap_unchecked() } as i64).into())
     } else {
-        let (windows, r) = applym(&mut a, o.rm);
-        let v = eco_vec![Scalar::Number(*r.last().unwrap_or(&1) as i64); windows.len()];
-        List::from_vec(v).map(Type::from)
+        unsafe {
+            Array::alloc_iter(
+                &a.rank()[o.rm as usize..],
+                std::iter::repeat_n(
+                    i64::max(1, a.rank()[..o.rm as usize].iter().product::<usize>() as i64),
+                    a.rank()[o.rm as usize..].iter().product(),
+                ),
+            )
+            .map(Type::List)
+        }
     }
 }
 
@@ -1229,11 +1306,9 @@ pub(crate) fn replicate(a: List, b: List, o: &Opts) -> Status<List> {
     }
 
     apply_loosed(&o.a, a, b, o.rd, |a, b| {
-        let mut counts = b
-            .list()
-            .iter()
-            .map(|n| n.to_num().and_then(|x| if x >= 0 { Ok(x) } else { err!(Domain) }))
-            .collect::<Status<Vec<i64>>>()?;
+        let mut counts = iter_ints!(b, |it| it
+            .map(|n| if n >= 0 { Ok(n) } else { err!(Domain) })
+            .collect::<Status<Vec<i64>>>())?;
         let size: usize = a.rank()[0..a.dims() - 1].iter().chain(&[1]).product();
 
         let iters = a.len() / size;
@@ -1253,25 +1328,43 @@ pub(crate) fn replicate(a: List, b: List, o: &Opts) -> Status<List> {
 
         let total = counts.iter().sum::<i64>() as usize;
         let mut tallies = counts.into_iter();
-        let v = with_eco(total * size, |v| {
-            for window in a.list().chunks_exact(size) {
-                for _ in 0..tallies.next().unwrap() {
-                    v.extend(window);
+        with_list!(a, |a| {
+            let v = with_eco(total * size, |v| {
+                for window in a.list().chunks_exact(size) {
+                    for _ in 0..tallies.next().unwrap() {
+                        v.extend(window);
+                    }
                 }
-            }
-            Ok(())
-        })?;
+                Ok(())
+            })?;
 
-        let mut r = SmallVec::from(&a.rank()[0..a.dims() - 1]);
-        r.push(total);
-        List::mat(v, r.len(), r)
+            let mut r = SmallVec::from(&a.rank()[..a.dims() - 1]);
+            r.push(total);
+            Ok(List::from(Array::new(v, r.len(), r)))
+        })
     })
 }
 
 // leftcurlym | { | 0 | Increment
-pub(crate) fn inc(mut a: List, o: &Opts) -> Status<List> {
-    for_0!(a; [v] = v.add(1)?);
-    Ok(a)
+pub(crate) fn inc(a: List, o: &Opts) -> Status<List> {
+    match a {
+        Integers(mut l) => {
+            for_0!(l; [v] = *v + 1);
+            Ok(Integers(l))
+        }
+        Doubles(mut l) => {
+            for_0!(l; [v] = *v + 1.);
+            Ok(Doubles(l))
+        }
+        Booleans(b) => unsafe {
+            Array::alloc_iter(b.rank(), b.list().into_iter().map(|b| b.to_num().unwrap() + 1))
+        },
+        String(mut s) => {
+            for_0!(s; [v] = *v + 1);
+            Ok(String(s))
+        }
+        Boxes(b) => err!(Box),
+    }
 }
 
 // leftcurlyd | { | 1, 99 | Take
@@ -1280,14 +1373,10 @@ pub(crate) fn take(a: List, b: List, o: &Opts) -> Status<List> {
         return err!(Domain);
     }
     maybe_apply!(o.rd[0] as usize >= a.dims() && o.rd[1] as usize >= b.dims(), &o.a, a, b, o.rd, {
-        let indices = a
-            .list()
-            .iter()
-            .map(|n| n.to_num().map(|n| n as usize))
-            .collect::<Status<Vec<usize>>>()?;
+        let indices = iter_ints!(a, |it| it
+            .map(|n| if n >= 0 { Ok(n as usize) } else { err!(Domain) })
+            .collect::<Status<Vec<usize>>>())?;
         let rank = b.rank();
-        let bucket = b.list();
-        let fill = bucket[0].get_fill()?;
 
         if indices.len() == 1 {
             let size = indices[0];
@@ -1295,14 +1384,17 @@ pub(crate) fn take(a: List, b: List, o: &Opts) -> Status<List> {
             if size <= count {
                 return b.with_rank(&[size]);
             } else {
-                let v = with_eco(count, |v| {
-                    v.extend(b.list());
-                    for _ in 0..size - count {
-                        v.push(fill);
-                    }
-                    Ok(())
-                })?;
-                return List::from_vec(v);
+                with_list!(&b, |b| {
+                    let fill = Array::get_fill()?;
+                    let v = with_eco(count, |v| {
+                        v.extend(b.list());
+                        for _ in 0..size - count {
+                            v.push(fill);
+                        }
+                        Ok(())
+                    })?;
+                    return Ok(List::from(Array::new(v, rank.len(), SmallVec::from_slice(rank))));
+                })
             }
         }
 
@@ -1316,61 +1408,79 @@ pub(crate) fn take(a: List, b: List, o: &Opts) -> Status<List> {
         let total = indices.iter().product::<usize>() as usize;
         let min = usize::min(indices.len(), rank.len());
 
-        let v = with_eco(total, |v| {
-            for i in 0..total {
-                let mut idx: SmallVec<[usize; 3]> = SmallVec::with_capacity(indices.len());
-                let mut k = i;
-                for j in 0..indices.len() {
-                    idx.push(k % indices[j]);
-                    k /= indices[j];
-                }
-
-                let mut j = 0;
-                let mut within = true;
-                for k in 0..min {
-                    if idx[k] >= rank[k] {
-                        within = false;
-                        break;
+        with_list!(&b, |b| {
+            let bucket = b.list();
+            let fill = Array::get_fill()?;
+            let v = with_eco(total, |v| {
+                for i in 0..total {
+                    let mut idx: SmallVec<[usize; 3]> = SmallVec::with_capacity(indices.len());
+                    let mut k = i;
+                    for j in 0..indices.len() {
+                        idx.push(k % indices[j]);
+                        k /= indices[j];
                     }
-                    j += sizes[k] * idx[k];
-                }
-                if min < indices.len() {
-                    for j in min..indices.len() {
-                        if idx[j] != 0 {
+
+                    let mut j = 0;
+                    let mut within = true;
+                    for k in 0..min {
+                        if idx[k] >= rank[k] {
                             within = false;
                             break;
                         }
+                        j += sizes[k] * idx[k];
                     }
+                    if min < indices.len() {
+                        for j in min..indices.len() {
+                            if idx[j] != 0 {
+                                within = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    v.push(if within { bucket[j] } else { fill });
                 }
+                Ok(())
+            })?;
 
-                v.push(if within { bucket[j] } else { fill });
-            }
-            Ok(())
-        })?;
-
-        List::mat(v, indices.len(), indices.into())
+            Ok(List::from(Array::new(v, indices.len(), indices.into())))
+        })
     })
 }
 
 // rightcurlym | } | 0 | Decrement
-pub(crate) fn dec(mut a: List, o: &Opts) -> Status<List> {
-    for_0!(a; [v] = v.sub(1)?);
-    Ok(a)
+pub(crate) fn dec(a: List, o: &Opts) -> Status<List> {
+    match a {
+        Integers(mut l) => {
+            for_0!(l; [v] = *v - 1);
+            Ok(Integers(l))
+        }
+        Doubles(mut l) => {
+            for_0!(l; [v] = *v - 1.);
+            Ok(Doubles(l))
+        }
+        Booleans(b) => unsafe {
+            Array::alloc_iter(b.rank(), b.list().into_iter().map(|b| b.to_num().unwrap() + 1))
+        },
+        String(mut s) => {
+            for_0!(s; [v] = if *v == 0 { return err!(NaN) } else { *v - 1 });
+            Ok(String(s))
+        }
+        Boxes(b) => err!(Box),
+    }
 }
 
 // rightcurlyd | } | 1, 99 | Drop
 pub(crate) fn drop(a: List, b: List, o: &Opts) -> Status<List> {
-    let nums = a.list().iter().map(|n| n.to_num()).collect::<Status<Vec<i64>>>()?;
+    let nums = iter_ints!(a, |it| it.collect::<Vec<i64>>());
     let mut rank: SmallVec<[usize; INLINE_SIZE]> = SmallVec::from_slice(b.rank());
-    let sizes = [1]
-        .into_iter()
+    let sizes = std::iter::once(1)
         .chain(rank.iter().scan(1, |acc, x| {
             *acc = *acc * *x;
             Some(*acc)
         }))
         .collect::<Vec<usize>>();
     let dims = b.dims();
-    let values = b.list();
 
     if nums.len() > usize::max(dims, 1) {
         cold_path();
@@ -1384,12 +1494,12 @@ pub(crate) fn drop(a: List, b: List, o: &Opts) -> Status<List> {
     }
 
     let size = rank.iter().product::<usize>();
-    if size > values.len() {
+    if size > b.len() {
         return Ok(List::empty());
     }
 
     let mut start = 0;
-    let mut end = values.len();
+    let mut end = b.len();
 
     let ignore_last = dropped.len() == dims;
     if dims > 1 {
@@ -1419,12 +1529,15 @@ pub(crate) fn drop(a: List, b: List, o: &Opts) -> Status<List> {
         }
     }
 
-    let bucket = with_eco(size, |bucket| {
-        for (start, end) in indices {
-            bucket.extend(&values[start..end]);
-        }
-        Ok(())
-    })?;
+    with_list!(b, |b| {
+        let values = b.list();
+        let bucket = with_eco(size, |bucket| {
+            for (start, end) in indices {
+                bucket.extend(&values[start..end]);
+            }
+            Ok(())
+        })?;
 
-    List::mat(bucket, rank.len(), rank)
+        Ok(List::from(Array::new(bucket, rank.len(), rank)))
+    })
 }

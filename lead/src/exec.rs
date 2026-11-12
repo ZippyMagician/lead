@@ -8,7 +8,6 @@ use crate::scope::Scope;
 use crate::types::Type;
 use crate::types::list::List;
 use crate::types::map;
-use crate::types::scalar::Scalar;
 use crate::utils::error::{Error, Status, err};
 use crate::utils::{self, Arena};
 
@@ -52,7 +51,7 @@ impl Exec {
                     && !self.silent
                     && let Some(v) = self.right.take()
                 {
-                    println!("{v}");
+                    println!("{}", utils::maybe_utf8(v)?);
                 }
             } else {
                 current.push(node);
@@ -67,7 +66,7 @@ impl Exec {
         let mut s = String::new();
         self.exec_line(take(&mut node_line))?;
         if let Some(v) = self.right.take() {
-            s.push_str(&format!("{v}"));
+            s.push_str(&format!("{}", utils::maybe_utf8(v)?));
         }
         Ok(s)
     }
@@ -190,7 +189,7 @@ impl Exec {
             If { cond, body, otherwise } => {
                 let prev = self.right.take();
                 let list = self.exec_instant(*cond)?.to_list()?;
-                if list.is_empty() || list.list()[0].to_bool()? {
+                if list.is_truthy() {
                     self.exec_line(body)?;
                 } else {
                     self.exec_line(otherwise)?;
@@ -571,7 +570,7 @@ impl Exec {
     ) -> Status {
         let list = self.exec_instant(*cond)?.to_list()?;
         line.drain(*i..);
-        if list.is_empty() || list.list()[0].to_bool()? {
+        if list.is_truthy() {
             line.reserve(body.len());
             line.extend(body);
         } else {
@@ -598,25 +597,12 @@ impl Exec {
                 } else if right.is_function() {
                     self.right = Some(List::string("{}").into());
                 } else {
-                    let s = if right.is_scalar_strict() {
-                        unsafe { right.to_scalar_unchecked() }
-                    } else {
-                        let right = unsafe { right.to_list_unchecked() };
-                        if right.is_empty() {
-                            self.right = Some(List::string("()").into());
-                            return Ok(());
-                        }
-                        right.list()[0]
-                    };
-                    self.right = Some(
-                        match s {
-                            Scalar::Number(_) | Scalar::Float(_) => List::string("N"),
-                            Scalar::Boolean(_) => List::string("B"),
-                            Scalar::Char(_) => List::string("C"),
-                            Scalar::Box(_) => List::string("X"),
-                        }
-                        .into(),
-                    )
+                    let right = unsafe { right.to_list_unchecked() };
+                    if right.is_empty() {
+                        self.right = Some(List::string("()").into());
+                        return Ok(());
+                    }
+                    self.right = Some(right.get_type().into())
                 }
             }
             (TokenTag::Symbol, ">") => {
@@ -625,22 +611,21 @@ impl Exec {
                     return err!(Value);
                 }
                 // SAFETY: `is_empty` returns true for functions
-                let obj = if right.is_scalar() {
-                    unsafe { right.to_scalar_unchecked().steal_box() }
-                } else {
-                    let right = unsafe { right.to_list_unchecked() };
-                    unsafe { right.list()[0].steal_box() }
-                };
+                let right = unsafe { right.to_list_unchecked() };
+                if right.get_type() != b'X' {
+                    return err!(Domain);
+                }
+                let obj = unsafe { right.listx_unchecked()[0].steal_box() };
                 // Can treat a stolen function as an actual function
                 self.right = Some(obj);
             }
             (TokenTag::String, s) if s.len() == 1 => {
-                let mut right = self.right.take().ok_or(Error::Value)?.to_list()?;
+                let right = self.right.take().ok_or(Error::Value)?.to_list()?;
                 if right.is_empty() {
                     self.right = Some(right.into());
                 } else {
-                    let ident = s.as_bytes()[0] as char;
-                    crate::utils::symbols::for_0!(right; [v] = v.to_cast(ident)?);
+                    let ident = s.as_bytes()[0];
+                    let right = right.to_cast(ident)?;
                     self.right = Some(right.into());
                 }
             }
