@@ -14,10 +14,10 @@ WIP general documentation + specs for lead and it's differences with `ayr`.
 ## Array Model
 `lead` uses the boxed array model, similar to [J](https://jsoftware.com), although there are a few implementation specific differences.
 
-A **Value** can be either a **Primitive** (i.e. a **List**), or a **Map**. Primitive Lists can contain *Numerics*, *Booleans*, *Chars*, or *Boxes*. Boxes are treated internally
-as pointers to a **Type**, which is either a **Value** or **Function**. A Numeric list contains *Integers* and/or *Floats* interchangeably. A *Char* List is treated as a String.
+A general **Type** can be either a **Primitive** (i.e. a **List**), a **Map**, or a **Function**. Primitive Lists can contain *i64*, *f64*, *bool*, *u8*, or *Boxes*. Boxes are treated internally
+as pointers to a **Type**. A *u8*/byte array is treated as a string.
 
-Similarly, **Maps** contain keys and values, which are Strings and *Boxes* respectively.
+Similarly, **Maps** contain keys and values, which are Strings and Boxes respectively.
 
 **Lists** can be of multiple dimensions. For instance, a 3-length array, a 2 x 2 matrix, etc.
 
@@ -75,10 +75,10 @@ _3.76
 ```
 
 #### Strings
-As stated earlier, strings are simply primitive lists of chars. `'hello world' + 3` will print a string where each character is offset from 3 by the string `hello world`. 
+As stated earlier, strings are simply primitive lists of bytes. `'hello world' + 3` will print a string where each character is offset from 3 by the string `hello world`. 
 Character matrices and higher rank data is also supported. To display a string in numeric form, you can use the `+` prefix, which monadically will cast chars to integers.
 
-Additionally, the **`** character can denote char literals, specifically when the next character is alphanumeric. For instance,
+Additionally, the **`** character can denote character literals, specifically when the next character is alphabetic. For instance,
 ```
     `C
 C
@@ -91,9 +91,9 @@ Each list has a rank, which denotes its shape. For instance, the 3 x 2 primitive
 0 0 0
 ```
 As list gains dimensions, these are represented by a new number being appended to the rank, representing the size in that dimension. This array has `3` rows and `2` columns<br>
-These could also be referred to as **axes**: the first axes is the newest dimension; in this case being the *rows*. A one dimensional array's first axes would be its *columns*.
+These could also be referred to as **axes**: the first axis is the newest dimension; in this case being the *rows*. A one dimensional array's first axis would be its *columns*.
 
-As in J, the rank grows outwards. The first value will always be the first axes, the second will always be the second, and so on. In pure mathematics, the above list would be considered 2 x 3, for example.
+As in J, the rank grows outwards. The first value will always be the first axis, the second will always be the second, and so on. In pure mathematics, the above list would be considered 2 x 3, for example.
 
 ### Symbols and Operators
 A symbol refers to a built in ascii symbol that denotes a monadic/dyadic function. An operator, or binder, refers to a symbol that monadically and/or dyadically takes a symbol and does something with them. 
@@ -259,35 +259,28 @@ to be compatible with lead. Currently, one would import, for example:
 // If monadic b is NULL
 Lead_List* do_things(Lead_List* a, Lead_List* b) {
     if (a->c == 0) return a;
-    switch (a->i->t) {
-    CHAR: 
-    BOX: 
+    switch (a->t) {
+    CHAR: BOX: BOOLEAN:
         break;
     NUMBER:
-        a->i->v.c = abs(a->i->v.n);
+        for(int i=0;i<a->c;i++)
+            a->i[i] = abs(a->i[i]);
         break;
     FLOAT:
-        a->i->v.c = abs(a->i->v.f | 0);
-        break;
-    BOOLEAN:
-        a->i->v.c = 0;
+        *a->i = abs(*a->i | 0);
         break;
     }
-    a->i->t = CHAR;
     return a;
 }
 ```
 And then in lead
 ```    
     []extern'liblinkingtest.so'
-    test:[:]{
-        do_things: []link'do_things'
-    }
-
-    test.do_things 65
-A
+    test:[:]{do_things:[]link'do_things'}
+    test.do_things _65
+65
 ```
-Is an example usage. `[]extern` and `[]link` serve as semi pre-processed internals, allowing them to be passed as values despite yielding functions.
+`[]extern` and `[]link` serve as semi pre-processed internals, allowing them to be passed as values despite yielding functions.
 
 ## Quick examples
 As I think of them
@@ -313,5 +306,5 @@ Originally ayr featured implicit unboxing in practically any case, which differs
 ```
 ],`":]:#":id&#
 ```
-would be possible should `":` and `"` support implicit unboxing, as well as the train modifiers such as `]:` be reimplemented. I could see a valid argument
+would be possible should `":` support implicit unboxing, as well as the train modifiers such as `]:` be reimplemented. I could see a valid argument
 for the case of each indeed supporting this feature, especially each atom. Or perhaps some kind of depth operator? I recall something similar in `ayr`
