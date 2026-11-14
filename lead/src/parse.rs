@@ -13,8 +13,6 @@ use crate::utils::error::{Error, Status, err};
 use crate::utils::number::*;
 use crate::utils::{Arena, generate_block};
 
-use ordered_float::OrderedFloat;
-
 #[derive(Clone)]
 pub enum Assignment<'a> {
     Literal(&'a str),
@@ -131,8 +129,8 @@ impl<'a> Parser<'a> {
         use TokenTag::*;
 
         match t.0 {
-            Number => self.consume_primitive_int(parse_number(t.1)?),
-            Float => self.consume_primitive_float(parse_float(t.1)?),
+            Number => self.consume_primitive_num(t),
+            Float => self.consume_primitive_num(t),
             String => self.consume_primitive_string(t.1),
             Symbol | CloseBracket => {
                 let f = symbols::Symbol::get_symbol(t.1)
@@ -217,29 +215,41 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn consume_primitive_int(&mut self, s: i64) -> Status<Node<'a>> {
+    fn consume_primitive_num(&mut self, s: &'a Token<'a>) -> Status<Node<'a>> {
+        let mut floats = s.0 == TokenTag::Float;
         let mut tokens = vec![s];
-        while let Some((_, s)) = self.tokens.next_if(|(t, _)| *t == TokenTag::Number) {
-            tokens.push(parse_number(s)?);
+        while let Some(tok) =
+            self.tokens.next_if(|(t, _)| *t == TokenTag::Number || *t == TokenTag::Float)
+        {
+            tokens.push(tok);
+            if !floats && tok.0 == TokenTag::Float {
+                std::hint::cold_path();
+                floats = true;
+            }
         }
 
-        if tokens.len() == 1 {
-            Ok(Node::Primitive(Array::<i64>::scalar(tokens[0])))
+        if floats {
+            if tokens.len() == 1 {
+                Ok(Node::Primitive(Array::scalar(parse_float(tokens[0].1)?)))
+            } else {
+                unsafe {
+                    Array::try_alloc_iter(
+                        &[tokens.len()],
+                        tokens.iter().map(|(_, s)| parse_float(s)),
+                    )
+                    .map(|n| Node::Primitive(List::Doubles(n)))
+                }
+            }
+        } else if tokens.len() == 1 {
+            Ok(Node::Primitive(Array::<i64>::scalar(parse_number(tokens[0].1)?)))
         } else {
-            Ok(Node::Primitive(Array::<i64>::from_vec(tokens.into())))
-        }
-    }
-
-    fn consume_primitive_float(&mut self, s: OrderedFloat<f64>) -> Status<Node<'a>> {
-        let mut tokens = vec![s];
-        while let Some((_, s)) = self.tokens.next_if(|(t, _)| *t == TokenTag::Float) {
-            tokens.push(parse_float(s)?);
-        }
-
-        if tokens.len() == 1 {
-            Ok(Node::Primitive(Array::<OrderedFloat<f64>>::scalar(tokens[0])))
-        } else {
-            Ok(Node::Primitive(Array::<OrderedFloat<f64>>::from_vec(tokens.into())))
+            unsafe {
+                Array::<i64>::try_alloc_iter(
+                    &[tokens.len()],
+                    tokens.iter().map(|(_, s)| parse_number(s)),
+                )
+                .map(|n| Node::Primitive(List::Integers(n)))
+            }
         }
     }
 
