@@ -74,7 +74,7 @@ macro_rules! run_block {
         } else {
             s.set_instant("y", $a);
         }
-        // s.set_function("v", generate_block($n.clone(), $o.s.clone(), $o.a.clone()));
+        s.set_function("v", generate_block($n.clone(), $o.s.clone(), $o.a.clone()));
         drop(s);
         let mut e = Exec::new_imm($o.a.clone(), $o.s.clone());
         e.exec($n.clone())?;
