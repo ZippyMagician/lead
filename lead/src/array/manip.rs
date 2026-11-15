@@ -11,7 +11,7 @@ use smallvec::{SmallVec, smallvec};
 pub(crate) fn concat<T: Scalar>(a: Array<T>, b: Array<T>, o: &Opts) -> Status<Array<T>> {
     if o.rd[0] == 1 && o.rd[1] == 1 {
         if a.dims() < 2 && b.dims() < 2 {
-            let v = with_eco(a.len() + b.len(), |v| {
+            let v = build_rc(a.len() + b.len(), |v| {
                 v.extend(a.list());
                 v.extend(b.list());
                 Ok(())
@@ -20,7 +20,7 @@ pub(crate) fn concat<T: Scalar>(a: Array<T>, b: Array<T>, o: &Opts) -> Status<Ar
         } else if b.dims() < 2 {
             let mut rank = SmallVec::from(a.rank());
             rank[0] += b.len();
-            let build = with_eco(rank.iter().product(), |build| {
+            let build = build_rc(rank.iter().product(), |build| {
                 for_1!(a; [r, _rk] {
                     build.extend(r);
                     build.extend(b.list());
@@ -31,7 +31,7 @@ pub(crate) fn concat<T: Scalar>(a: Array<T>, b: Array<T>, o: &Opts) -> Status<Ar
         } else if a.dims() < 2 {
             let mut rank = SmallVec::from(b.rank());
             rank[0] += a.len();
-            let build = with_eco(rank.iter().product(), |build| {
+            let build = build_rc(rank.iter().product(), |build| {
                 for_1!(b; [r, _rk] {
                     build.extend(a.list());
                     build.extend(r);
@@ -49,7 +49,7 @@ pub(crate) fn concat<T: Scalar>(a: Array<T>, b: Array<T>, o: &Opts) -> Status<Ar
             }
             r[last] += b.rank()[last];
 
-            let v = with_eco(a.len() + b.len(), |v| {
+            let v = build_rc(a.len() + b.len(), |v| {
                 v.extend(a.list());
                 v.extend(b.list());
                 Ok(())
@@ -63,7 +63,7 @@ pub(crate) fn concat<T: Scalar>(a: Array<T>, b: Array<T>, o: &Opts) -> Status<Ar
             }
             r[last] += b.rank()[last];
 
-            let v = with_eco(r.iter().product(), |v| {
+            let v = build_rc(r.iter().product(), |v| {
                 for_1!(a; [l, _rk] {
                     v.extend(l);
                     v.extend(b.list());
@@ -79,7 +79,7 @@ pub(crate) fn concat<T: Scalar>(a: Array<T>, b: Array<T>, o: &Opts) -> Status<Ar
             }
             r[last] += a.rank()[last];
 
-            let v = with_eco(r.iter().product(), |v| {
+            let v = build_rc(r.iter().product(), |v| {
                 for_1!(b; [l, _rk] {
                     v.extend(a.list());
                     v.extend(l);
@@ -108,7 +108,7 @@ pub(crate) fn concat<T: Scalar>(a: Array<T>, b: Array<T>, o: &Opts) -> Status<Ar
         return err!(Domain);
     }
 
-    let v = with_eco(counter * (size_a + size_b), |v| {
+    let v = build_rc(counter * (size_a + size_b), |v| {
         for_n2!(ad, a, bd, b; [(l, lk), (r, rk)] {
             if lk.is_empty() && rk.len() > 1 || rk.is_empty() && lk.len() > 1 {
                 std::hint::cold_path();
@@ -151,7 +151,7 @@ pub(crate) fn concat<T: Scalar>(a: Array<T>, b: Array<T>, o: &Opts) -> Status<Ar
 #[inline(always)]
 pub(crate) fn table<T: Scalar>(a: Array<T>, b: Array<T>) -> Status<Array<T>> {
     if a.rank() == b.rank() {
-        let v = with_eco(a.len() + b.len(), |v| {
+        let v = build_rc(a.len() + b.len(), |v| {
             v.extend(a.list());
             v.extend(b.list());
             Ok(())
@@ -168,7 +168,7 @@ pub(crate) fn table<T: Scalar>(a: Array<T>, b: Array<T>) -> Status<Array<T>> {
     }
 
     let size: usize = rank.iter().product();
-    let v = with_eco(size * 2, |v| {
+    let v = build_rc(size * 2, |v| {
         v.extend_iter(pad_rank((a.list(), a.rank()), &rank).unwrap());
         v.extend_iter(pad_rank((b.list(), b.rank()), &rank).unwrap());
         Ok(())

@@ -7,7 +7,7 @@ use crate::types::scalar::{self, Scalar};
 use crate::utils::Arena;
 use crate::utils::error::{Status, err};
 use crate::utils::list::iter_ints;
-use crate::utils::symbols::with_eco;
+use crate::utils::symbols::build_rc;
 
 use smallvec::smallvec;
 
@@ -256,7 +256,7 @@ pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Funct
                 if o.rd != [99, 99] {
                     f.apply_rd(o.rd);
                 }
-                let v = with_eco(counts.len(), |v| {
+                let v = build_rc(counts.len(), |v| {
                     for &count in counts.iter() {
                         let mut b = b.clone();
                         for _ in 0..count {
@@ -271,7 +271,7 @@ pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Funct
                 if o.rm != 99 {
                     f.apply_rm(o.rm);
                 }
-                let v = with_eco(counts.len(), |v| {
+                let v = build_rc(counts.len(), |v| {
                     for &count in counts.iter() {
                         let mut a = a.clone();
                         for _ in 0..count {

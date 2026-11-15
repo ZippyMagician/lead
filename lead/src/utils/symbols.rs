@@ -335,6 +335,32 @@ macro_rules! treat_as {
             _ => unreachable!(),
         }
     };
+
+    ($tag:ident, $v:ident: Array = $body:expr, $rest:expr) => {
+        match $tag {
+            b'I' => {
+                let $v: Array<i64> = $body;
+                $rest
+            }
+            b'F' => {
+                let $v: Array<OrderedFloat<f64>> = $body;
+                $rest
+            }
+            b'C' => {
+                let $v: Array<u8> = $body;
+                $rest
+            }
+            b'B' => {
+                let $v: Array<bool> = $body;
+                $rest
+            }
+            b'X' => {
+                let $v: Array<Boxed> = $body;
+                $rest
+            }
+            _ => unreachable!(),
+        }
+    };
 }
 
 pub(crate) use treat_as;
@@ -381,7 +407,7 @@ pub(crate) struct EcoView<T: Scalar> {
 
 // Previously was using `EcoVec`, but with the new way lists are handled, it is better to directly
 // use an `Rc`'s allocation. Not much changes were required
-pub(crate) fn with_eco<T: Scalar>(
+pub(crate) fn build_rc<T: Scalar>(
     capacity: usize, f: impl FnOnce(&mut EcoView<T>) -> Status,
 ) -> Status<std::rc::Rc<[T]>> {
     let mut eco = std::rc::Rc::new_uninit_slice(capacity);
@@ -389,7 +415,7 @@ pub(crate) fn with_eco<T: Scalar>(
     let ptr = mutate.as_mut_ptr().cast();
     let mut view = EcoView { ptr, i: 0 };
     f(&mut view)?;
-    assert!(view.i == capacity);
+    assert!(view.i == capacity, "Interpreter bug.");
     Ok(unsafe { eco.assume_init() })
 }
 

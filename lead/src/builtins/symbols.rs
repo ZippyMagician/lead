@@ -7,9 +7,9 @@ use std::rc::Rc;
 
 use crate::array::arith::*;
 use crate::array::cast::Castable;
+use crate::array::each;
 use crate::array::manip;
 use crate::array::ord;
-use crate::array::each;
 
 use crate::function::Opts;
 use crate::types::Type;
@@ -496,7 +496,7 @@ pub(super) fn rot(a: List, b: List, o: &Opts) -> Status<List> {
         let dims = b.dims() as u8;
         with_list!(b, |b| {
             let mut b = b;
-            let v = with_eco(a.len() * b.len(), |v| {
+            let v = build_rc(a.len() * b.len(), |v| {
                 let (runs, r) = applym(&mut b, dims - 1);
                 let size: usize = r.iter().product();
                 iter_ints!(a, |it| for c in it {
@@ -604,7 +604,7 @@ pub(crate) fn gradeup(a: List, o: &Opts) -> Status<List> {
             return Ok(a);
         }
         let len = a.rank()[a.dims() - 1];
-        let indices = with_eco(len, |v| {
+        let indices = build_rc(len, |v| {
             for i in 0..len as i64 {
                 v.push(i);
             }
@@ -658,7 +658,7 @@ pub(crate) fn gradedown(a: List, o: &Opts) -> Status<List> {
             return Ok(a);
         }
         let len = a.rank()[a.dims() - 1];
-        let indices = with_eco(len, |v| {
+        let indices = build_rc(len, |v| {
             for i in 0..len as i64 {
                 v.push(i);
             }
@@ -764,7 +764,7 @@ pub(crate) fn reshape(a: List, b: List, o: &Opts) -> Status<List> {
         } else {
             with_list!(b, |b| {
                 let r = &b.rank()[0..o.rd[1] as usize];
-                let v = with_eco(
+                let v = build_rc(
                     b.len() / r.iter().product::<usize>() * rank.iter().product::<usize>(),
                     |v| {
                         for_n!(b, o.rd[1] as usize; [(b, r)] {
@@ -989,7 +989,7 @@ pub(super) fn transpose_keys(a: Type, o: &Opts) -> Status<Type> {
     }
 
     apply_loosem(&o.a, a, leading as u8, |a| {
-        assert!(a.dims() >= 2, "INTERNAL: Something went wrong.");
+        assert!(a.dims() >= 2, "Interpreter bug.");
         let leading = a.dims();
         let mut rank = SmallVec::from(a.rank());
         rank.swap(leading - 2, leading - 1);
@@ -1154,27 +1154,11 @@ pub(crate) fn concat(mut al: List, mut bl: List, o: &Opts) -> Status<List> {
 
     // SAFETY: See above, if they are not the same, they are cast to boxes and
     // there now the same
-    unsafe {
-        match al.get_type() {
-            b'I' => {
-                manip::concat(al.treat_as::<i64>(), bl.treat_as::<i64>(), o).map(List::Integers)
-            }
-            b'F' => manip::concat(
-                al.treat_as::<OrderedFloat<f64>>(),
-                bl.treat_as::<OrderedFloat<f64>>(),
-                o,
-            )
-            .map(List::Doubles),
-            b'C' => manip::concat(al.treat_as::<u8>(), bl.treat_as::<u8>(), o).map(List::String),
-            b'B' => {
-                manip::concat(al.treat_as::<bool>(), bl.treat_as::<bool>(), o).map(List::Booleans)
-            }
-            b'X' => {
-                manip::concat(al.treat_as::<Boxed>(), bl.treat_as::<Boxed>(), o).map(List::Boxes)
-            }
-            _ => std::hint::unreachable_unchecked(),
-        }
-    }
+
+    let tag = al.get_type();
+    treat_as!(tag, al: Array = unsafe { al.treat_as() }, {
+        manip::concat(al, unsafe { bl.treat_as() }, o).map(List::from)
+    })
 }
 
 // semicolonm | ; | 1 | Mold
@@ -1238,7 +1222,7 @@ pub(crate) fn table(a: List, b: List, o: &Opts) -> Status<List> {
 
     if a.get_type() != b.get_type() {
         return Ok(List::Boxes(Array::new(
-            with_eco(2, |v| {
+            build_rc(2, |v| {
                 v.extend(&[scalar::boxed(&o.a, a)?, scalar::boxed(&o.a, b)?]);
                 Ok(())
             })?,
@@ -1251,20 +1235,29 @@ pub(crate) fn table(a: List, b: List, o: &Opts) -> Status<List> {
     unsafe {
         match a.get_type() {
             b'I' => {
-                maybe_apply!([within] o, a, b, manip::table(a.treat_as::<i64>(), b.treat_as::<i64>()).map(List::Integers))
+                maybe_apply!([within] o, a, b, 
+                    manip::table(a.treat_as::<i64>(), b.treat_as::<_>()).map(List::Integers)
+                )
             }
             b'F' => {
-                maybe_apply!([within] o, a, b, manip::table(a.treat_as::<OrderedFloat<f64>>(), b.treat_as::<OrderedFloat<f64>>())
-                    .map(List::Doubles))
+                maybe_apply!([within] o, a, b, 
+                    manip::table(a.treat_as::<OrderedFloat<f64>>(), b.treat_as::<_>()).map(List::Doubles)
+                )
             }
             b'C' => {
-                maybe_apply!([within] o, a, b, manip::table(a.treat_as::<u8>(), b.treat_as::<u8>()).map(List::String))
+                maybe_apply!([within] o, a, b, 
+                    manip::table(a.treat_as::<u8>(), b.treat_as::<_>()).map(List::String)
+                )
             }
             b'B' => {
-                maybe_apply!([within] o, a, b, manip::table(a.treat_as::<bool>(), b.treat_as::<bool>()).map(List::Booleans))
+                maybe_apply!([within] o, a, b, 
+                    manip::table(a.treat_as::<bool>(), b.treat_as::<_>()).map(List::Booleans)
+                )
             }
             b'X' => {
-                maybe_apply!([within] o, a, b, manip::table(a.treat_as::<Boxed>(), b.treat_as::<Boxed>()).map(List::Boxes))
+                maybe_apply!([within] o, a, b, 
+                    manip::table(a.treat_as::<Boxed>(), b.treat_as::<_>()).map(List::Boxes)
+                )
             }
             _ => std::hint::unreachable_unchecked(),
         }
@@ -1329,7 +1322,7 @@ pub(crate) fn replicate(a: List, b: List, o: &Opts) -> Status<List> {
         let total = counts.iter().sum::<i64>() as usize;
         let mut tallies = counts.into_iter();
         with_list!(a, |a| {
-            let v = with_eco(total * size, |v| {
+            let v = build_rc(total * size, |v| {
                 for window in a.list().chunks_exact(size) {
                     for _ in 0..tallies.next().unwrap() {
                         v.extend(window);
@@ -1386,7 +1379,7 @@ pub(crate) fn take(a: List, b: List, o: &Opts) -> Status<List> {
             } else {
                 with_list!(&b, |b| {
                     let fill = Array::get_fill()?;
-                    let v = with_eco(count, |v| {
+                    let v = build_rc(count, |v| {
                         v.extend(b.list());
                         for _ in 0..size - count {
                             v.push(fill);
@@ -1411,7 +1404,7 @@ pub(crate) fn take(a: List, b: List, o: &Opts) -> Status<List> {
         with_list!(&b, |b| {
             let bucket = b.list();
             let fill = Array::get_fill()?;
-            let v = with_eco(total, |v| {
+            let v = build_rc(total, |v| {
                 for i in 0..total {
                     let mut idx: SmallVec<[usize; 3]> = SmallVec::with_capacity(indices.len());
                     let mut k = i;
@@ -1531,7 +1524,7 @@ pub(crate) fn drop(a: List, b: List, o: &Opts) -> Status<List> {
 
     with_list!(b, |b| {
         let values = b.list();
-        let bucket = with_eco(size, |bucket| {
+        let bucket = build_rc(size, |bucket| {
             for (start, end) in indices {
                 bucket.extend(&values[start..end]);
             }
