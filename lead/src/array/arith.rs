@@ -9,7 +9,7 @@ use num_traits::ops::wrapping;
 use ordered_float::{Float, OrderedFloat};
 
 macro_rules! create_op_typed {
-    ($t1:ty, $t2:ty, $t3:ty, $name:ident, $name2:ident, $mac:ident, |$a:ident, $b:ident| $body:block, $swap:block) => {
+    ($t1:ty, $t2:ty, $t3:ty, $name:ident, $name2:ident, $mac:ident, |$a:ident, $b:ident| $body:block) => {
         #[inline(always)]
         pub fn $name($a: $t1, $b: $t2) -> $t3 {
             if $a.len() >= $b.len() {
@@ -21,16 +21,7 @@ macro_rules! create_op_typed {
                 $mac!($b, |it| unsafe {
                     Array::try_alloc_iter(
                         rank,
-                        $a.list()
-                            .iter()
-                            .zip(it.cycle())
-                            .map(|($a, $b)| {
-                                let t = $b;
-                                let $b = *$a;
-                                let $a = t;
-                                $body
-                            })
-                            .take($a.len()),
+                        $a.list().iter().zip(it.cycle()).map(|(&$a, $b)| $body).take($a.len()),
                     )
                     .map(List::from)
                 })
@@ -43,41 +34,26 @@ macro_rules! create_op_typed {
                 $mac!($b, |it| unsafe {
                     Array::try_alloc_iter(
                         rank,
-                        it.zip($a.list().iter().cycle())
-                            .map(|($a, $b)| {
-                                let t = *$b;
-                                let $b = $a;
-                                let $a = t;
-                                $body
-                            })
-                            .take($b.len()),
+                        it.zip($a.list().iter().cycle()).map(|($b, &$a)| $body).take($b.len()),
                     )
                     .map(List::from)
                 })
             }
         }
 
+        // swapped
         #[inline(always)]
-        pub fn $name2($a: $t1, $b: $t2) -> $t3 {
+        pub fn $name2($b: $t1, $a: $t2) -> $t3 {
             if $a.len() >= $b.len() {
                 if $a.len() % $b.len() != 0 {
                     std::hint::cold_path();
                     return err!(Domain);
                 }
                 let rank = $a.rank();
-                $mac!($b, |it| unsafe {
+                $mac!($a, |it| unsafe {
                     Array::try_alloc_iter(
                         rank,
-                        $a.list()
-                            .iter()
-                            .zip(it.cycle())
-                            .map(|($a, $b)| {
-                                let t = $b;
-                                let $b = *$a;
-                                let $a = t;
-                                $swap
-                            })
-                            .take($a.len()),
+                        it.zip($b.list().iter().cycle()).map(|($a, &$b)| $body).take($a.len()),
                     )
                     .map(List::from)
                 })
@@ -87,17 +63,10 @@ macro_rules! create_op_typed {
                     return err!(Domain);
                 }
                 let rank = $b.rank();
-                $mac!($b, |it| unsafe {
+                $mac!($a, |it| unsafe {
                     Array::try_alloc_iter(
                         rank,
-                        it.zip($a.list().iter().cycle())
-                            .map(|($a, $b)| {
-                                let t = *$b;
-                                let $b = $a;
-                                let $a = t;
-                                $swap
-                            })
-                            .take($b.len()),
+                        $b.list().iter().zip(it.cycle()).map(|(&$b, $a)| $body).take($b.len()),
                     )
                     .map(List::from)
                 })
@@ -162,7 +131,7 @@ macro_rules! maybe_expand {
 
                         Array::try_alloc_iter(
                             $b.rank(),
-                            $b.list().iter().zip($a.list().iter().cycle()).map(|(&$a, &$b)| $opc),
+                            $b.list().iter().zip($a.list().iter().cycle()).map(|(&$b, &$a)| $opc),
                         )
                         .map(List::from)
                     }
@@ -198,13 +167,7 @@ macro_rules! create_op_generic {
                 float_op_partial,
                 float_op_partial_swap,
                 iter_floats,
-                |$a, $b| { $opf },
-                {
-                    let t = $b;
-                    let $b = $a;
-                    let $a = t;
-                    $opf
-                }
+                |$a, $b| { $opf }
             );
             create_op_typed!(
                 Array<u8>,
@@ -213,13 +176,7 @@ macro_rules! create_op_generic {
                 char_op_partial,
                 char_op_partial_swap,
                 iter_ints,
-                |$a, $b| { $opc },
-                {
-                    let t = $b;
-                    let $b = $a;
-                    let $a = t;
-                    $opc
-                }
+                |$a, $b| { $opc }
             );
 
             maybe_expand!($cond, |$a, $b| $alli, $allf, $opi, $opf, $opc);
