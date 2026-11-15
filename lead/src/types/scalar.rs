@@ -336,6 +336,19 @@ impl Boxed {
     pub(crate) unsafe fn steal_box(&self) -> Type {
         std::mem::take(unsafe { &mut **&self.0 })
     }
+
+    // This is a bitwise `ptr::copy` of the underlying pointer. If it is a list,
+    // drops can incorrectly decrement the refcount. DO NOT `ManuallyDrop::take`
+    // and then drop! That means you, future me
+    #[inline]
+    pub(crate) unsafe fn read(&self) -> std::mem::ManuallyDrop<Type> {
+        unsafe { std::mem::ManuallyDrop::new(self.0.read()) }
+    }
+
+    #[inline]
+    pub(crate) unsafe fn get(&self) -> Type {
+        unsafe { self.unbox().clone() }
+    }
 }
 
 impl Deref for Boxed {

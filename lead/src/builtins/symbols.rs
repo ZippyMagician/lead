@@ -637,7 +637,7 @@ pub(crate) fn unbox(a: Type, o: &Opts) -> Status<Type> {
     let mut a = a.to_list()?;
     if a.get_type() == b'X' && a.is_scalar() {
         let f = &unsafe { a.listx_unchecked()[0] };
-        Ok(unsafe { f.read() })
+        Ok(unsafe { f.get() })
     } else if a.is_empty() {
         cold_path();
         Ok(a.into())
@@ -1085,7 +1085,7 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
             let values = unsafe { a.sliced(i * r, i * r + r, &rank) };
             Ok(values)
         } else {
-            let list = unsafe { index.listx_unchecked()[0].read() }.to_list()?;
+            let list = unsafe { index.listx_unchecked()[0].unbox() }.as_list()?;
             let index = iter_ints!(list, |it| {
                 it.map(|n| if n < 0 { err!(Domain) } else { Ok(n as usize) })
                     .collect::<Status<Vec<usize>>>()
@@ -1154,7 +1154,6 @@ pub(crate) fn concat(mut al: List, mut bl: List, o: &Opts) -> Status<List> {
 
     // SAFETY: See above, if they are not the same, they are cast to boxes and
     // there now the same
-
     let tag = al.get_type();
     treat_as!(tag, al: Array = unsafe { al.treat_as() }, {
         manip::concat(al, unsafe { bl.treat_as() }, o).map(List::from)

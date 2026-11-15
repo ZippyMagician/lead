@@ -92,19 +92,34 @@ pub(crate) fn concat<T: Scalar>(a: Array<T>, b: Array<T>, o: &Opts) -> Status<Ar
 
     let ad = usize::min(a.dims(), o.rd[0] as usize);
     let bd = usize::min(b.dims(), o.rd[1] as usize);
+
+    let (ca, fa) = a.rank().split_at(ad);
+    let (cb, fb) = b.rank().split_at(bd);
     let counter = usize::max(
-        a.rank()[ad..].iter().chain(&[1]).product(),
-        b.rank()[bd..].iter().chain(&[1]).product(),
+        fa.iter().chain(&[1]).product(),
+        fb.iter().chain(&[1]).product(),
     );
-    let size_a: usize = a.rank()[0..ad].iter().chain(&[1]).product();
-    let size_b: usize = b.rank()[0..bd].iter().chain(&[1]).product();
-    // Sanity check
-    if ad != bd
-        && (ad > bd && (ad - bd > 1 || b.rank()[0..bd].iter().zip(a.rank()).any(|(a, b)| *a != *b))
-            || bd > ad
-                && (bd - ad > 1 || a.rank()[0..ad].iter().zip(b.rank()).any(|(a, b)| *a != *b)))
-    {
-        std::hint::cold_path();
+    let size_a: usize = ca.iter().chain(&[1]).product();
+    let size_b: usize = cb.iter().chain(&[1]).product();
+
+    // Some sanity checks
+    let frame = if fa == fb {
+        fa
+    } else if fa.len() > fb.len() && fa.starts_with(fb) {
+        fa
+    } else if fb.len() > fa.len() && fb.starts_with(fa) {
+        fb
+    } else {
+        return err!(Domain);
+    };
+
+    if ad.abs_diff(bd) > 1 {
+        return err!(Domain);
+    }
+    let r = ad.max(bd).max(1);
+    let at = |c: &[usize], i: usize| c.get(i).copied().unwrap_or(1);
+
+    if (0..r - 1).any(|i| at(ca, i) != at(cb, i)) {
         return err!(Domain);
     }
 
@@ -120,32 +135,12 @@ pub(crate) fn concat<T: Scalar>(a: Array<T>, b: Array<T>, o: &Opts) -> Status<Ar
         Ok(())
     })?;
 
-    let ldim = usize::max(ad, bd);
-    let r = if a.dims() < b.dims() {
-        b.rank()
-    } else if a.dims() == b.dims() {
-        if a.len() > b.len() { a.rank() } else { b.rank() }
-    } else {
-        a.rank()
-    };
-    let mut rank: SmallVec<[usize; INLINE_SIZE]> = smallvec![];
+    let mut rk: SmallVec<[usize; INLINE_SIZE]> = SmallVec::new();
+    rk.extend((0..r - 1).map(|i| at(ca, i)));
+    rk.push(at(ca, r - 1) + at(cb, r - 1));
+    rk.extend_from_slice(frame);
 
-    if ad == 0 || bd == 0 {
-        rank.push(2);
-    }
-    if ad == 0 && bd == 0 {
-        rank.extend(r.iter().copied());
-    } else {
-        for i in 0..usize::max(ldim, r.len()) {
-            if i + 1 == ldim {
-                rank.push(a.rank().get(i).unwrap_or(&1) + b.rank().get(i).unwrap_or(&1));
-            } else {
-                rank.push(*r.get(i).unwrap_or(&1));
-            }
-        }
-    }
-
-    Ok(Array::new(v, rank.len(), rank))
+    Ok(Array::new(v, rk.len(), rk))
 }
 
 #[inline(always)]

@@ -748,7 +748,7 @@ impl Display for Array<Boxed> {
                 }
                 // SAFETY: formatted is not dropped until strings
                 let fm;
-                fm = push_and_get(&mut formatted, format!("{}", unsafe { b.read() }));
+                fm = push_and_get(&mut formatted, format!("{}", b.unbox()));
                 // Oh rust strs, how you fuck with me
                 x = usize::max(
                     x,

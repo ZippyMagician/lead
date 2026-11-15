@@ -397,7 +397,7 @@ pub(crate) fn table(f: &Function, a: Type, b: Type, o: &Opts) -> Status<Type> {
     if boxit {
         unsafe {
             Array::alloc_iter(
-                &[size_a, size_b],
+                &[size_b, size_a],
                 v.into_iter().map(|n| scalar::boxed_t(&o.a, n).unwrap()),
             )
             .map(Type::List)
@@ -407,8 +407,8 @@ pub(crate) fn table(f: &Function, a: Type, b: Type, o: &Opts) -> Status<Type> {
         if r.len() == 1 && r[0] == 1 {
             r.clear();
         }
-        r.push(size_a);
         r.push(size_b);
+        r.push(size_a);
         unsafe {
             match v[0].as_list_unchecked().get_type() {
                 b'I' => Array::<i64>::alloc_iter(
@@ -469,7 +469,7 @@ pub fn each_atom_monad(f: &Function, a: Type, o: &Opts) -> Status<Type> {
             if f.s.is_some() {
                 let mut v = Vec::with_capacity(a.len());
                 for_0!(a; [a] {
-                    v.push(f.monadic_call(unsafe { a.read() })?.to_list().unwrap());
+                    v.push(f.monadic_call(unsafe { a.get() })?.to_list().unwrap());
                 });
 
                 // all primitive symbols will yield the same type across a list
@@ -477,7 +477,7 @@ pub fn each_atom_monad(f: &Function, a: Type, o: &Opts) -> Status<Type> {
             } else {
                 let mut v = Vec::with_capacity(a.len());
                 for_0!(a; [a] {
-                    v.push(f.monadic_call(unsafe { a.read() })?);
+                    v.push(f.monadic_call(unsafe { a.get() })?);
                 });
 
                 if v.iter().any(|n| !n.is_list()) {
@@ -538,20 +538,20 @@ pub fn each_atom_dyad(f: &Function, a: Type, b: Type, o: &Opts) -> Status<Type> 
         let mut v = Vec::with_capacity(size);
         if a.get_type() == b'X' && b.get_type() == b'X' {
             for (a, b) in a.listx_unchecked().iter().cycle().zip(b.listx_unchecked().iter().cycle()).take(size) {
-                let a = a.read();
-                let b = b.read();
+                let a = a.get();
+                let b = b.get();
                 v.push(f.dyadic_call(a, b)?.to_list()?);
             }
         } else if a.get_type() == b'X' {
             for (a, b) in a.listx_unchecked().iter().cycle().zip(b.ranked(0)?.into_iter().cycle()).take(size) {
-                let a = a.read();
+                let a = a.get();
                 let b = Type::List(b);
                 v.push(f.dyadic_call(a, b)?.to_list()?);
             }
         } else if b.get_type() == b'X' {
             for (a, b) in a.ranked(0)?.into_iter().cycle().zip(b.listx_unchecked().iter().cycle()).take(size) {
                 let a = Type::List(a);
-                let b = b.read();
+                let b = b.get();
                 v.push(f.dyadic_call(a, b)?.to_list()?);
             }
         } else {
