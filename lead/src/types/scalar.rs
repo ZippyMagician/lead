@@ -17,6 +17,8 @@ use num_traits::{AsPrimitive, Zero};
 use ordered_float::OrderedFloat;
 use typed_arena;
 
+// NOTE: Drop Arena/Copy bound, change `Boxed` type to wrap `Rc`, maybe? Or roll a custom
+// reference counter like `ecow::EcoVec` does
 pub trait Scalar:
     Display + PartialEq + PartialOrd + Eq + Ord + Clone + Copy + Hash + Default
 {
