@@ -136,7 +136,7 @@ pub fn reduce(f: &Function, a: Type, o: &Opts) -> Status<Type> {
         }
 
         let tag = a.get_type();
-        let mut items = a.ranked(a.dims() - 1)?.into_iter();
+        let mut items = a.ranked(a.dims() - 1)?.into_iter().rev(); // right to left
         let mut acc = items.next().unwrap();
 
         // match general arithmetic operations
@@ -156,7 +156,7 @@ pub fn reduce(f: &Function, a: Type, o: &Opts) -> Status<Type> {
 
         let mut acc = Type::List(acc);
         for item in items {
-            acc = f.dyadic_call(acc, Type::List(item))?;
+            acc = f.dyadic_call(Type::List(item), acc)?; // right to left
         }
         acc.to_list()
     })
