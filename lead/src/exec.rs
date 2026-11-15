@@ -288,8 +288,8 @@ impl Exec {
         } else {
             let typ = s.borrow().get(name).ok_or(Error::Scope)?;
             if typ.is_function() {
-                let f = typ.to_function(self.arena.clone(), self.scope.clone()).unwrap();
-                self.exec_function(&f, list, i)
+                let f = unsafe { typ.as_function_unchecked() };
+                self.exec_function(f, list, i)
             } else {
                 Ok(typ)
             }

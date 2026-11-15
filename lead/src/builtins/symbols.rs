@@ -517,7 +517,9 @@ pub(super) fn rot(a: List, b: List, o: &Opts) -> Status<List> {
                 Ok(())
             })?;
             let mut rank = SmallVec::from_slice(b.rank());
-            rank.extend_from_slice(trailing_rank);
+            if trailing_rank != &[1] {
+                rank.extend_from_slice(trailing_rank);
+            }
             Ok(List::from(Array::new(v, rank.len(), rank)))
         })
     })
