@@ -268,7 +268,7 @@ impl<'a> Lexer<'a> {
             if chr == '\n' {
                 lines += 1;
             }
-            end += 1;
+            end += chr.len_utf8();
         }
 
         self.line += lines;
