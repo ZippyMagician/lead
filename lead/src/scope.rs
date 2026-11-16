@@ -19,18 +19,24 @@ pub fn new_scope() -> Scope {
 #[derive(Clone, Default)]
 pub struct ScopeInternal {
     parent: Option<Scope>,
+    pub(crate) mutate_parent: bool,
     env: HashMap<String, Type>,
     pub(crate) internals: Rc<RefCell<Internals>>,
 }
 
 impl ScopeInternal {
     fn new(internals: Rc<RefCell<Internals>>) -> Self {
-        Self { parent: None, env: HashMap::new(), internals }
+        Self { parent: None, mutate_parent: false, env: HashMap::new(), internals }
     }
 
     pub fn child(parent: Rc<RefCell<Self>>) -> Rc<RefCell<Self>> {
         let internals = parent.borrow().internals.clone();
-        Rc::new(RefCell::new(Self { parent: Some(parent), env: HashMap::new(), internals }))
+        Rc::new(RefCell::new(Self {
+            parent: Some(parent),
+            mutate_parent: false,
+            env: HashMap::new(),
+            internals,
+        }))
     }
 
     pub fn has(&self, name: &str) -> bool {
@@ -47,7 +53,7 @@ impl ScopeInternal {
     }
 
     pub fn set(&mut self, name: &str, t: Type) {
-        if self.parent.is_some() {
+        if self.mutate_parent {
             let mut parent = self.parent.as_ref().unwrap().borrow_mut();
             if parent.has(name) {
                 parent.set(name, t);
@@ -59,7 +65,7 @@ impl ScopeInternal {
     }
 
     pub fn set_instant(&mut self, name: &str, l: List) {
-        if self.parent.is_some() {
+        if self.mutate_parent {
             let mut parent = self.parent.as_ref().unwrap().borrow_mut();
             if parent.has(name) {
                 parent.set_instant(name, l);
@@ -71,7 +77,7 @@ impl ScopeInternal {
     }
 
     pub fn set_function(&mut self, name: &str, f: Function) {
-        if self.parent.is_some() {
+        if self.mutate_parent {
             let mut parent = self.parent.as_ref().unwrap().borrow_mut();
             if parent.has(name) {
                 parent.set_function(name, f);
@@ -82,8 +88,13 @@ impl ScopeInternal {
         self.env.insert(name.to_string(), Type::Function(f));
     }
 
-    pub fn into_inner(self) -> HashMap<String, Type> {
-        self.env
+    pub fn get_inner(&self) -> &HashMap<String, Type> {
+        &self.env
+    }
+
+    pub fn swap_inner(&mut self, mut h: HashMap<String, Type>) -> HashMap<String, Type> {
+        std::mem::swap(&mut self.env, &mut h);
+        h
     }
 }
 
@@ -173,15 +184,15 @@ impl Internals {
             b"import" => {
                 let name = format!("{}", a.to_list()?);
                 let contents = std::fs::read_to_string(&name).map_err(|_| Error::Scope)?;
-                let child = ScopeInternal::child(scope.clone());
-                let mut executor = crate::exec::Exec::new(arena.clone(), child.clone());
-                executor.silent = true;
+                let scope = new_scope();
                 let mut l = crate::lex::Lexer::new(&contents);
                 l.tokenize()?;
-                let mut p = crate::parse::Parser::new(arena.clone(), child.clone(), l.tokens());
+                let mut p = crate::parse::Parser::new(arena.clone(), scope.clone(), l.tokens());
                 p.parse()?;
+                let mut executor = crate::exec::Exec::new(arena.clone(), scope.clone());
+                executor.silent = true;
                 executor.exec(p.nodes())?;
-                crate::types::map::Map::from_scope(child).map(Type::Map).map(Some)
+                crate::types::map::Map::from_scope(scope).map(Type::Map).map(Some)
             }
             // Timing function, evaluates string input. Optional left arg is iterations
             b"time" => {

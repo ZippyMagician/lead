@@ -294,11 +294,11 @@ pub(crate) fn repeat_until(l: Type, r: Type, a: Arena, s: Scope) -> Status<Funct
                     f.apply_rd(o.rd);
                 }
                 loop {
+                    p = f.dyadic_call(p, b.clone())?;
                     let list = cond.monadic_call(p.clone())?.to_list()?;
                     if list.is_truthy() {
                         break;
                     }
-                    p = f.dyadic_call(p, b.clone())?;
                 }
                 Ok(p)
             } else {

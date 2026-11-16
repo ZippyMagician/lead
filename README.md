@@ -12,7 +12,7 @@ cargo install --path lead-cli --features ffi
 ```
 to compile with the supporting FFI linking internals `[]extern` and `[]link`.
 
-For building the webserver, ensure you have `wasm-bindgen` installed and accessible on the path. Use
+For building the web assembly target, ensure you have `wasm-bindgen` installed and accessible on the path. Use
 ```
 RUSTFLAGS='--cfg=getrandom_backend="wasm_js"' cargo build --package lead-wasm --target=wasm32-unknown-unknown --release
 wasm-bindgen --out-dir ./docs/pkg ./target/wasm32-unknown-unknown/release/lead_wasm.wasm --target web
@@ -35,9 +35,12 @@ map.('b')    -- 'second'
 - [x] Operators
 - [x] Proper `@` rank support
 - [x] Recursive blocks via `v`
-- [ ] Port symbols + operators
+- [x] Port symbols + operators from typescript impl
+- [ ] Port symbols + operators from original impl
 - [x] Support maps in some functions?
 - [x] Maps
 - [ ] Support variadic accessors?
 - [x] Accessors
-- [ ] Tables?
+- [ ] FFI to general C ABI
+- [ ] More internal capabilities
+

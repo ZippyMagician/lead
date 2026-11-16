@@ -20,7 +20,7 @@ pub struct Map {
 impl Map {
     #[inline]
     pub fn from_scope(s: Scope) -> Status<Self> {
-        let internal = s.take().into_inner();
+        let internal = s.borrow().get_inner().clone();
         Ok(Self { internal })
     }
 

@@ -326,11 +326,15 @@ impl<'a> Parser<'a> {
 
     #[inline]
     fn consume_block(&mut self, end: TokenTag) -> Status<Node<'a>> {
-        // Blocks contain the child scope
+        // Blocks contain the child scope, and these can mutate parent block
         let mut child = ScopeInternal::child(self.scope.clone());
+        child.borrow_mut().mutate_parent = true;
         std::mem::swap(&mut self.scope, &mut child);
         let nodes = self.consume_upto_tag(end)?;
         std::mem::swap(&mut self.scope, &mut child);
+        if !self.scope.borrow().mutate_parent { // top level scope is not mutable
+            child.borrow_mut().mutate_parent = false;
+        }
         if end != TokenTag::Newline {
             self.tokens.next();
         }

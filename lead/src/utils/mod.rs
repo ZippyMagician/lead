@@ -68,6 +68,9 @@ macro_rules! run_block {
     (true, $a:expr, $b:expr, $o:ident, $n:ident) => {{
         let sc = $o.s.clone();
         let mut s = sc.borrow_mut();
+        // See comment below
+        let mut new = ::std::collections::HashMap::new();
+        new = s.swap_inner(new);
         if let Some(b) = $b {
             s.set_instant("x", $a);
             s.set_instant("y", b);
@@ -78,6 +81,9 @@ macro_rules! run_block {
         drop(s);
         let mut e = Exec::new_imm($o.a.clone(), $o.s.clone());
         e.exec($n.clone())?;
+        // Each call of a block uses the same parent/child relationships, but shouldn't share scopes
+        // between calls. Each call has a "fresh" scope
+        _ = $o.s.borrow_mut().swap_inner(new);
         e.right.unwrap_or(List::empty().into())
     }};
     (false, $a:expr, $b:expr, $o:ident, $n:ident) => {{ run_block!(true, $a, $b, $o, $n).to_list() }};
