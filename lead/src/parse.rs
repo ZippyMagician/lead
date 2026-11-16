@@ -326,13 +326,17 @@ impl<'a> Parser<'a> {
 
     #[inline]
     fn consume_block(&mut self, end: TokenTag) -> Status<Node<'a>> {
+        // Blocks contain the child scope
+        let mut child = ScopeInternal::child(self.scope.clone());
+        std::mem::swap(&mut self.scope, &mut child);
         let nodes = self.consume_upto_tag(end)?;
+        std::mem::swap(&mut self.scope, &mut child);
         if end != TokenTag::Newline {
             self.tokens.next();
         }
         Ok(Node::Function(generate_block(
             nodes,
-            ScopeInternal::child(self.scope.clone()),
+            child,
             self.arena.clone(),
         )))
     }

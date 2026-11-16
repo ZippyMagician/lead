@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::fmt::{self, Debug};
 use std::rc::Rc;
 
 use crate::function::Function;
@@ -46,19 +47,55 @@ impl ScopeInternal {
     }
 
     pub fn set(&mut self, name: &str, t: Type) {
+        if self.parent.is_some() {
+            let mut parent = self.parent.as_ref().unwrap().borrow_mut();
+            if parent.has(name) {
+                parent.set(name, t);
+                return;
+            }
+        }
+
         self.env.insert(name.to_string(), t);
     }
 
     pub fn set_instant(&mut self, name: &str, l: List) {
+        if self.parent.is_some() {
+            let mut parent = self.parent.as_ref().unwrap().borrow_mut();
+            if parent.has(name) {
+                parent.set_instant(name, l);
+                return;
+            }
+        }
+
         self.env.insert(name.to_string(), Type::List(l));
     }
 
     pub fn set_function(&mut self, name: &str, f: Function) {
+        if self.parent.is_some() {
+            let mut parent = self.parent.as_ref().unwrap().borrow_mut();
+            if parent.has(name) {
+                parent.set_function(name, f);
+                return;
+            }
+        }
+
         self.env.insert(name.to_string(), Type::Function(f));
     }
 
     pub fn into_inner(self) -> HashMap<String, Type> {
         self.env
+    }
+}
+
+impl Debug for ScopeInternal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(s) = &self.parent {
+            s.fmt(f)?;
+        } else {
+            write!(f, "{{}}")?;
+        }
+
+        write!(f, " -> {:?}", self.env)
     }
 }
 
