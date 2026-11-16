@@ -14,17 +14,13 @@ use typed_arena::Arena;
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Map {
-    pub internal: HashMap<String, Boxed>,
+    pub internal: HashMap<String, Type>,
 }
 
 impl Map {
     #[inline]
-    pub fn from_scope(s: Scope, a: &utils::Arena) -> Status<Self> {
-        let mut internal = HashMap::new();
-        for (key, t) in s.take().into_inner() {
-            let p = scalar::boxed_t(a, t)?;
-            internal.insert(key, p);
-        }
+    pub fn from_scope(s: Scope) -> Status<Self> {
+        let internal = s.take().into_inner();
         Ok(Self { internal })
     }
 
@@ -34,27 +30,25 @@ impl Map {
     }
 
     #[inline]
-    pub fn insert(&mut self, key: String, value: Type, a: &utils::Arena) -> Status {
-        let p = scalar::boxed_t(a, value)?;
-        self.internal.insert(key.to_string(), p);
+    pub fn insert(&mut self, key: String, value: Type) -> Status {
+        self.internal.insert(key.to_string(), value);
         Ok(())
     }
 
     #[inline]
-    pub fn insert_function(&mut self, key: String, value: Function, a: &utils::Arena) -> Status {
-        let p = scalar::boxed_t(a, Type::Function(value))?;
-        self.internal.insert(key.to_string(), p);
+    pub fn insert_function(&mut self, key: String, value: Function) -> Status {
+        self.internal.insert(key.to_string(), Type::Function(value));
         Ok(())
     }
 
     #[inline]
     pub fn get(&self, key: &str) -> Option<&Type> {
-        self.internal.get(key).map(|n| unsafe { &***n })
+        self.internal.get(key)
     }
 
     #[inline]
     pub fn get_mut(&mut self, key: &str) -> Option<&mut Type> {
-        self.internal.get_mut(key).map(|n| unsafe { &mut ***n })
+        self.internal.get_mut(key)
     }
 
     #[inline]
@@ -91,7 +85,10 @@ impl Map {
             Array::<Boxed>::try_alloc_iter(
                 &[2, self.internal.len()],
                 self.internal.iter().flat_map(|(k, v)| {
-                    [scalar::boxed_custom(&mut arena, List::string(k).into()), Ok(*v)]
+                    [
+                        scalar::boxed_custom(&mut arena, List::string(k).into()),
+                        Ok(Boxed(v as *const Type as _)),
+                    ]
                 }),
             )
             .unwrap()
@@ -121,7 +118,10 @@ impl Map {
         }
 
         unsafe {
-            Array::<Boxed>::alloc_iter(&[self.internal.len()], self.internal.values().copied())
+            Array::<Boxed>::alloc_iter(
+                &[self.internal.len()],
+                self.internal.values().map(|v| Boxed(v as *const Type as _)),
+            )
         }
     }
 
@@ -134,7 +134,9 @@ impl Map {
         unsafe {
             Array::<Boxed>::try_alloc_iter(
                 &[2, self.internal.len()],
-                self.internal.iter().flat_map(|(k, v)| [scalar::boxed(a, List::string(k)), Ok(*v)]),
+                self.internal.iter().flat_map(|(k, v)| {
+                    [scalar::boxed(a, List::string(k)), Ok(Boxed(v as *const Type as _))]
+                }),
             )
             .map(List::Boxes)
         }

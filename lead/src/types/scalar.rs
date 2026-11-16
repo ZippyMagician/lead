@@ -329,7 +329,7 @@ impl Scalar for Boxed {
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash, Default)]
 #[repr(transparent)]
-pub struct Boxed(*mut Type);
+pub struct Boxed(pub(crate) *mut Type);
 
 impl Boxed {
     #[inline]

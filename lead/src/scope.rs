@@ -181,7 +181,7 @@ impl Internals {
                 let mut p = crate::parse::Parser::new(arena.clone(), child.clone(), l.tokens());
                 p.parse()?;
                 executor.exec(p.nodes())?;
-                crate::types::map::Map::from_scope(child, arena).map(Type::Map).map(Some)
+                crate::types::map::Map::from_scope(child).map(Type::Map).map(Some)
             }
             // Timing function, evaluates string input. Optional left arg is iterations
             b"time" => {

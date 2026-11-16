@@ -176,7 +176,7 @@ impl Exec {
                         .as_map_mut()?
                 };
                 let list = self.exec_instant(Node::Group(body))?;
-                last.insert(tail.last().unwrap().to_string(), list.clone(), &self.arena)?;
+                last.insert(tail.last().unwrap().to_string(), list.clone())?;
                 Ok(list)
             }
             Group(body) => {
@@ -207,7 +207,7 @@ impl Exec {
                         Node::Group(value)
                     };
                     if utils::is_instant(&value, &self.scope) {
-                        map.insert(key.to_string(), self.exec_instant(value)?, &self.arena)?;
+                        map.insert(key.to_string(), self.exec_instant(value)?)?;
                     } else {
                         let mut body =
                             if let Node::Group(value) = value { value } else { vec![value] };
@@ -229,7 +229,7 @@ impl Exec {
                         } else {
                             self.exec_train(body)?
                         };
-                        map.insert_function(key.to_string(), res, &self.arena)?;
+                        map.insert_function(key.to_string(), res)?;
                     }
                 }
                 Ok(map.into())
@@ -510,7 +510,7 @@ impl Exec {
                         .ok_or(Error::Domain)?
                         .as_map_mut()?
                 };
-                last.insert(body.last().unwrap().to_string(), list, &self.arena)?;
+                last.insert(body.last().unwrap().to_string(), list)?;
             } else if let Assignment::Internal(head) = head {
                 let sc = s.borrow_mut();
                 let mut it = sc.internals.borrow_mut();
@@ -552,7 +552,7 @@ impl Exec {
                         .ok_or(Error::Domain)?
                         .as_map_mut()?
                 };
-                last.insert_function(body.last().unwrap().to_string(), res, &self.arena)?;
+                last.insert_function(body.last().unwrap().to_string(), res)?;
             } else if let Assignment::Internal(head) = head {
                 let sc = self.scope.borrow_mut();
                 let mut it = sc.internals.borrow_mut();
