@@ -138,12 +138,12 @@ impl OrderedScalar<i64> for OrderedFloat<f64> {
 impl OrderedScalar for Boxed {
     #[inline]
     fn cmp_scalar(&self, o: &Boxed) -> Ordering {
-        self.addr().cmp(&o.addr())
+        self.unbox().cmp(&o.unbox())
     }
 
     #[inline]
     fn eq_scalar(&self, o: &Boxed) -> bool {
-        self.addr() == o.addr()
+        self.unbox() == o.unbox()
     }
 }
 
@@ -266,26 +266,56 @@ macro_rules! impl_numeric_ordering {
 macro_rules! impl_box_ordering {
     ($($t:ty),*) => {$(
         impl OrderedScalar<Boxed> for $t {
+            // lists are always "greater" since ordering starts from rank
             #[inline]
-            fn cmp_scalar(&self, _: &Boxed) -> Ordering {
-                Ordering::Less
+            fn cmp_scalar(&self, o: &Boxed) -> Ordering {
+                if o.unbox().is_list() {
+                    Ordering::Less
+                } else {
+                    let addr = o.addr();
+                    if addr > i64::MAX as usize {
+                        Ordering::Less
+                    } else {
+                        self.cmp_scalar(&(addr as i64))
+                    }
+                }
             }
 
+            // See above
             #[inline]
-            fn eq_scalar(&self, _: &Boxed) -> bool {
-                false
+            fn eq_scalar(&self, o: &Boxed) -> bool {
+                if o.unbox().is_list() {
+                    false
+                } else {
+                    let addr = o.addr();
+                    addr <= i64::MAX as usize && self.eq_scalar(&(addr as i64))
+                }
             }
         }
 
         impl OrderedScalar<$t> for Boxed {
             #[inline]
-            fn cmp_scalar(&self, _: &$t) -> Ordering {
-                Ordering::Greater
+            fn cmp_scalar(&self, o: &$t) -> Ordering {
+                if self.unbox().is_list() {
+                    Ordering::Greater
+                } else {
+                    let addr = self.addr();
+                    if addr > i64::MAX as usize {
+                        Ordering::Greater
+                    } else {
+                        (addr as i64).cmp_scalar(o)
+                    }
+                }
             }
 
             #[inline]
-            fn eq_scalar(&self, _: &$t) -> bool {
-                false
+            fn eq_scalar(&self, o: &$t) -> bool {
+                if self.unbox().is_list() {
+                    false
+                } else {
+                    let addr = self.addr();
+                    addr <= i64::MAX as usize && (addr as i64).eq_scalar(o)
+                }
             }
         }
     )*};

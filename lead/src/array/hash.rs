@@ -46,6 +46,12 @@ impl HashScalar for OrderedFloat<f64> {
 
 impl HashScalar for Boxed {
     fn hash_scalar<H: Hasher>(&self, s: &mut H) {
-        self.addr().hash(s)
+        // Hash by list or address
+        // FIXME: This matches assumptions in `array::ord`, but is kinda iffy in general
+        if let crate::types::Type::List(l) = self.unbox() {
+            l.hash(s);
+        } else {
+            self.addr().hash(s);
+        }
     }
 }
