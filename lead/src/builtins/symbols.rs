@@ -75,6 +75,8 @@ pub enum Symbol {
     Tilde,
     /// `,`
     Comma,
+    /// `,:`
+    CommaColon,
     /// `;`
     Semicolon,
     /// `#`
@@ -941,7 +943,7 @@ pub(super) fn group(a: List, b: List, o: &Opts) -> Status<List> {
         for i in 0..=*bucket.iter().max().unwrap() {
             map.insert(i, vec![]);
         }
-        
+
         for (i, run) in runs.iter().cloned().enumerate() {
             if bucket[i] < 0 {
                 continue; // discard negative groups
@@ -1193,6 +1195,49 @@ pub(crate) fn concat(mut al: List, mut bl: List, o: &Opts) -> Status<List> {
     let tag = al.get_type();
     treat_as!(tag, al: Array = unsafe { al.treat_as() }, {
         manip::concat(al, unsafe { bl.treat_as() }, o).map(List::from)
+    })
+}
+
+// commacolonm | ,: | 99 | Squish
+pub(crate) fn squish(a: List, o: &Opts) -> Status<List> {
+    maybe_apply!([within] o, a, {
+        let lists = a.ranked(a.dims() - 1)?;
+        unsafe {
+            Array::try_alloc_iter(&[lists.len()], lists.into_iter().map(|n| scalar::boxed(&o.a, n)))
+                .map(List::Boxes)
+        }
+    })
+}
+
+// commacolond | ,: | 99, 99 | Membership
+pub(crate) fn membership(a: List, b: List, o: &Opts) -> Status<List> {
+    maybe_apply!([within] o, a, b, {
+        if a.dims() != b.dims() {
+            let len = a.rank()[a.dims() - 1];
+            let rc = build_rc(len, |v| {
+                for i in 0..len {
+                    v.push(false);
+                }
+                Ok(())
+            })?;
+            return Ok(List::Booleans(Array::new(rc, 1, smallvec![len])));
+        }
+
+        let entries = a.ranked(a.dims() - 1)?;
+        let items = b.ranked(b.dims() - 1)?;
+
+        let mut set = HashSet::with_capacity(items.len());
+        for item in items {
+            set.insert(item);
+        }
+
+        let rc = build_rc(entries.len(), |v| {
+            for entry in &entries {
+                v.push(set.contains(entry));
+            }
+            Ok(())
+        })?;
+        Ok(List::Booleans(Array::new(rc, 1, smallvec![entries.len()])))
     })
 }
 

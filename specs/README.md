@@ -182,6 +182,7 @@ Partial trains, of course, support constants within them too.
 |  ```=``` | Transpose/Keys|2  |   Equality   |  0 0  |Yields list of keys of map|
 |  ```~``` |  One-Range |   0  |     Index    | 99 0  |\`C (monad): alphabet upto arg|
 |  ```,``` |Ravel/Values|  99  |  Concatenate |  1 1  |Yields values of map|
+| ```,:``` |   Squish   |  99  |   Membership | 99 99 |       |
 |  ```;``` |    Mold    |   1  |     Table    | 99 99 |Uses scalar fill char|
 |  ```#``` |   Tally    |  99  |    Replicate | 99 1  |Also tallies maps|
 |  ```{``` |    Inc     |   0  |      Take    |  1 99 |Uses scalar fill char for out of bounds|

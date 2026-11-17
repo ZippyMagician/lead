@@ -95,10 +95,7 @@ pub(crate) fn concat<T: Scalar>(a: Array<T>, b: Array<T>, o: &Opts) -> Status<Ar
 
     let (ca, fa) = a.rank().split_at(ad);
     let (cb, fb) = b.rank().split_at(bd);
-    let counter = usize::max(
-        fa.iter().chain(&[1]).product(),
-        fb.iter().chain(&[1]).product(),
-    );
+    let counter = usize::max(fa.iter().chain(&[1]).product(), fb.iter().chain(&[1]).product());
     let size_a: usize = ca.iter().chain(&[1]).product();
     let size_b: usize = cb.iter().chain(&[1]).product();
 

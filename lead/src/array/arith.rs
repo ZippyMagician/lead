@@ -442,4 +442,3 @@ macro_rules! impl_self_ops {
 }
 
 impl_self_ops![i64 | OrderedFloat<f64> | u8];
-

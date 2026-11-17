@@ -77,7 +77,7 @@ where
                     self.rank(),
                     self.list().iter().map(|n| scalar::boxed(arena, Array::scalar(*n))),
                 )
-            }
+            },
         }
     }
 }

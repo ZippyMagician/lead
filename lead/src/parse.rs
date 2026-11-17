@@ -332,17 +332,14 @@ impl<'a> Parser<'a> {
         std::mem::swap(&mut self.scope, &mut child);
         let nodes = self.consume_upto_tag(end)?;
         std::mem::swap(&mut self.scope, &mut child);
-        if !self.scope.borrow().mutate_parent { // top level scope is not mutable
+        if !self.scope.borrow().mutate_parent {
+            // top level scope is not mutable
             child.borrow_mut().mutate_parent = false;
         }
         if end != TokenTag::Newline {
             self.tokens.next();
         }
-        Ok(Node::Function(generate_block(
-            nodes,
-            child,
-            self.arena.clone(),
-        )))
+        Ok(Node::Function(generate_block(nodes, child, self.arena.clone())))
     }
 
     #[inline]
