@@ -34,6 +34,15 @@ impl Exec {
         Self { scope, arena: arena, silent: false, block: true, reference: None, right: None }
     }
 
+    #[inline]
+    pub(crate) fn run_gc(&self) {
+        let mut a = self.arena.borrow_mut();
+        if a.should_collect() {
+            let trace = a.build_trace(self.scope.borrow().get_inner());
+            a.collect(trace);
+        }
+    }
+
     pub fn exec<'a>(&mut self, mut node_lines: Vec<Node<'a>>) -> Status {
         let mut current = Vec::new();
         node_lines.push(Node::Line);
@@ -52,6 +61,7 @@ impl Exec {
                     && let Some(v) = self.right.take()
                 {
                     println!("{}", utils::maybe_utf8(v)?);
+                    self.run_gc();
                 }
             } else {
                 current.push(node);
@@ -68,6 +78,8 @@ impl Exec {
         if let Some(v) = self.right.take() {
             s.push_str(&format!("{}", utils::maybe_utf8(v)?));
         }
+
+        self.run_gc();
         Ok(s)
     }
 

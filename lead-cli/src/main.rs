@@ -11,15 +11,14 @@ use lead_core::exec::Exec;
 use lead_core::lex::Lexer;
 use lead_core::parse::Parser;
 use lead_core::scope::new_scope;
-
-use typed_arena::Arena;
+use lead_core::utils::heap::Heap;
 
 fn main() -> io::Result<()> {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
     let mut buf = String::with_capacity(100);
 
-    let arena = Rc::new(RefCell::new(Arena::new()));
+    let arena = Rc::new(RefCell::new(Heap::new()));
     let scope = new_scope();
 
     let mut exec = Exec::new(arena.clone(), scope.clone());

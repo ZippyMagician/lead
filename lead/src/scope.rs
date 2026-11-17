@@ -203,7 +203,6 @@ impl Internals {
                     })
                     .unwrap_or(Ok(1))? as usize;
 
-                let arena = Rc::new(RefCell::new(typed_arena::Arena::new()));
                 let line = format!("{a}");
                 let mut times = Vec::with_capacity(iterations);
                 let mut exec = crate::exec::Exec::new(arena.clone(), scope.clone());
@@ -220,7 +219,6 @@ impl Internals {
                     times.push(t1 - t0);
                 }
 
-                drop(arena);
                 let mut acc = times[0];
                 for i in 1..iterations {
                     acc += times[i];

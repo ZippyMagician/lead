@@ -1,14 +1,13 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use typed_arena::Arena;
 use wasm_bindgen::prelude::*;
 
 use lead_core::*;
 
 thread_local! {
     static SCOPE: RefCell<scope::ScopeInternal> = scope::new_scope().take().into();
-    static ARENA: RefCell<Arena<types::Type>> = RefCell::new(Arena::new());
+    static ARENA: RefCell<utils::heap::Heap> = RefCell::new(utils::heap::Heap::new());
 }
 
 #[wasm_bindgen]

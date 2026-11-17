@@ -1,4 +1,5 @@
 pub mod error;
+pub mod heap;
 pub mod function;
 pub mod list;
 pub mod number;
@@ -20,9 +21,8 @@ use function::apply_loose;
 
 use num_traits::Zero;
 use ordered_float::{FloatCore, OrderedFloat};
-use typed_arena;
 
-pub type Arena = Rc<RefCell<typed_arena::Arena<Type>>>;
+pub type Arena = Rc<RefCell<heap::Heap>>;
 
 #[inline(always)]
 pub fn maybe_utf8(v: Type) -> Status<String> {
