@@ -936,14 +936,16 @@ pub(super) fn group(a: List, b: List, o: &Opts) -> Status<List> {
         if rank[ldims] != b.len() {
             return err!(Domain);
         }
-        let mut map: HashMap<usize, Vec<List>> = HashMap::new();
-        let bucket = iter_ints!(b, |it| it
-            .map(|n| if n < 0 { err!(Value) } else { Ok(n as usize) })
-            .collect::<Status<Vec<usize>>>()?);
+        let mut map: HashMap<i64, Vec<List>> = HashMap::new();
+        let bucket = iter_ints!(b, |it| it.collect::<Vec<i64>>());
         for i in 0..=*bucket.iter().max().unwrap() {
             map.insert(i, vec![]);
         }
+        
         for (i, run) in runs.iter().cloned().enumerate() {
+            if bucket[i] < 0 {
+                continue; // discard negative groups
+            }
             map.get_mut(&bucket[i]).unwrap().push(run);
         }
 
@@ -951,7 +953,7 @@ pub(super) fn group(a: List, b: List, o: &Opts) -> Status<List> {
         let mut construct = vec![List::empty(); len];
         for (key, value) in map.into_iter() {
             if !value.is_empty() {
-                construct[key] = List::unranked(&o.a, ldims, &rank[..ldims], value)?;
+                construct[key as usize] = List::unranked(&o.a, ldims, &rank[..ldims], value)?;
             };
         }
         build.push(List::Boxes(unsafe {
@@ -1268,27 +1270,27 @@ pub(crate) fn table(a: List, b: List, o: &Opts) -> Status<List> {
     unsafe {
         match a.get_type() {
             b'I' => {
-                maybe_apply!([within] o, a, b, 
+                maybe_apply!([within] o, a, b,
                     manip::table(a.treat_as::<i64>(), b.treat_as::<_>()).map(List::Integers)
                 )
             }
             b'F' => {
-                maybe_apply!([within] o, a, b, 
+                maybe_apply!([within] o, a, b,
                     manip::table(a.treat_as::<OrderedFloat<f64>>(), b.treat_as::<_>()).map(List::Doubles)
                 )
             }
             b'C' => {
-                maybe_apply!([within] o, a, b, 
+                maybe_apply!([within] o, a, b,
                     manip::table(a.treat_as::<u8>(), b.treat_as::<_>()).map(List::String)
                 )
             }
             b'B' => {
-                maybe_apply!([within] o, a, b, 
+                maybe_apply!([within] o, a, b,
                     manip::table(a.treat_as::<bool>(), b.treat_as::<_>()).map(List::Booleans)
                 )
             }
             b'X' => {
-                maybe_apply!([within] o, a, b, 
+                maybe_apply!([within] o, a, b,
                     manip::table(a.treat_as::<Boxed>(), b.treat_as::<_>()).map(List::Boxes)
                 )
             }
