@@ -105,6 +105,7 @@ define_syms! {
     DashColon       => (b"-:", 0, true, false, symbols::halve; [0, 0], true, false, symbols::absdiff);
     Star            => (b"*", 0, true, false, symbols::signum; [0, 0], true, false, symbols::mul);
     Percent         => (b"%", 0, true, false, symbols::reciprocal; [0, 0], true, false, symbols::div);
+    PercentColon    => (b"%:", 0, true, false, symbols::sqrt; [0, 0], true, false, symbols::nth_root);
     Pipe            => (b"|", 0, true, false, symbols::not; [0, 0], true, false, symbols::residue);
     PipeColon       => (b"|:", 0, true, false, symbols::descend; [1, 99], true, false, symbols::axes);
     PipeDot         => (b"|.", 99, true, false, symbols::rev; [0, 99], true, false, symbols::rot);

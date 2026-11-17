@@ -165,7 +165,8 @@ Partial trains, of course, support constants within them too.
 | ```-:``` |    Halve   |   0  |   Abs Diff   |  0 0  |       |
 |  ```*``` |Sign / Case |   0  | Mul / Bool AND|  0 0 |Cases: (`1 _1 0 = *'Ab '`)|
 |  ```%``` | Recip/Mask |   0  |    Div       |  0 0  |\`B: treat as binary mask to bytes|
-|   `\|`   | Bool NOT   |   0  |    Residue   |  0 0  |TODO: Update monadic?|
+| ```%:``` |    Sqrt    |   0  |   Nth Root   |  0 0  |(dyad): args swapped|
+|   `\|`   | Bool NOT   |   0  |    Residue   |  0 0  |(dyad): args swapped|
 |   `\|:`  |   Descend  |   0  |     Axes     | 1 99  |(dyad): reorder axes based on indices|
 |   `\|.`  |   Reverse  |  99  |    Rotate    | 0 99  |       |
 |  ```!``` |  Factorial |   0  |   Bool OR    |  0 0  |Binomial?|
@@ -173,7 +174,7 @@ Partial trains, of course, support constants within them too.
 | ```<:``` |  Grade Up  |  99  |      LTE     |  0 0  |e.g.: `(-:]+/&~<:~&:floor 0 _1-:&+#)` finds median|
 |  ```>``` |   Unbox    |  99  | Greater Than |  0 0  |       |
 | ```>:``` |  Grade Down|  99  |      GTE     |  0 0  |`sdown:~&:>:`|
-|  ```^``` |     Exp    |   0  |    Pow       |  0 0  |       |
+|  ```^``` |     Exp    |   0  |    Pow       |  0 0  |(dyad): args swapped|
 |  ```$``` |    Shape   |  99  |    Reshape   | 1 99  |       |
 |  ```[``` |  Identity  |  99  |     Left     | 99 99 |       |
 |  ```]``` |  Identity  |  99  |     Right    | 99 99 |       |

@@ -41,6 +41,8 @@ pub enum Symbol {
     Star,
     /// `%`
     Percent,
+    /// `%:`
+    PercentColon,
     /// `|`
     Pipe,
     /// `|:`
@@ -355,6 +357,36 @@ pub(super) fn reciprocal(a: List, o: &Opts) -> Status<List> {
 // percentd | % | 0, 0 | Division
 pub(super) fn div(a: List, b: List, o: &Opts) -> Status<List> {
     maybe_apply!([scalar] o, a, b, div::generic_op(a, b))
+}
+
+// percentcolonm | %: | 0 | Sqrt
+pub(super) fn sqrt(a: List, o: &Opts) -> Status<List> {
+    match a {
+        Integers(l) => {
+            let mut l = l.cast_f64().unwrap();
+            for_0!(l; [v] = v.sqrt());
+            Ok(Doubles(l))
+        }
+        Doubles(mut l) => {
+            for_0!(l; [v] = v.sqrt());
+            Ok(Doubles(l))
+        }
+        Booleans(b) => {
+            err!(Internal, "TODO: %: A | [`B] A")
+        }
+        String(mut s) => {
+            for_0!(s; [v] = v.isqrt());
+            Ok(String(s))
+        }
+        Boxes(b) => err!(Box),
+    }
+}
+
+// percentcolond | %: | 0, 0 | Nth root
+// TODO: Maybe change this?
+pub(super) fn nth_root(a: List, b: List, o: &Opts) -> Status<List> {
+    let recips = reciprocal(a, o)?;
+    maybe_apply!([scalar] o, recips, b, pow::generic_op(b, recips))
 }
 
 // pipem | | | 0 | Boolean NOT
