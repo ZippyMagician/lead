@@ -11,7 +11,7 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 <html lang="en">
     <head>
         <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <title>lead</title>
         <style>
             :root {
@@ -36,10 +36,27 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
                 color: var(--text);
                 font-family: var(--mono);
                 min-height: 100vh;
+            }
+            #output {
+                padding: 1rem 2rem 5rem;
+                font-size: 0.95rem;
+                line-height: 1.6;
+            }
+            #input-area {
+                position: fixed;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                z-index: 10;
                 display: flex;
-                flex-direction: column;
+                align-items: center;
+                padding: 0.8rem 2rem;
+                padding-bottom: calc(0.8rem + env(safe-area-inset-bottom));
+                border-top: 1px solid var(--border);
+                background: var(--surface);
             }
             header {
+                flex: none;
                 padding: 1.5rem 2rem 1rem;
                 border-bottom: 1px solid var(--border);
             }
@@ -57,13 +74,6 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
                 font-size: 0.8rem;
                 margin-top: 0.3rem;
             }
-            #output {
-                flex: 1;
-                padding: 1rem 2rem;
-                overflow-y: auto;
-                font-size: 0.95rem;
-                line-height: 1.6;
-            }
             .line {
                 white-space: pre-wrap;
                 word-break: break-all;
@@ -79,13 +89,6 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
             }
             .error-line {
                 color: var(--red);
-            }
-            #input-area {
-                display: flex;
-                align-items: center;
-                padding: 0.8rem 2rem;
-                border-top: 1px solid var(--border);
-                background: var(--surface);
             }
             #prompt {
                 color: var(--accent);
@@ -149,7 +152,7 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
                 div.className = "line " + cls;
                 div.textContent = text;
                 output.appendChild(div);
-                output.scrollTop = output.scrollHeight;
+                window.scrollTo(0, document.documentElement.scrollHeight);
             }
 
             function addInputLine(expr) {
