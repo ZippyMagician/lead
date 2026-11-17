@@ -200,7 +200,7 @@ pub(crate) use maybe_apply;
 macro_rules! scalar_op {
     ($a:ident, $b:ident, $d:ident) => {
         scalar_op!($a, $b,
-            [l, r] = { l.$d(*r) }; { r.$d(l) }; { l.$d(r) };
+            [l, r] = { l.$d(*r) }; { l.$d(*r) }; { l.$d(r) };
         )
     };
 
