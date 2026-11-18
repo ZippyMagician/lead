@@ -10,6 +10,7 @@ WIP general documentation + specs for lead and it's differences with `ayr`.
 * [Binders](#binders)
 * [Library builtins](#library-builtins)
 * [FFI](#ffi)
+* [Internals](#internals)
 
 ## Array Model
 `lead` uses the boxed array model, similar to [J](https://jsoftware.com), although there are a few implementation specific differences.
@@ -310,3 +311,18 @@ Originally ayr featured implicit unboxing in practically any case, which differs
 ```
 would be possible should `":` support implicit unboxing, as well as the train modifiers such as `]:` be reimplemented. I could see a valid argument
 for the case of each indeed supporting this feature, especially each atom. Or perhaps some kind of depth operator? I recall something similar in `ayr`
+
+## Internals
+List will be updated as more internals are introduced. These generally are either system functions or modifiable values that alter the behaviour of the interpreter.
+
+|    Name     |     Type     |  Default  |           Usage          |         Flag          | Notes |
+|:-----------:|:------------:|:---------:|:------------------------:|:---------------------:|:-----:|
+|   `[]IO`    |    \`I inst. | `0`       |Changes indexing behaviour -- why? why not | `-io`||
+| `[]RANGEI`  |    \`B inst. | `1`       |Swaps 0 and 1-range symbols |  `-0`               ||
+| `[]I`       |  \`C inst.   |  `<stdin>`|TODO: Initialized to STDIN|                       |Not on WASM|
+|    `[]BOXC` |  \`C inst.   | `'┌┬┐├┼┤└┴┘│─'`| Characters for box displaying. Can take a scalar char| n/a||
+| `[]STDOUT`  |  Write only  |    n/a    |Directly write value to STDOUT|                   |Not on WASM|
+| `[]extern`  |  Function    |    n/a    |Provide external shared object|                   |Requires `ffi` feature|
+| `[]link`    |  Function    |    n/a    |Returns function pointer from linked external libs|Requires `ffi` feature|
+| `[]time`    |  Function    |    n/a    |  `I []time C` evals lead program `C` `I` times, returns avg.| ||
+| `[]import`  |  Function    |    n/a    |Returns map over all global values from provided file| ||
