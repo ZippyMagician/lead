@@ -137,6 +137,7 @@ impl Internals {
         let boxes = List::string(&x);
         map.insert("BOXC".to_string(), boxes.into());
         map.insert("RANGEI".to_string(), true.into());
+        map.insert("IO".to_string(), 0i64.into());
 
         // Functions
         #[cfg(feature = "ffi")]
@@ -268,7 +269,7 @@ impl Internals {
             }
             #[cfg(not(feature = "wasm"))]
             b"STDOUT" => err!(Domain),
-            b"RANGEI" => err!(Domain),
+            b"RANGEI" | b"IO" => err!(Domain),
             _ => self
                 .map
                 .get(name)
@@ -283,6 +284,15 @@ impl Internals {
     #[inline]
     pub(crate) fn get_internal_rangei(&self) -> bool {
         unsafe { self.map.get("RANGEI").unwrap().as_list_unchecked().listb_unchecked()[0] }
+    }
+
+    #[inline]
+    pub(crate) fn get_internal_io(&self) -> i64 {
+        unsafe { 
+            let n = self.map.get("IO").unwrap().as_list_unchecked().listi_unchecked()[0];
+            std::hint::assert_unchecked(n >= 0);
+            n
+        }
     }
 
     #[inline]
@@ -331,6 +341,16 @@ impl Internals {
         } else if name.as_bytes() == b"RANGEI" {
             let v = v.as_list()?.is_truthy();
             self.map.insert("RANGEI".to_string(), v.into());
+            return Ok(());
+        } else if name.as_bytes() == b"IO" {
+            if !v.is_scalar() {
+                return err!(Domain);
+            }
+            let v = v.to_list()?.to_cast(b'I')?;
+            if unsafe { v.listi_unchecked()[0] } < 0 {
+                return err!(NaN);
+            }
+            self.map.insert("IO".to_string(), v.into());
             return Ok(());
         }
 

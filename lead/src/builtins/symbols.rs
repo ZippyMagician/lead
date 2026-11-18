@@ -1104,6 +1104,9 @@ pub(super) fn range(a: List, o: &Opts) -> Status<List> {
 
 // tilded | ~ | 99, 0 | Index
 pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
+    let s = o.s.borrow();
+    let io = s.internals.borrow().get_internal_io();
+
     apply_loosed(&o.a, a, b, o.rd, |a, index| {
         if a.is_empty() {
             cold_path();
@@ -1114,7 +1117,7 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
         }
 
         if index.get_type() != b'X' {
-            let i = iter_ints!(index, |it| it.next().unwrap());
+            let i = iter_ints!(index, |it| it.next().unwrap()) - io;
             if i < 0 {
                 return err!(Domain);
             }
@@ -1133,7 +1136,7 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
         } else {
             let list = unsafe { index.listx_unchecked()[0].unbox() }.as_list()?;
             let index = iter_ints!(list, |it| {
-                it.map(|n| if n < 0 { err!(Domain) } else { Ok(n as usize) })
+                it.map(|n| if n - io < 0 { err!(Domain) } else { Ok((n - io) as usize) })
                     .collect::<Status<Vec<usize>>>()
             })?;
 
@@ -1143,10 +1146,10 @@ pub(super) fn index(a: List, b: List, o: &Opts) -> Status<List> {
             let rank = a.rank();
 
             let mut i = 0;
-            let mut prefix = 1;
+            let mut prefix: usize = rank.iter().product();
             for j in 0..index.len() {
+                prefix /= rank[rank.len() - j - 1];
                 i += index[j] * prefix;
-                prefix *= rank[rank.len() - j - 1];
             }
 
             let rank = &rank[0..a.dims() - index.len()];
