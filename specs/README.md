@@ -317,12 +317,12 @@ List will be updated as more internals are introduced. These generally are eithe
 
 |    Name     |     Type     |  Default  |           Usage          |         Flag          | Notes |
 |:-----------:|:------------:|:---------:|:------------------------:|:---------------------:|:-----:|
-|   `[]IO`    |    \`I inst. | `0`       |Changes indexing behaviour -- why? why not | `-io`||
-| `[]RANGEI`  |    \`B inst. | `1`       |Swaps 0 and 1-range symbols |  `-0`               ||
+|   `[]IO`    |    \`I inst. | `0`       |Changes indexing behaviour -- why? why not | `-io`|       |
+| `[]RANGEI`  |    \`B inst. | `1`       |Swaps 0 and 1-range symbols |  `-0`               |       |
 | `[]I`       |  \`C inst.   |  `<stdin>`|TODO: Initialized to STDIN|                       |Not on WASM|
-|    `[]BOXC` |  \`C inst.   | `'┌┬┐├┼┤└┴┘│─'`| Characters for box displaying. Can take a scalar char| n/a||
+|    `[]BOXC` |  \`C inst.   | `'┌┬┐├┼┤└┴┘│─'`| Characters for box displaying. Can take a scalar char| n/a| |
 | `[]STDOUT`  |  Write only  |    n/a    |Directly write value to STDOUT|                   |Not on WASM|
 | `[]extern`  |  Function    |    n/a    |Provide external shared object|                   |Requires `ffi` feature|
-| `[]link`    |  Function    |    n/a    |Returns function pointer from linked external libs|Requires `ffi` feature|
-| `[]time`    |  Function    |    n/a    |  `I []time C` evals lead program `C` `I` times, returns avg.| ||
-| `[]import`  |  Function    |    n/a    |Returns map over all global values from provided file| ||
+| `[]link`    |  Function    |    n/a    |Returns function pointer from linked external libs| |Requires `ffi` feature|
+| `[]time`    |  Function    |    n/a    |  `I []time C` evals lead program `C` `I` times, returns avg.| | |
+| `[]import`  |  Function    |    n/a    |Returns map over all global values from provided file| | |
