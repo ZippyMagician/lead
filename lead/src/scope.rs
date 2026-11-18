@@ -96,6 +96,11 @@ impl ScopeInternal {
         std::mem::swap(&mut self.env, &mut h);
         h
     }
+
+    #[inline]
+    pub fn write_internal(&self, name: &str, v: Type) -> Status {
+        self.internals.borrow_mut().write_internal(name, v)
+    }
 }
 
 impl Debug for ScopeInternal {
@@ -125,12 +130,13 @@ impl Internals {
         // Instants
         #[cfg(not(feature = "wasm"))]
         {
-            map.insert("I".to_string(), Type::from(List::empty())); // TODO: Initialize I
+            map.insert("I".to_string(), List::empty().into()); // TODO: Initialize I
             uniq.insert("STDOUT".to_string());
         }
         let x: String = unsafe { crate::utils::BOXES }.iter().collect();
         let boxes = List::string(&x);
-        map.insert("BOXC".to_string(), Type::from(boxes));
+        map.insert("BOXC".to_string(), boxes.into());
+        map.insert("RANGEI".to_string(), true.into());
 
         // Functions
         #[cfg(feature = "ffi")]
@@ -262,6 +268,7 @@ impl Internals {
             }
             #[cfg(not(feature = "wasm"))]
             b"STDOUT" => err!(Domain),
+            b"RANGEI" => err!(Domain),
             _ => self
                 .map
                 .get(name)
@@ -271,6 +278,11 @@ impl Internals {
                 .call_fn(a, b)
                 .map(Some),
         }
+    }
+
+    #[inline]
+    pub(crate) fn get_internal_rangei(&self) -> bool {
+        unsafe { self.map.get("RANGEI").unwrap().as_list_unchecked().listb_unchecked()[0] }
     }
 
     #[inline]
@@ -315,6 +327,10 @@ impl Internals {
             use std::io::Write;
             let mut stdout = std::io::stdout();
             write!(stdout, "{v}")?;
+            return Ok(());
+        } else if name.as_bytes() == b"RANGEI" {
+            let v = v.as_list()?.is_truthy();
+            self.map.insert("RANGEI".to_string(), v.into());
             return Ok(());
         }
 

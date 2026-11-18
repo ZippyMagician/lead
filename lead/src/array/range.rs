@@ -4,7 +4,11 @@ use crate::utils::error::{Status, err};
 // `List::Integers`
 impl Array<i64> {
     #[inline]
-    pub fn range(start: i64, end: i64, rev: bool) -> Status<List> {
+    pub fn range(start: i64, mut end: i64, rev: bool, rangei: bool) -> Status<List> {
+        if !rangei {
+            end -= 1;
+        }
+
         if end < start || end < 0 || start < 0 {
             return err!(Domain);
         }

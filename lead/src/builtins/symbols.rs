@@ -435,6 +435,10 @@ pub(super) fn residue(a: List, b: List, o: &Opts) -> Status<List> {
 
 // pipecolonm | |: | 0 | Descend
 pub(super) fn descend(a: List, o: &Opts) -> Status<List> {
+    let s = o.s.borrow();
+    let i = s.internals.borrow();
+    let rangei = i.get_internal_rangei();
+
     maybe_apply!([scalar] o, a, {
         if a.is_scalar() {
             if a.get_type() == b'C' {
@@ -442,11 +446,11 @@ pub(super) fn descend(a: List, o: &Opts) -> Status<List> {
                 Array::<u8>::range(if end < 97 { b'A' } else { b'a' }, end, true)
             } else if a.get_type() == b'I' {
                 let end = unsafe { a.listi_unchecked()[0] };
-                Array::<i64>::range(1, end, true)
+                Array::<i64>::range(rangei as u8 as i64, end, true, rangei)
             } else {
                 iter_ints!(a, |it| {
                     let end = it.next().unwrap();
-                    Array::<i64>::range(1, end, true)
+                    Array::<i64>::range(rangei as u8 as i64, end, true, rangei)
                 })
             }
         } else if a.get_type() == b'C' {
@@ -460,13 +464,13 @@ pub(super) fn descend(a: List, o: &Opts) -> Status<List> {
             unsafe {
                 let list = a.listi_unchecked();
                 Array::try_alloc_iter(a.rank(), list.iter().map(|&end| {
-                    scalar::boxed(&o.a, Array::<i64>::range(1, end, true)?)
+                    scalar::boxed(&o.a, Array::<i64>::range(rangei as u8 as i64, end, true, rangei)?)
                 })).map(List::Boxes)
             }
         } else {
             iter_ints!(a, |list| unsafe {
                 Array::try_alloc_iter(a.rank(), list.map(|end| {
-                    scalar::boxed(&o.a, Array::<i64>::range(1, end, true)?)
+                    scalar::boxed(&o.a, Array::<i64>::range(rangei as u8 as i64, end, true, rangei)?)
                 })).map(List::Boxes)
             })
         }
@@ -1056,6 +1060,10 @@ pub(super) fn equal(a: List, b: List, o: &Opts) -> Status<List> {
 
 // tildem | ~ | 0 | 1-range / Rising alphabet
 pub(super) fn range(a: List, o: &Opts) -> Status<List> {
+    let s = o.s.borrow();
+    let i = s.internals.borrow();
+    let r = i.get_internal_rangei();
+
     maybe_apply!([scalar] o, a, {
         if a.is_scalar() {
             if a.get_type() == b'C' {
@@ -1063,11 +1071,11 @@ pub(super) fn range(a: List, o: &Opts) -> Status<List> {
                 Array::<u8>::range(if end < 97 { b'A' } else { b'a' }, end, false)
             } else if a.get_type() == b'I' {
                 let end = unsafe { a.listi_unchecked()[0] };
-                Array::<i64>::range(1, end, false)
+                Array::<i64>::range(r as u8 as i64, end, false, r)
             } else {
                 iter_ints!(a, |it| {
                     let end = it.next().unwrap();
-                    Array::<i64>::range(1, end, false)
+                    Array::<i64>::range(r as u8 as i64, end, false, r)
                 })
             }
         } else if a.get_type() == b'C' {
@@ -1081,13 +1089,13 @@ pub(super) fn range(a: List, o: &Opts) -> Status<List> {
             unsafe {
                 let list = a.listi_unchecked();
                 Array::try_alloc_iter(a.rank(), list.iter().map(|&end| {
-                    scalar::boxed(&o.a, Array::<i64>::range(1, end, false)?)
+                    scalar::boxed(&o.a, Array::<i64>::range(r as u8 as i64, end, false, r)?)
                 })).map(List::Boxes)
             }
         } else {
             iter_ints!(a, |list| unsafe {
                 Array::try_alloc_iter(a.rank(), list.map(|end| {
-                    scalar::boxed(&o.a, Array::<i64>::range(1, end, false)?)
+                    scalar::boxed(&o.a, Array::<i64>::range(r as u8 as i64, end, false, r)?)
                 })).map(List::Boxes)
             })
         }
