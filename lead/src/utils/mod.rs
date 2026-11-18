@@ -144,19 +144,21 @@ pub(crate) fn display_boxed_lines(
         collected.push(String::with_capacity(mx + 4));
     }
 
-    let hori = unsafe { BOXES[10] };
-    let vert = unsafe { BOXES[9] };
-
-    let mask = mask as usize;
-    unsafe { assert_unchecked(mask < 16) }
-    collected[0].push(unsafe { BOXES_TL[mask] });
-    collected[my + 1].push(unsafe { BOXES_BL[mask] });
-    for _ in 0..mx + 2 {
-        collected[0].push(hori);
-        collected[my + 1].push(hori);
+    let (hori, vert);
+    unsafe {
+        hori = BOXES[10];
+        vert = BOXES[9];
+        let mask = mask as usize;
+        assert_unchecked(mask < 16);
+        collected[0].push(BOXES_TL[mask]);
+        collected[my + 1].push(BOXES_BL[mask]);
+        for _ in 0..mx + 2 {
+            collected[0].push(hori);
+            collected[my + 1].push(hori);
+        }
+        collected[0].push(BOXES_TR[mask]);
+        collected[my + 1].push(BOXES_BR[mask]);
     }
-    collected[0].push(unsafe { BOXES_TR[mask] });
-    collected[my + 1].push(unsafe { BOXES_BR[mask] });
 
     let yoff = (my - lines.len()) / 2;
     for i in 0..my {
