@@ -25,6 +25,7 @@ enum Mode {
 struct Args {
     pub zero: bool,
     pub debug: bool,
+    pub io: i64,
 
     pub mode: Mode,
     // ...
@@ -45,8 +46,13 @@ fn os_str_to_bytes(s: &OsStr) -> Cow<'_, [u8]> {
     Cow::Owned(s.to_string_lossy().into_owned().into_bytes())
 }
 
+fn help() -> ! {
+    println!("{HELP}");
+    std::process::exit(1)
+}
+
 fn parse_args() -> Args {
-    let mut args = Args { zero: false, debug: false, mode: Mode::Cli }; // default
+    let mut args = Args { zero: false, debug: false, io: 0, mode: Mode::Cli }; // default
 
     let mut os_args = std::env::args_os().skip(1);
     while let Some(arg) = os_args.next() {
@@ -54,11 +60,15 @@ fn parse_args() -> Args {
         match bytes.as_ref() {
             b"-0" => args.zero = true,
             b"-debug" => args.debug = true,
-            _ if bytes[0] != b'f' => args.mode = Mode::File(arg),
-            _ => {
-                println!("{HELP}");
-                std::process::exit(1);
+            b"-io" => {
+                let Some(Some(num)) = os_args.next().map(|s| s.to_str()?.parse::<i64>().ok())
+                else {
+                    help()
+                };
+                args.io = num;
             }
+            _ if bytes[0] != b'f' => args.mode = Mode::File(arg),
+            _ => help(),
         }
     }
 
@@ -80,7 +90,6 @@ fn eval(code: &str, args: &Args, exec: &mut Exec, scope: &Scope, arena: &Arena) 
         return Err(e);
     }
 
-
     let mut parser = Parser::new(arena.clone(), scope.clone(), lexer.tokens());
     let e = parser.parse();
     if args.debug {
@@ -90,7 +99,6 @@ fn eval(code: &str, args: &Args, exec: &mut Exec, scope: &Scope, arena: &Arena) 
     if let Err(e) = e {
         return Err(e);
     }
-
 
     if let Err(e) = exec.exec(parser.nodes()) {
         exec.right = None;
@@ -106,10 +114,16 @@ fn main() -> io::Result<()> {
     let mut exec = Exec::new(arena.clone(), scope.clone());
 
     let args = parse_args();
+
+    // Pass argument values
+    let s = scope.borrow();
     if args.zero {
-        let s = scope.borrow();
         _ = s.write_internal("RANGEI", false.into());
     }
+    if args.io != 0 {
+        _ = s.write_internal("IO", args.io.into());
+    }
+    drop(s);
 
     if let Mode::File(f) = &args.mode {
         if let Ok(program) = std::fs::read_to_string(f) {
@@ -120,8 +134,8 @@ fn main() -> io::Result<()> {
 
             std::process::exit(0);
         } else {
-            println!("File {f:?} not found.\n{HELP}");
-            std::process::exit(1);
+            println!("File {f:?} not found.");
+            help()
         }
     }
 
