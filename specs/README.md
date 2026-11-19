@@ -125,6 +125,39 @@ if (COND) { IF }
 else { ELSE }
 ```
 
+### Syntactic Ambiguity
+As a result of the limited characters available within ASCII, and my own questionable design choices, there is some sketchy ambiguity within
+certain statements. Anyways, I'll provide them below. There's probably some weird edge case I've missed somewhere..
+#### `(`
+Pretty standard in array languages, this can be instant or denote a train
+#### `[`
+The true final boss. Below:
+- The left identity function
+- An internal
+```
+[]NAME
+```
+- A tag (`[ <token> ]`)
+```
+[?]
+[~]
+```
+- Maps (extension of tag). This one completely overrides a few symbols
+```
+[:] { name: expr ; name2: expr }
+```
+- Destructuring
+```
+    x [ [x:] : 1 2 3
+1
+    rest [ [:rest] : 1 2 3
+2 3
+    x [ [:x:] : 1 2 3
+2
+```
+#### `:`
+In maps, this assigns a value to a key. In general, this is general assignment. Following an instant, this is a conditional statement.
+
 ## User Functions
 User functions refer to, as the name implies, functions defined by the user. For instance,
 ```

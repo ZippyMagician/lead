@@ -197,12 +197,17 @@ impl<'a> Parser<'a> {
     fn maybe_assign_destruct(&mut self) -> Status<Node<'a>> {
         let sym =
             symbols::Symbol::get_symbol("[").unwrap().getfn(self.arena.clone(), self.scope.clone());
-        let Some((TokenTag::Literal, n)) = self.next_if(TokenTag::Literal) else {
-            return Ok(Node::Function(sym));
-        };
-
-        let mut v = vec![*n];
+        let mut v = Vec::new();
         let start = self.i;
+        if let (TokenTag::Literal, n) = &self.orig[self.i] {
+            v.push(*n);
+        } else if TokenTag::Colon == self.orig[self.i].0 {
+            v.push("");
+            self.i -= 1; // hack
+        } else {
+            return Ok(Node::Function(sym));
+        }
+
         let mut valid = true;
         while self.i < self.orig.len() - 2 {
             if self.orig[self.i + 1].0 == TokenTag::Colon {
@@ -252,7 +257,7 @@ impl<'a> Parser<'a> {
             ))
         } else {
             // valid
-            self.i += 1;
+            self.i += 2; // colon + next char
             for _ in start..self.i {
                 self.tokens.next();
             }
