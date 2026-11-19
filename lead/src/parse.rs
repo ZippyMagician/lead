@@ -18,6 +18,8 @@ pub enum Assignment<'a> {
     Literal(&'a str),
     Accessor(&'a str, Vec<&'a str>),
     Internal(&'a str),
+    // With better parsing could be generic `Assignment`
+    Destruct(Vec<&'a str>),
 }
 
 #[derive(Clone, Default)]
@@ -71,9 +73,11 @@ pub enum Node<'a> {
 
 pub struct Parser<'a> {
     nodes: Vec<Node<'a>>,
+    orig: &'a [Token<'a>],
     tokens: Peekable<Iter<'a, Token<'a>>>,
 
     // State
+    i: usize,
     upto_store: Vec<TokenTag>,
     arena: Arena,
     scope: Scope,
@@ -82,12 +86,22 @@ pub struct Parser<'a> {
 impl<'a> Parser<'a> {
     #[inline]
     pub fn new(arena: Arena, scope: Scope, l: &'a [Token<'a>]) -> Self {
-        Self { nodes: vec![], tokens: l.iter().peekable(), upto_store: vec![], arena, scope }
+        Self {
+            nodes: vec![],
+            orig: l,
+            tokens: l.iter().peekable(),
+            i: 0,
+            upto_store: vec![],
+            arena,
+            scope,
+        }
     }
 
     #[inline]
     pub fn insert_tokens(&mut self, l: &'a [Token<'a>]) {
         self.tokens = l.iter().peekable();
+        self.orig = l;
+        self.i = 0;
     }
 
     #[inline(always)]
@@ -107,6 +121,7 @@ impl<'a> Parser<'a> {
     #[inline]
     pub fn parse(&mut self) -> Status {
         while let Some(token) = self.tokens.next() {
+            self.i += 1;
             let status = self.consume_node(token);
             Self::unpack_node(&mut self.nodes, status)?;
         }
@@ -132,6 +147,7 @@ impl<'a> Parser<'a> {
             Number => self.consume_primitive_num(t),
             Float => self.consume_primitive_num(t),
             String => self.consume_primitive_string(t.1),
+            Symbol if t.1 == "[" => self.maybe_assign_destruct(),
             Symbol | CloseBracket => {
                 let f = symbols::Symbol::get_symbol(t.1)
                     .unwrap()
@@ -161,18 +177,87 @@ impl<'a> Parser<'a> {
         if let Some(next) =
             self.tokens.next_if(|(t, _)| *t != TokenTag::CloseParen && *t != TokenTag::CloseCurly)
         {
+            self.i += 1;
             match next {
                 (TokenTag::CloseBracket, _) => self.consume_internal(),
                 (TokenTag::Newline, _) => {
                     Ok(Node::Two(Node::Function(sym).into(), Node::Line.into()))
                 }
                 (t, tag) if self.next_if(TokenTag::CloseBracket).is_some() => {
+                    self.i += 1;
                     self.consume_tag(*t, tag)
                 }
                 next => Ok(Node::Two(Node::Function(sym).into(), self.consume_node(next)?.into())),
             }
         } else {
             Ok(Node::Function(sym))
+        }
+    }
+
+    fn maybe_assign_destruct(&mut self) -> Status<Node<'a>> {
+        let sym =
+            symbols::Symbol::get_symbol("[").unwrap().getfn(self.arena.clone(), self.scope.clone());
+        let Some((TokenTag::Literal, n)) = self.next_if(TokenTag::Literal) else {
+            return Ok(Node::Function(sym));
+        };
+
+        let mut v = vec![*n];
+        let start = self.i;
+        let mut valid = true;
+        while self.i < self.orig.len() - 2 {
+            if self.orig[self.i + 1].0 == TokenTag::Colon {
+                match &self.orig[self.i + 2] {
+                    (TokenTag::Literal, n) => {
+                        self.i += 2;
+                        v.push(*n);
+                    }
+                    (TokenTag::CloseBracket, _) => {
+                        self.i += 2;
+                        v.push("");
+                        break;
+                    }
+                    (TokenTag::Colon, _) => {
+                        self.i += 1;
+                        v.push("");
+                    }
+                    _ => {
+                        valid = false;
+                        break;
+                    }
+                }
+            } else if self.orig[self.i + 1].0 == TokenTag::CloseBracket {
+                self.i += 1;
+                break;
+            } else {
+                valid = false;
+                break;
+            }
+        }
+
+        let trailing_colon =
+            self.i < self.orig.len() - 1 && self.orig[self.i + 1].0 == TokenTag::Colon;
+        if !valid || !trailing_colon {
+            // invalid
+            self.i = start;
+            Ok(Node::Two(
+                Node::Function(sym).into(),
+                if trailing_colon {
+                    // assignment
+                    self.consume_assign(v[0], false)?
+                } else {
+                    // bare literal
+                    Node::Literal(v[0])
+                }
+                .into(),
+            ))
+        } else {
+            // valid
+            self.i += 1;
+            for _ in start..self.i {
+                self.tokens.next();
+            }
+            let assign = Assignment::Destruct(v);
+            self.consume_assign_generic(assign)
         }
     }
 
@@ -189,7 +274,7 @@ impl<'a> Parser<'a> {
                 err!(Syntax, "Invalid use of colon")
             }
             Node::Accessor(head, body) => {
-                self.consume_assign_accessor(Assignment::Accessor(head, body))
+                self.consume_assign_generic(Assignment::Accessor(head, body))
             }
             _ => self.consume_if(top),
         }
@@ -197,10 +282,12 @@ impl<'a> Parser<'a> {
 
     fn maybe_accessor(&mut self, head: &'a Token<'a>) -> Status<Node<'a>> {
         if self.next_if(TokenTag::Dot).is_some() {
+            self.i += 1;
             let mut build = Vec::new();
             loop {
                 // TODO: Support variadic accessing?
                 if let Some(child) = self.next_if(TokenTag::Literal) {
+                    self.i += 1;
                     build.push(child.1);
                 } else {
                     return err!(Syntax, "Empty accessor");
@@ -208,6 +295,7 @@ impl<'a> Parser<'a> {
                 if self.next_if(TokenTag::Dot).is_none() {
                     break;
                 }
+                self.i += 1;
             }
             Ok(Node::Accessor(head.1, build))
         } else {
@@ -221,6 +309,7 @@ impl<'a> Parser<'a> {
         while let Some(tok) =
             self.tokens.next_if(|(t, _)| *t == TokenTag::Number || *t == TokenTag::Float)
         {
+            self.i += 1;
             tokens.push(tok);
             if !floats && tok.0 == TokenTag::Float {
                 std::hint::cold_path();
@@ -256,6 +345,7 @@ impl<'a> Parser<'a> {
     fn consume_primitive_string(&mut self, t: &'a str) -> Status<Node<'a>> {
         let mut strings = vec![t];
         while let Some((_, s)) = self.next_if(TokenTag::String) {
+            self.i += 1;
             strings.push(s);
         }
 
@@ -279,7 +369,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn consume_assign_accessor(&mut self, head: Assignment<'a>) -> Status<Node<'a>> {
+    fn consume_assign_generic(&mut self, head: Assignment<'a>) -> Status<Node<'a>> {
         let body = self.consume_upto_tag(TokenTag::Newline)?;
         Ok(Node::Assign { head, body })
     }
@@ -311,6 +401,7 @@ impl<'a> Parser<'a> {
     #[inline]
     fn consume_internal(&mut self) -> Status<Node<'a>> {
         if let Some((_, lit)) = self.next_if(TokenTag::Literal) {
+            self.i += 1;
             Ok(Node::LiteralInternal(lit))
         } else {
             err!(Syntax, "Invalid use of internal indicator.")
@@ -321,6 +412,7 @@ impl<'a> Parser<'a> {
     fn consume_group(&mut self) -> Status<Node<'a>> {
         let nodes = self.consume_upto_tag(TokenTag::CloseParen)?;
         self.tokens.next(); // consume_upto does not consume the closing token
+        self.i += 1;
         Ok(Node::Group(nodes))
     }
 
@@ -338,6 +430,7 @@ impl<'a> Parser<'a> {
         }
         if end != TokenTag::Newline {
             self.tokens.next();
+            self.i += 1;
         }
         Ok(Node::Function(generate_block(nodes, child, self.arena.clone())))
     }
@@ -348,29 +441,37 @@ impl<'a> Parser<'a> {
             return err!(Syntax, "Expected '{'");
         }
 
+        self.i += 1;
         let mut body = Vec::new();
         while let Some(tok) = self.tokens.next_if(|(t, c)| *t != TokenTag::Symbol || *c != "}") {
+            self.i += 1;
             if let (TokenTag::Literal, name) = tok {
                 if self.tokens.next_if(|(t, _)| *t == TokenTag::Colon).is_none() {
                     return err!(Syntax, "Expected ':'");
                 }
+                self.i += 1;
                 let mut nodes = Vec::new();
+                let mut i = 0;
                 std::mem::swap(&mut nodes, &mut self.nodes);
+                std::mem::swap(&mut i, &mut self.i);
                 while let Some(tok) =
                     self.tokens.next_if(|(t, c)| *t != TokenTag::Symbol || *c != ";" && *c != "}")
                 {
+                    self.i += 1;
                     let node = self.consume_node(tok);
                     Self::unpack_node(&mut self.nodes, node)?;
                 }
                 self.tokens.next_if(|(_, c)| *c == ";");
                 self.second_pass()?;
                 std::mem::swap(&mut nodes, &mut self.nodes);
+                std::mem::swap(&mut i, &mut self.i);
                 body.push((*name, nodes));
             } else {
                 return err!(Syntax, "Unexpected token in map");
             }
         }
         self.tokens.next();
+        self.i += 1;
 
         Ok(Node::Map(body))
     }
@@ -385,7 +486,9 @@ impl<'a> Parser<'a> {
     fn consume_upto_tag(&mut self, tag: TokenTag) -> Status<Vec<Node<'a>>> {
         self.upto_store.push(tag);
         let mut nodes = Vec::new();
+        let mut i = 0;
         std::mem::swap(&mut nodes, &mut self.nodes);
+        std::mem::swap(&mut i, &mut self.i);
         // If we are looking for a newline, it is a definition, which groups and blocks can override
         // the one line restriction.
         while let Some(tok) = self.tokens.next_if(|(t, _)| {
@@ -393,22 +496,27 @@ impl<'a> Parser<'a> {
                 .iter()
                 .all(|g| *g == TokenTag::Newline && tag != TokenTag::Newline || *g != *t)
         }) {
+            self.i += 1;
             let node = self.consume_node(tok);
             Self::unpack_node(&mut self.nodes, node)?;
         }
         self.upto_store.pop();
         self.second_pass()?;
         std::mem::swap(&mut nodes, &mut self.nodes);
+        std::mem::swap(&mut i, &mut self.i);
         Ok(nodes)
     }
 
     #[inline]
     fn consume_upto(&mut self, check: impl Fn(&Node<'a>) -> bool) -> Status<Vec<Node<'a>>> {
         let mut nodes = Vec::new();
+        let mut i = 0;
         std::mem::swap(&mut nodes, &mut self.nodes);
+        std::mem::swap(&mut i, &mut self.i);
         while let Some(tok) =
             self.tokens.next_if(|(t, _)| self.upto_store.last().is_none_or(|g| *g != *t))
         {
+            self.i += 1;
             let node = self.consume_node(tok);
             Self::unpack_node(&mut self.nodes, node)?;
             if self.nodes.is_empty()
@@ -420,6 +528,7 @@ impl<'a> Parser<'a> {
         }
         self.second_pass()?;
         std::mem::swap(&mut nodes, &mut self.nodes);
+        std::mem::swap(&mut i, &mut self.i);
         Ok(nodes)
     }
 
@@ -448,6 +557,7 @@ impl<'a> Parser<'a> {
                     };
                     self.nodes[i] = std::mem::take(&mut g[0]);
                 }
+                // Apply to the partial operator expressions
                 Node::MonadicOp(_) => {
                     if i == 0 {
                         return err!(Syntax, "Missing operator parameter.");
@@ -502,6 +612,13 @@ impl<'a> fmt::Display for Assignment<'a> {
                 }
                 Ok(())
             }
+            Self::Destruct(v) => {
+                write!(f, "[{}", v[0])?;
+                for i in v.iter().skip(1) {
+                    write!(f, ":{i}")?;
+                }
+                write!(f, "]")
+            }
         }
     }
 }
@@ -535,7 +652,9 @@ impl<'a> Debug for Node<'a> {
                 }
                 Ok(())
             }
-            _ => todo!(),
+            Node::Colon => write!(f, "Colon"),
+            Node::Lazy(n) => write!(f, "Lazy({n:?})"),
+            Node::Two(a, b) => write!(f, "...[{a:?}, {b:?}]"),
         }
     }
 }
