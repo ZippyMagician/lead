@@ -527,6 +527,72 @@ impl Exec {
                 let sc = s.borrow_mut();
                 let mut it = sc.internals.borrow_mut();
                 it.write_internal(head, list.into())?;
+            } else if let Assignment::Destruct(names) = head {
+                let mut sc = s.borrow_mut();
+                let list = list
+                    .to_list()
+                    .map_err(|_| Error::ValueS("Cannot destructure a non-list type.".into()))?;
+                if list.is_scalar() && names.len() > 1 {
+                    return err!(
+                        ValueS,
+                        format!("Cannot destructure '{list}' into {} values", names.len())
+                    );
+                }
+
+                let (mut leading, [trail]) = list.rank().split_at(list.dims() - 1) else {
+                    unreachable!()
+                };
+                let lead: usize = leading.iter().chain(std::iter::once(&1)).product();
+                if lead == 1 {
+                    leading = &[1];
+                }
+                if names.len() > *trail {
+                    return err!(
+                        ValueS,
+                        format!("Cannot destructure '{list}' into {} values", names.len())
+                    );
+                }
+
+                // For a row
+                if list.dims() == 1 {
+                    let mut i = 0;
+                    for (j, name) in names.iter().enumerate() {
+                        if *name == "" {
+                            i += 1;
+                            continue;
+                        }
+                        let l = if j == names.len() - 1 {
+                            unsafe { list.sliced(i, list.len(), &[list.len() - j]) }
+                        } else {
+                            unsafe { list.sliced(i, i + 1, &[1]) }
+                        };
+                        sc.set_instant(name, l);
+                        i += 1;
+                    }
+                    return Ok(())
+                }
+
+
+                let mut i = 0;
+                for (j, name) in names.iter().enumerate() {
+                    if *name == "" {
+                        i += lead;
+                        continue;
+                    }
+                    if j == names.len() - 1 {
+                        let mut s: SmallVec<[usize; 2]> = SmallVec::from_slice(leading);
+                        if lead - j > 1 {
+                            s.push(lead - j);
+                        }
+                        let rest = unsafe { list.sliced(i, list.len(), &s) };
+                        sc.set_instant(name, rest);
+                        break;
+                    }
+
+                    let slice = unsafe { list.sliced(i, i * lead + lead, leading) };
+                    sc.set_instant(name, slice);
+                    i += lead;
+                }
             }
         } else {
             // SAFETY: This is set as a `Node::Group` a few lines ago
@@ -569,6 +635,8 @@ impl Exec {
                 let sc = self.scope.borrow_mut();
                 let mut it = sc.internals.borrow_mut();
                 it.write_internal(head, res.into())?;
+            } else if let Assignment::Destruct(_) = head {
+                return err!(ValueS, "Cannot destructure non-instant expression.");
             }
         }
 
