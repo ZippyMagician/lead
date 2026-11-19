@@ -67,7 +67,7 @@ fn parse_args() -> Args {
                 };
                 args.io = num;
             }
-            _ if bytes[0] != b'f' => args.mode = Mode::File(arg),
+            _ if bytes[0] != b'-' => args.mode = Mode::File(arg),
             _ => help(),
         }
     }
