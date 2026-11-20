@@ -169,28 +169,12 @@ impl Exec {
             PrimitiveBoxes(l) => Ok(l.into()),
             Literal(l) => self.scope.borrow().get(l).ok_or(Error::Scope),
             LiteralInternal(s) => self.scope.borrow().internals.borrow().get(s).cloned(),
-            Assign { head: Assignment::Literal(head), body } => {
-                let s = self.scope.clone();
+            Assign { head, body } => {
                 let list = self.exec_instant(Node::Group(body))?;
-                s.borrow_mut().set(head, list.clone());
+                self.exec_instant_assignment(head, list.clone())?;
                 Ok(list)
             }
-            Assign { head: Assignment::Accessor(head, tail), body } => {
-                let s = self.scope.clone();
-                let mut sc = s.borrow_mut();
-                let m = sc.get_mut(head).ok_or(Error::Scope)?;
-                let last = if tail.len() == 1 {
-                    m.as_map_mut()?
-                } else {
-                    m.as_map_mut()?
-                        .get_into_mut(&tail[0], &tail[1..tail.len() - 1])
-                        .ok_or(Error::Domain)?
-                        .as_map_mut()?
-                };
-                let list = self.exec_instant(Node::Group(body))?;
-                last.insert(tail.last().unwrap().to_string(), list.clone())?;
-                Ok(list)
-            }
+            Group(mut body) if body.len() == 1 => self.exec_instant(body.remove(0)),
             Group(body) => {
                 let r = self.right.take();
                 self.exec_line(body)?;
@@ -256,6 +240,97 @@ impl Exec {
                     .ok_or(Error::Domain)
             }
             _ => unreachable!(),
+        }
+    }
+
+    fn exec_instant_assignment<'a>(&mut self, acc: Assignment<'a>, list: Type) -> Status {
+        if let Assignment::Literal(head) = acc {
+            self.scope.borrow_mut().set(head, list);
+            Ok(())
+        } else if let Assignment::Accessor(head, body) = acc {
+            let mut sc = self.scope.borrow_mut();
+            let m = sc.get_mut(head).ok_or(Error::Scope)?.as_map_mut()?;
+            let last = if body.len() == 1 {
+                m
+            } else {
+                m.get_into_mut(&body[0], &body[1..body.len() - 1])
+                    .ok_or(Error::Domain)?
+                    .as_map_mut()?
+            };
+            last.insert(body.last().unwrap().to_string(), list)
+        } else if let Assignment::Internal(head) = acc {
+            let sc = self.scope.borrow_mut();
+            let mut it = sc.internals.borrow_mut();
+            it.write_internal(head, list.into())
+        } else if let Assignment::Destruct(names) = acc {
+            let mut sc = self.scope.borrow_mut();
+            let list = list
+                .to_list()
+                .map_err(|_| Error::ValueS("Cannot destructure a non-list type.".into()))?;
+            if list.is_scalar() && names.len() > 1 {
+                return err!(
+                    ValueS,
+                    format!("Cannot destructure '{list}' into {} values", names.len())
+                );
+            }
+
+            let (mut leading, [trail]) = list.rank().split_at(list.dims() - 1) else {
+                unreachable!()
+            };
+            let lead: usize = leading.iter().chain(std::iter::once(&1)).product();
+            if lead == 1 {
+                leading = &[1];
+            }
+            if names.len() > *trail {
+                return err!(
+                    ValueS,
+                    format!("Cannot destructure '{list}' into {} values", names.len())
+                );
+            }
+
+            // For a row
+            if list.dims() == 1 {
+                let mut i = 0;
+                for (j, name) in names.iter().enumerate() {
+                    if *name == "" {
+                        i += 1;
+                        continue;
+                    }
+                    let l = if j == names.len() - 1 {
+                        unsafe { list.sliced(i, list.len(), &[list.len() - j]) }
+                    } else {
+                        unsafe { list.sliced(i, i + 1, &[1]) }
+                    };
+                    sc.set_instant(name, l);
+                    i += 1;
+                }
+                return Ok(());
+            }
+
+            let mut i = 0;
+            for (j, name) in names.iter().enumerate() {
+                if *name == "" {
+                    i += lead;
+                    continue;
+                }
+                if j == names.len() - 1 {
+                    let mut s: SmallVec<[usize; 2]> = SmallVec::from_slice(leading);
+                    if lead - j > 1 {
+                        s.push(lead - j);
+                    }
+                    let rest = unsafe { list.sliced(i, list.len(), &s) };
+                    sc.set_instant(name, rest);
+                    break;
+                }
+
+                let slice = unsafe { list.sliced(i, i * lead + lead, leading) };
+                sc.set_instant(name, slice);
+                i += lead;
+            }
+
+            Ok(())
+        } else {
+            unreachable!()
         }
     }
 
@@ -503,97 +578,12 @@ impl Exec {
     ) -> Status {
         let group = Node::Group(body);
         if utils::is_instant(&group, &self.scope) {
-            let s = self.scope.clone();
             let list = self.exec_instant(group)?;
             if preserve_instant {
                 // Preserves when used
                 self.right = Some(list.clone());
             }
-
-            if let Assignment::Literal(head) = head {
-                s.borrow_mut().set(head, list);
-            } else if let Assignment::Accessor(head, body) = head {
-                let mut sc = s.borrow_mut();
-                let m = sc.get_mut(head).ok_or(Error::Scope)?.as_map_mut()?;
-                let last = if body.len() == 1 {
-                    m
-                } else {
-                    m.get_into_mut(&body[0], &body[1..body.len() - 1])
-                        .ok_or(Error::Domain)?
-                        .as_map_mut()?
-                };
-                last.insert(body.last().unwrap().to_string(), list)?;
-            } else if let Assignment::Internal(head) = head {
-                let sc = s.borrow_mut();
-                let mut it = sc.internals.borrow_mut();
-                it.write_internal(head, list.into())?;
-            } else if let Assignment::Destruct(names) = head {
-                let mut sc = s.borrow_mut();
-                let list = list
-                    .to_list()
-                    .map_err(|_| Error::ValueS("Cannot destructure a non-list type.".into()))?;
-                if list.is_scalar() && names.len() > 1 {
-                    return err!(
-                        ValueS,
-                        format!("Cannot destructure '{list}' into {} values", names.len())
-                    );
-                }
-
-                let (mut leading, [trail]) = list.rank().split_at(list.dims() - 1) else {
-                    unreachable!()
-                };
-                let lead: usize = leading.iter().chain(std::iter::once(&1)).product();
-                if lead == 1 {
-                    leading = &[1];
-                }
-                if names.len() > *trail {
-                    return err!(
-                        ValueS,
-                        format!("Cannot destructure '{list}' into {} values", names.len())
-                    );
-                }
-
-                // For a row
-                if list.dims() == 1 {
-                    let mut i = 0;
-                    for (j, name) in names.iter().enumerate() {
-                        if *name == "" {
-                            i += 1;
-                            continue;
-                        }
-                        let l = if j == names.len() - 1 {
-                            unsafe { list.sliced(i, list.len(), &[list.len() - j]) }
-                        } else {
-                            unsafe { list.sliced(i, i + 1, &[1]) }
-                        };
-                        sc.set_instant(name, l);
-                        i += 1;
-                    }
-                    return Ok(())
-                }
-
-
-                let mut i = 0;
-                for (j, name) in names.iter().enumerate() {
-                    if *name == "" {
-                        i += lead;
-                        continue;
-                    }
-                    if j == names.len() - 1 {
-                        let mut s: SmallVec<[usize; 2]> = SmallVec::from_slice(leading);
-                        if lead - j > 1 {
-                            s.push(lead - j);
-                        }
-                        let rest = unsafe { list.sliced(i, list.len(), &s) };
-                        sc.set_instant(name, rest);
-                        break;
-                    }
-
-                    let slice = unsafe { list.sliced(i, i * lead + lead, leading) };
-                    sc.set_instant(name, slice);
-                    i += lead;
-                }
-            }
+            self.exec_instant_assignment(head, list)?;
         } else {
             // SAFETY: This is set as a `Node::Group` a few lines ago
             let Node::Group(mut body) = group else { unsafe { unreachable_unchecked() } };

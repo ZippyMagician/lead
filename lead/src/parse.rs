@@ -456,9 +456,7 @@ impl<'a> Parser<'a> {
                 }
                 self.i += 1;
                 let mut nodes = Vec::new();
-                let mut i = 0;
                 std::mem::swap(&mut nodes, &mut self.nodes);
-                std::mem::swap(&mut i, &mut self.i);
                 while let Some(tok) =
                     self.tokens.next_if(|(t, c)| *t != TokenTag::Symbol || *c != ";" && *c != "}")
                 {
@@ -469,7 +467,6 @@ impl<'a> Parser<'a> {
                 self.tokens.next_if(|(_, c)| *c == ";");
                 self.second_pass()?;
                 std::mem::swap(&mut nodes, &mut self.nodes);
-                std::mem::swap(&mut i, &mut self.i);
                 body.push((*name, nodes));
             } else {
                 return err!(Syntax, "Unexpected token in map");
@@ -491,9 +488,7 @@ impl<'a> Parser<'a> {
     fn consume_upto_tag(&mut self, tag: TokenTag) -> Status<Vec<Node<'a>>> {
         self.upto_store.push(tag);
         let mut nodes = Vec::new();
-        let mut i = 0;
         std::mem::swap(&mut nodes, &mut self.nodes);
-        std::mem::swap(&mut i, &mut self.i);
         // If we are looking for a newline, it is a definition, which groups and blocks can override
         // the one line restriction.
         while let Some(tok) = self.tokens.next_if(|(t, _)| {
@@ -508,16 +503,13 @@ impl<'a> Parser<'a> {
         self.upto_store.pop();
         self.second_pass()?;
         std::mem::swap(&mut nodes, &mut self.nodes);
-        std::mem::swap(&mut i, &mut self.i);
         Ok(nodes)
     }
 
     #[inline]
     fn consume_upto(&mut self, check: impl Fn(&Node<'a>) -> bool) -> Status<Vec<Node<'a>>> {
         let mut nodes = Vec::new();
-        let mut i = 0;
         std::mem::swap(&mut nodes, &mut self.nodes);
-        std::mem::swap(&mut i, &mut self.i);
         while let Some(tok) =
             self.tokens.next_if(|(t, _)| self.upto_store.last().is_none_or(|g| *g != *t))
         {
@@ -533,7 +525,6 @@ impl<'a> Parser<'a> {
         }
         self.second_pass()?;
         std::mem::swap(&mut nodes, &mut self.nodes);
-        std::mem::swap(&mut i, &mut self.i);
         Ok(nodes)
     }
 
