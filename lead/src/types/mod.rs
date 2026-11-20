@@ -130,6 +130,14 @@ impl Type {
     }
 
     #[inline]
+    pub unsafe fn to_map_unchecked(self) -> Map {
+        match self {
+            Self::Map(m) => m,
+            _ => unsafe { hint::unreachable_unchecked() },
+        }
+    }
+
+    #[inline]
     pub fn is_empty(&self) -> bool {
         match &self {
             Self::Function(_) => true,

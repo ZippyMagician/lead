@@ -244,10 +244,10 @@ impl Exec {
     }
 
     fn exec_instant_assignment<'a>(&mut self, acc: Assignment<'a>, list: Type) -> Status {
-        if let Assignment::Literal(head) = acc {
+        if let Assignment::Literal(head) = &acc {
             self.scope.borrow_mut().set(head, list);
             Ok(())
-        } else if let Assignment::Accessor(head, body) = acc {
+        } else if let Assignment::Accessor(head, body) = &acc {
             let mut sc = self.scope.borrow_mut();
             let m = sc.get_mut(head).ok_or(Error::Scope)?.as_map_mut()?;
             let last = if body.len() == 1 {
@@ -258,11 +258,26 @@ impl Exec {
                     .as_map_mut()?
             };
             last.insert(body.last().unwrap().to_string(), list)
-        } else if let Assignment::Internal(head) = acc {
+        } else if let Assignment::Internal(head) = &acc {
             let sc = self.scope.borrow_mut();
             let mut it = sc.internals.borrow_mut();
             it.write_internal(head, list.into())
-        } else if let Assignment::Destruct(names) = acc {
+        } else if let Assignment::Destruct(names) = &acc && list.is_map() {
+            let mut sc = self.scope.borrow_mut();
+            let map = unsafe { list.to_map_unchecked() };
+
+            for name in names {
+                if *name == "" {
+                    continue;
+                }
+
+                let Some(t) = map.get(name).cloned() else {
+                    return err!(ValueS, format!("No key '{name}' found while destructuring map."));
+                };
+                sc.set(name, t);
+            }
+            Ok(())
+        } else if let Assignment::Destruct(names) = &acc {
             let mut sc = self.scope.borrow_mut();
             let list = list
                 .to_list()
