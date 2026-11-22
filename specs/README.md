@@ -195,15 +195,15 @@ Partial trains, of course, support constants within them too.
 |:--------:|:----------:|:----:|:------------:|:-----:|:-----:|
 |  ```+``` |Abs / Cast(`I)| 0  |      Add     |  0 0  |       |
 | ```+:``` |    Double  |   0  |   Abs Add    |  0 0  |       |
-|  ```-``` |\[`B]Neg / Swp case| 0  |Sub      |  0 0  |\`N: negate, \`B: boolean not, \`C: swap cases|
+|  ```-``` |\`B Neg / Swp case| 0  |Sub       |  0 0  |\`N: negate, \`B: boolean not, \`C: swap cases|
 | ```-:``` |    Halve   |   0  |   Abs Diff   |  0 0  |       |
 |  ```*``` |Sign / Case |   0  | Mul / Bool AND|  0 0 |Cases: (`1 _1 0 = *'Ab '`)|
 |  ```%``` | Recip/Mask |   0  |    Div       |  0 0  |\`B: treat as binary mask to bytes|
 | ```%:``` |    Sqrt    |   0  |   Nth Root   |  0 0  |(dyad): args swapped|
-|   `\|`   | Bool NOT   |   0  |    Residue   |  0 0  |(dyad): args swapped|
+|   `\|`   | Bool NOT   |   0  | Residue / Bool OR|   |  0 0  |(dyad): args swapped|
 |   `\|:`  |   Descend  |   0  |     Axes     | 1 99  |(dyad): reorder axes based on indices|
 |   `\|.`  |   Reverse  |  99  |    Rotate    | 0 99  |       |
-|  ```!``` |  Factorial |   0  |   Bool OR    |  0 0  |Binomial?|
+|  ```!``` |  Factorial |   0  |Binomial / \`X: Map / \`: Find / Join|0 0|Construct map from key/values, find keys in map, join 2 maps|
 |  ```<``` |    Box     |  99  |   Less Than  |  0 0  |       |
 | ```<:``` |  Grade Up  |  99  |      LTE     |  0 0  |e.g.: `(-:]+/&~<:~&:floor 0 _1-:&+#)` finds median|
 |  ```>``` |   Unbox    |  99  | Greater Than |  0 0  |       |
@@ -352,7 +352,7 @@ List will be updated as more internals are introduced. These generally are eithe
 |:-----------:|:------------:|:---------:|:------------------------:|:---------------------:|:-----:|
 |   `[]IO`    |    \`I inst. | `0`       |Changes indexing behaviour -- why? why not | `-io`|       |
 | `[]RANGEI`  |    \`B inst. | `1`       |Swaps 0 and 1-range symbols |  `-0`               |       |
-| `[]I`       |  \`C inst.   |  `<stdin>`|TODO: Initialized to STDIN|                       |Not on WASM|
+| `[]I`       |  \`C inst.   |  `<stdin>`|Initialized to STDIN      | `-e` evals input      |Not on WASM|
 |    `[]BOXC` |  \`C inst.   | `'┌┬┐├┼┤└┴┘│─'`| Characters for box displaying. Can take a scalar char| n/a| |
 | `[]STDOUT`  |  Write only  |    n/a    |Directly write value to STDOUT|                   |Not on WASM|
 | `[]extern`  |  Function    |    n/a    |Provide external shared object|                   |Requires `ffi` feature|

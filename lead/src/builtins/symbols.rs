@@ -15,7 +15,7 @@ use crate::function::Opts;
 use crate::types::Type;
 use crate::types::list::{Array, INLINE_SIZE, List};
 use crate::types::scalar::{self, Boxed, Scalar};
-use crate::utils::error::{Status, err};
+use crate::utils::error::{Error, Status, err};
 use crate::utils::function::*;
 use crate::utils::list::*;
 use crate::utils::symbols::*;
@@ -596,35 +596,57 @@ pub(super) fn factorial(a: List, o: &Opts) -> Status<List> {
     }
 }
 
-// exclamationd | ! | 0, 0 | Boolean OR
-pub(super) fn bor(a: List, b: List, o: &Opts) -> Status<List> {
-    maybe_apply!([scalar] o, a, b, {
-        if a.get_type() == b'B' && b.get_type() == b'B' {
-            let mut a = unsafe { a.arrayb_unchecked() };
-            let mut b = unsafe { b.arrayb_unchecked() };
-            scalar_op!(a, b,
-                [l, r] = { *l || *r }; { *r || l }; { *l || r };
-            ).map(List::Booleans)
-        } else if a.get_type() == b'B' {
-            let mut b = unsafe { b.to_cast(b'B')?.arrayb_unchecked() };
-            let mut a = unsafe { a.arrayb_unchecked() };
-            scalar_op!(a, b,
-                [l, r] = { *l || *r }; { *r || l }; { *l || r };
-            ).map(List::Booleans)
-        } else if b.get_type() == b'B' {
-            let mut a = unsafe { a.to_cast(b'B')?.arrayb_unchecked() };
-            let mut b = unsafe { b.arrayb_unchecked() };
-            scalar_op!(a, b,
-                [l, r] = { *l || *r }; { *r || l }; { *l || r };
-            ).map(List::Booleans)
-        } else {
-            let mut a = unsafe { a.to_cast(b'B')?.arrayb_unchecked() };
-            let mut b = unsafe { b.to_cast(b'B')?.arrayb_unchecked() };
-            scalar_op!(a, b,
-                [l, r] = { *l || *r }; { *r || l }; { *l || r };
-            ).map(List::Booleans)
+// exclamationd | ! | 0, 0 | Binomial / Join / Find / Map
+pub(super) fn binom(a: Type, b: Type, o: &Opts) -> Status<Type> {
+    // Join
+    if a.is_map() && b.is_map() {
+        let mut a = unsafe { a.to_map_unchecked() };
+        let b = unsafe { b.to_map_unchecked() };
+        for (key, value) in b.into_inner() {
+            if a.has(&key) {
+                continue;
+            }
+            a.insert(key, value);
         }
-    })
+        return Ok(Type::Map(a));
+    // Find
+    } else if a.is_map() {
+        let a = unsafe { a.to_map_unchecked() };
+        let b = b.to_list()?;
+
+        return match b {
+            Boxes(mut b) => {
+                for_0!(b; [k] = {
+                    let key = k.unbox().to_string();
+                    let value = a.get(&key).ok_or(Error::Scope)?;
+                    scalar::boxed_t(&o.a, value.clone())?
+                });
+                Ok(Type::List(List::Boxes(b)))
+            }
+            _ => err!(Domain),
+        };
+    }
+
+    let a = a.to_list()?;
+    let b = b.to_list()?;
+
+    match (a, b) {
+        // Map
+        (Boxes(a), Boxes(b)) => {
+            let mut map = crate::types::map::Map::new();
+            if a.len() != b.len() {
+                return err!(Domain);
+            }
+            for (a, b) in a.list().iter().zip(b.list()) {
+                let key = a.unbox().to_string();
+                let value = b.unbox();
+                map.insert(key, value.clone());
+            }
+            Ok(Type::Map(map))
+        }
+        // Binomial
+        (a, b) => maybe_apply!([scalar] o, a, b, binom::generic_op(a, b)).map(Type::List),
+    }
 }
 
 // leftarrowm | < | 99 | Box

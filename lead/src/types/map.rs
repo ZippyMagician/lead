@@ -30,15 +30,24 @@ impl Map {
     }
 
     #[inline]
-    pub fn insert(&mut self, key: String, value: Type) -> Status {
+    pub fn into_inner(self) -> HashMap<String, Type> {
+        self.internal
+    }
+
+    #[inline]
+    pub fn insert(&mut self, key: String, value: Type) {
         self.internal.insert(key.to_string(), value);
-        Ok(())
     }
 
     #[inline]
     pub fn insert_function(&mut self, key: String, value: Function) -> Status {
         self.internal.insert(key.to_string(), Type::Function(value));
         Ok(())
+    }
+
+    #[inline]
+    pub fn has(&self, key: &str) -> bool {
+        self.internal.contains_key(key)
     }
 
     #[inline]

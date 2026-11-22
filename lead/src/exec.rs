@@ -203,7 +203,7 @@ impl Exec {
                         Node::Group(value)
                     };
                     if utils::is_instant(&value, &self.scope) {
-                        map.insert(key.to_string(), self.exec_instant(value)?)?;
+                        map.insert(key.to_string(), self.exec_instant(value)?);
                     } else {
                         let mut body =
                             if let Node::Group(value) = value { value } else { vec![value] };
@@ -257,7 +257,8 @@ impl Exec {
                     .ok_or(Error::Domain)?
                     .as_map_mut()?
             };
-            last.insert(body.last().unwrap().to_string(), list)
+            last.insert(body.last().unwrap().to_string(), list);
+            Ok(())
         } else if let Assignment::Internal(head) = &acc {
             let sc = self.scope.borrow_mut();
             let mut it = sc.internals.borrow_mut();

@@ -4,8 +4,8 @@ use crate::types::list::Array;
 use crate::utils::error::err;
 use crate::utils::symbols::*;
 
-use num_traits::Zero;
 use num_traits::ops::wrapping;
+use num_traits::{One, Zero};
 use ordered_float::{Float, OrderedFloat};
 
 macro_rules! create_op_typed {
@@ -92,13 +92,13 @@ macro_rules! maybe_expand {
         pub fn typed_op<const A: u8, const B: u8>($a: List, $b: List) -> Status<List> {
             match (A, B) {
                 (b'I', b'I') => {
-                    let $a = unsafe { $a.arrayi_unchecked() };
-                    let $b = unsafe { $b.arrayi_unchecked() };
+                    let mut $a = unsafe { $a.arrayi_unchecked() };
+                    let mut $b = unsafe { $b.arrayi_unchecked() };
                     $alli
                 }
                 (b'F', b'F') => {
-                    let $a = unsafe { $a.arrayf_unchecked() };
-                    let $b = unsafe { $b.arrayf_unchecked() };
+                    let mut $a = unsafe { $a.arrayf_unchecked() };
+                    let mut $b = unsafe { $b.arrayf_unchecked() };
                     $allf
                 }
                 (b'C', b'C') => unsafe {
@@ -149,10 +149,11 @@ macro_rules! create_op_generic {
         pub(crate) mod $name {
             #![allow(unused_imports)]
             #![allow(dead_code)]
+            #![allow(unused_mut)]
             use List::{Booleans as B, Boxes as X, Doubles as F, Integers as I, String as C};
             use ordered_float::{Float, OrderedFloat};
             use std::ops::*;
-            use $crate::array::arith::WrappingAdd;
+            use $crate::array::arith::*;
             use $crate::array::cast::Castable;
             use $crate::types::list::{Array, List};
             use $crate::types::scalar::Scalar;
@@ -196,8 +197,8 @@ macro_rules! create_op_generic {
                         std::hint::cold_path();
                         err!(Box)
                     }
-                    (I($a), I($b)) => $alli,
-                    (F($a), F($b)) => $allf,
+                    (I(mut $a), I(mut $b)) => $alli,
+                    (F(mut $a), F(mut $b)) => $allf,
                     (F($a), $b) => float_op_partial($a, $b),
                     ($a, F($b)) => float_op_partial_swap($b, $a),
                     (C($a), $b) => char_op_partial($a, $b),
@@ -382,6 +383,64 @@ create_op_generic!(
     },
     true
 );
+
+// TODO: Fix partial ops so it can be `true`
+create_op_generic!(
+    binom,
+    |a, b| {
+        crate::utils::symbols::scalar_op!(a, b,
+            [l, r] = { binom_i64(*l, *r) }; { binom_i64(l, *r) }; { binom_i64(*l, r) };
+        )
+        .map(List::Integers)
+    },
+    {
+        crate::utils::symbols::scalar_op!(a, b,
+            [l, r] = { binom_f64(*l, *r) }; { binom_f64(l, *r) }; { binom_f64(*l, r) };
+        )
+        .map(List::Doubles)
+    },
+    Ok(binom_i64(a, b)),
+    Ok(binom_f64(a, b)),
+    {
+        let hi = binom_i64(a as i64, b as i64);
+        Ok(hi)
+    },
+    false
+);
+
+#[inline]
+pub(crate) fn binom_i64(mut n: i64, k: i64) -> i64 {
+    let mut r: i64 = 1;
+    if k > n {
+        return 0;
+    }
+    for d in 1..=k {
+        r *= n;
+        n -= 1;
+        r /= d;
+    }
+    r
+}
+
+type Fl = OrderedFloat<f64>;
+#[inline]
+pub(crate) fn binom_f64(mut n: Fl, k: Fl) -> Fl {
+    let mut r = OrderedFloat(1f64);
+    if k > n {
+        return Fl::zero();
+    }
+    let mut d = Fl::one();
+    loop {
+        if d > k {
+            break;
+        }
+        r *= n;
+        r /= d;
+        n -= Fl::one();
+        d += Fl::one();
+    }
+    r
+}
 
 trait WrappingAdd {
     type Output;
