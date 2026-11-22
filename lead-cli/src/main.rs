@@ -6,7 +6,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::ffi::{OsStr, OsString};
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Read, Write};
 use std::rc::Rc;
 
 use lead_core::exec::Exec;
@@ -123,6 +123,16 @@ fn main() -> io::Result<()> {
     if args.io != 0 {
         _ = s.write_internal("IO", args.io.into());
     }
+
+    // stdin
+    let mut stdin = io::stdin();
+    let mut buf = String::new();
+    if !stdin.is_terminal() {
+        stdin.read_to_string(&mut buf)?;
+    }
+    s.pass_stdin(&buf);
+    drop(stdin);
+
     drop(s);
 
     if let Mode::File(f) = &args.mode {

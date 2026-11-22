@@ -101,6 +101,12 @@ impl ScopeInternal {
     pub fn write_internal(&self, name: &str, v: Type) -> Status {
         self.internals.borrow_mut().write_internal(name, v)
     }
+
+    #[inline]
+    #[cfg(not(feature = "wasm"))]
+    pub fn pass_stdin(&self, val: &str) {
+        self.write_internal("I", Type::List(List::string(val))).unwrap();
+    }
 }
 
 impl Debug for ScopeInternal {
@@ -258,7 +264,7 @@ impl Internals {
                 let sym = crate::ffi::internal::link_symbol(&name, None)?;
                 let ar = arena.clone();
                 Ok(Some(
-                    function!(move |a, b, _| {
+                    crate::function!(move |a, b, _| {
                     crate::ffi::internal::call_symbol(
                         sym.clone(), &ar, a.to_list()?,
                         b.map(|n| n.to_list()).transpose()?,
@@ -288,7 +294,7 @@ impl Internals {
 
     #[inline]
     pub(crate) fn get_internal_io(&self) -> i64 {
-        unsafe { 
+        unsafe {
             let n = self.map.get("IO").unwrap().as_list_unchecked().listi_unchecked()[0];
             std::hint::assert_unchecked(n >= 0);
             n
