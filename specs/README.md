@@ -128,6 +128,8 @@ else { ELSE }
 ### Syntactic Ambiguity
 As a result of the limited characters available within ASCII, and my own questionable design choices, there is some sketchy ambiguity within
 certain statements. Anyways, I'll provide them below. There's probably some weird edge case I've missed somewhere..
+
+Some of these are addressed in other sections
 #### `(`
 Pretty standard in array languages, this can be instant or denote a train
 #### `[`
@@ -156,7 +158,22 @@ The true final boss. Below:
 2
 ```
 #### `:`
-In maps, this assigns a value to a key. In general, this is general assignment. Following an instant, this is a conditional statement.
+In maps, this assigns a value to a key
+```
+    [:] { key : value ; key2 : value2 }
+```
+In general, this is assignment
+```
+    x: 4
+    x
+4
+```
+Preceeding a train, shifts to partial application
+```
+    (: - % {) 3
+_0.25
+```
+Following an instant, denotes a conditional (see above)
 
 ## User Functions
 User functions refer to, as the name implies, functions defined by the user. For instance,
