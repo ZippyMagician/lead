@@ -13,6 +13,7 @@ use lead_core::exec::Exec;
 use lead_core::lex::Lexer;
 use lead_core::parse::Parser;
 use lead_core::scope::{Scope, new_scope};
+use lead_core::types::list::{Array, List};
 use lead_core::utils::{Arena, error::Status, heap::Heap};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -26,22 +27,20 @@ struct Args {
     pub zero: bool,
     pub debug: bool,
     pub io: i64,
+    pub eval: bool,
 
     pub mode: Mode,
     // ...
 }
 
-#[cfg(any(unix, target_os = "wasi"))]
+#[cfg(unix)]
 fn os_str_to_bytes(s: &OsStr) -> Cow<'_, [u8]> {
     #[cfg(unix)]
     use std::os::unix::ffi::OsStrExt;
-    #[cfg(target_os = "wasi")]
-    use std::os::wasi::ffi::OsStrExt;
-
     Cow::Borrowed(s.as_bytes())
 }
 
-#[cfg(not(any(unix, target_os = "wasi")))]
+#[cfg(not(unix))]
 fn os_str_to_bytes(s: &OsStr) -> Cow<'_, [u8]> {
     Cow::Owned(s.to_string_lossy().into_owned().into_bytes())
 }
@@ -52,7 +51,7 @@ fn help() -> ! {
 }
 
 fn parse_args() -> Args {
-    let mut args = Args { zero: false, debug: false, io: 0, mode: Mode::Cli }; // default
+    let mut args = Args { zero: false, debug: false, io: 0, eval: false, mode: Mode::Cli }; // default
 
     let mut os_args = std::env::args_os().skip(1);
     while let Some(arg) = os_args.next() {
@@ -67,6 +66,7 @@ fn parse_args() -> Args {
                 };
                 args.io = num;
             }
+            b"-e" => args.eval = true,
             _ if bytes[0] != b'-' => args.mode = Mode::File(arg),
             _ => help(),
         }
@@ -130,7 +130,19 @@ fn main() -> io::Result<()> {
     if !stdin.is_terminal() {
         stdin.read_to_string(&mut buf)?;
     }
-    s.pass_stdin(&buf);
+    if args.eval && buf != "" {
+        exec.silent = true;
+        if let Err(e) = eval(&buf, &args, &mut exec, &scope, &arena) {
+            println!("{e}");
+            std::process::exit(1);
+        }
+        exec.silent = false;
+        let val = exec.right.unwrap_or_else(|| List::Integers(Array::<i64>::empty()).into());
+        exec.right = None;
+        _ = s.write_internal("I", val);
+    } else {
+        s.pass_stdin(&buf);
+    }
     drop(stdin);
 
     drop(s);
@@ -180,5 +192,6 @@ Usage:
 
 Flags:
     -debug              - Debug information
-    -0                  - Swaps 0 & 1 range symbols"#
+    -0                  - Swaps 0 & 1 range symbols
+    -e                  - Eval STDIN"#
 );
