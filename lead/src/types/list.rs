@@ -323,11 +323,10 @@ impl List {
         }
     }
 
-    #[inline]
-    pub fn nth(&mut self, i: usize) -> Status<List> {
-        with_list!(self, |s| {
-            Ok(Array::scalar(s.list().iter().copied().nth(i).ok_or(Error::Domain)?))
-        })
+    // NOTE: This is only used once, in `>` monad.
+    #[inline(always)]
+    pub fn nth(&mut self, i: usize) -> List {
+        unsafe { self.sliced(i, i + 1, &[1]) }
     }
 
     // Unranks generic amount of Lists based on some data

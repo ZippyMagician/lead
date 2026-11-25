@@ -704,7 +704,7 @@ pub(crate) fn unbox(a: Type, o: &Opts) -> Status<Type> {
         cold_path();
         Ok(a.into())
     } else {
-        a.nth(0).map(Type::from)
+        Ok(Type::from(a.nth(0)))
     }
 }
 

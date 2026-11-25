@@ -204,9 +204,9 @@ impl<'a> Lexer<'a> {
                 'e' if !found_e => {
                     found_e = true;
                 }
-                // I can't use self.nth becuase the borrow checker hates me
-                '_' if (self.input.chars().nth(start).unwrap() != 'e' || found_signs == 0)
-                    && !self.input.chars().nth(end - 1).unwrap().is_ascii_digit() =>
+                // Numbers are ascii, so this is fine
+                '_' if (chr != 'e' || found_signs == 0)
+                    && !self.input.as_bytes()[end - 1].is_ascii_digit() =>
                 {
                     found_signs += 1;
                     if found_signs == 2 && !found_e {
