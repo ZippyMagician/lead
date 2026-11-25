@@ -168,7 +168,7 @@ impl<'a> Lexer<'a> {
     fn maybe_number(&mut self, chr: char, start: usize) -> Status<Token<'a>> {
         if chr == 'e' || chr == '.' {
             if let Some((_, c)) = self.chars.peek()
-                && (c.is_numeric() || chr == 'e' && *c == '_')
+                && (c.is_ascii_digit() || chr == 'e' && *c == '_')
             {
                 self.consume_number(chr, start)
             } else if chr == '.' {
@@ -285,12 +285,7 @@ impl<'a> Lexer<'a> {
 
         if Operator::get_operator(&self.input[start..end]).is_some() {
             tok!(Operator, &self.input[start..end])
-        } else if Symbol::get_symbol(&self.input[start..end]).is_some()
-            || &self.input[start..end] == "{" // TODO: Remove these once these symbols are
-                                              // implemented
-            || &self.input[start..end] == "}"
-            || &self.input[start..end] == ";"
-        {
+        } else if Symbol::get_symbol(&self.input[start..end]).is_some() {
             tok!(Symbol, &self.input[start..end])
         } else {
             err!(Syntax, "Unrecognized builtin.")
