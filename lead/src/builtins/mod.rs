@@ -133,6 +133,7 @@ define_op! {
     AtopBind => (b"&", false, operators::atop_bind);
     HookDefault => (b"&:", false, operators::hook_default);
     OverRank => (b"@", false, operators::over_rank);
+    Otherwise => (b"@:", false, operators::otherwise);
     Fold => (b"/", true, operators::fold);
     ScanTable => (b"\\", true, operators::scan_table);
     TieCommute => (b"`", true, operators::tie_commute);

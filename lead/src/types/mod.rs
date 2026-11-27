@@ -63,6 +63,14 @@ impl Type {
     }
 
     #[inline]
+    pub unsafe fn to_function_unchecked(self) -> Function {
+        match self {
+            Self::Function(f) => f,
+            _ => unsafe { hint::unreachable_unchecked() },
+        }
+    }
+
+    #[inline]
     pub unsafe fn as_function_unchecked(&self) -> &Function {
         match &self {
             Self::Function(f) => f,

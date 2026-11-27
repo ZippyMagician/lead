@@ -242,15 +242,16 @@ Partial trains, of course, support constants within them too.
 ## Binders
 |  Binder |   Usage   | Monadic | Rank | Dyadic | Rank |        Notes       |
 |:-------:|:---------:|:-------:|:----:|:------:|:----:|:------------------:|
-| ```&``` | ```u&v``` | Compose |  N/A |  Atop  |  N/A | Binds if imm.      |
-| ```&:```| ```u&:v```|   Hook  |  N/A |  Hook  |  N/A | Binds as default if imm. |
+| ```&``` | ```u&v```/```n&v```/```u&n``` | Compose |  N/A |  Atop  |  N/A | Binds if imm.      |
+| ```&:```| ```u&:v```/```n&:v```/```u&:n```|   Hook  |  N/A |  Hook  |  N/A | Binds as default if imm. |
 | ```/``` |  ```u/``` |   Fold  |   1  | N-wise Reduce | 0 99 |              |
-| ```\```|  ```u\```|   Scan  |  99  |  Table |99 99 | TODO: Move monad `/` to leading axis?|
-| ```@``` | ```u@v``` | Compose |  N/A |  Over  |  N/A | Rank if right arg is immediate |
+| ```\``` |  ```u\``` |   Scan  |  99  |  Table |99 99 | TODO: Move monad `/` to leading axis?|
+| ```@``` | ```u@v```/```u@n``` | Compose |  N/A |  Over  |  N/A | Rank if right arg is immediate |
+| ```@:```| ```u@:v```/```u@:n```| Otherwise | N/A | Otherwise | N/A | Runs right if left fails |
 | ``` ` ```| ```u` ```|   Tie   |  N/A | Commute|  N/A | Flips operands if attached to dyadic operator|
 | ```"``` |  ```u"``` |   Each  |  99  |  Each  |99 99 | Each of leading axis |
 | ```":```|  ```u":```|  Atoms  |   0  |  Atoms | 0 0  | Applies through boxed atoms |
-| ```".```|```u".v```, ```u".A```| Repeat/Until| 99 | Repeat/Until | 99, 99| Dyadic until described below |
+| ```".```|```u".v```/```u".n```| Repeat/Until| 99 | Repeat/Until | 99, 99| Dyadic until described below |
 
 ##### Monad vs. Dyad ```u".v```
 For instance, in the case of:

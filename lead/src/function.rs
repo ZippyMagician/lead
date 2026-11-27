@@ -11,10 +11,10 @@ use crate::utils::function::*;
 
 // Applied: is general rank support baked into the definition?
 // General: does it take + yield a generic Type, or only Lists?
-const APPLIED_MONADIC: u8 = 0b0001;
-const APPLIED_DYADIC: u8 = 0b0010;
-const GENERAL_MONADIC: u8 = 0b0100;
-const GENERAL_DYADIC: u8 = 0b1000;
+pub(crate) const APPLIED_MONADIC: u8 = 0b0001;
+pub(crate) const APPLIED_DYADIC: u8 = 0b0010;
+pub(crate) const GENERAL_MONADIC: u8 = 0b0100;
+pub(crate) const GENERAL_DYADIC: u8 = 0b1000;
 
 #[derive(Clone)]
 pub struct Function {
@@ -159,7 +159,11 @@ macro_rules! function {
         $crate::function::Function::new(::std::rc::Rc::new($f), 99, [99, 99], $arena, $scope, None)
     };
 
-    ($rm:literal, $rd:expr, $am:ident, $ad:ident, $f:expr; $a:ident, $s:ident) => {{
+    (@op; $f:expr; $arena:expr, $scope:expr) => {
+        $crate::function!(99, [99, 99], true, true, $f; $arena, $scope)
+    };
+
+    ($rm:literal, $rd:expr, $am:ident, $ad:ident, $f:expr; $a:expr, $s:expr) => {{
         $crate::function::Function::new_applied(
             ::std::rc::Rc::new($f),
             $rm, $rd, $am, $ad, true, true, $a, $s, None,)

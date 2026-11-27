@@ -22,6 +22,8 @@ pub enum Operator {
     HookDefault,
     /// `@`
     OverRank,
+    /// `@:`
+    Otherwise,
     /// `/`
     Fold,
     /// `\\`
@@ -36,6 +38,7 @@ pub enum Operator {
     RepeatUntil,
 }
 
+// FIXME: Rank isn't passed through these
 #[inline]
 pub(crate) fn atop_bind(l: Type, r: Type, arena: Arena, scope: Scope) -> Status<Function> {
     if l.is_instant() && r.is_instant() {
@@ -43,23 +46,23 @@ pub(crate) fn atop_bind(l: Type, r: Type, arena: Arena, scope: Scope) -> Status<
     }
 
     if l.is_instant() {
-        let r = r.to_function(arena.clone(), scope.clone())?;
+        let r = unsafe { r.to_function_unchecked() };
         Ok(function!(
-            move |a, b, _| r.dyadic_call(l.clone(), b.unwrap_or(a));
-            arena.clone(), scope.clone()
+            @op; move |a, b, _| r.dyadic_call(l.clone(), b.unwrap_or(a));
+            arena, scope
         ))
     } else if r.is_instant() {
-        let l = l.to_function(arena.clone(), scope.clone())?;
+        let l = unsafe { l.to_function_unchecked() };
         Ok(function!(
-            move |a, _, _| l.dyadic_call(a, r.clone());
-            arena.clone(), scope.clone()
+            @op; move |a, _, _| l.dyadic_call(a, r.clone());
+            arena, scope
         ))
     } else {
-        let l = l.to_function(arena.clone(), scope.clone())?;
-        let r = r.to_function(arena.clone(), scope.clone())?;
+        let l = unsafe { l.to_function_unchecked() };
+        let r = unsafe { r.to_function_unchecked() };
         Ok(function!(
-            move |a, b, _| l.monadic_call(r.call_fn(a, b)?);
-            arena.clone(), scope.clone()
+            @op; move |a, b, _| l.monadic_call(r.call_fn(a, b)?);
+            arena, scope
         ))
     }
 }
@@ -71,28 +74,28 @@ pub(crate) fn hook_default(l: Type, r: Type, arena: Arena, scope: Scope) -> Stat
     }
 
     if l.is_instant() {
-        let r = r.to_function(arena.clone(), scope.clone())?;
+        let r = unsafe { r.to_function_unchecked() };
         Ok(function!(
-            move |a, b, _| if let Some(b) = b {
+            @op; move |a, b, _| if let Some(b) = b {
                 r.dyadic_call(a, b)
             } else { r.dyadic_call(l.clone(), a) };
-            arena.clone(), scope.clone()
+            arena, scope
         ))
     } else if r.is_instant() {
-        let l = l.to_function(arena.clone(), scope.clone())?;
+        let l = unsafe { l.to_function_unchecked() };
         Ok(function!(
-            move |a, b, _|
+            @op; move |a, b, _|
                 l.dyadic_call(a, b.unwrap_or_else(|| r.clone()));
-            arena.clone(), scope.clone()
+            arena, scope
         ))
     } else {
-        let l = l.to_function(arena.clone(), scope.clone())?;
-        let r = r.to_function(arena.clone(), scope.clone())?;
+        let l = unsafe { l.to_function_unchecked() };
+        let r = unsafe { r.to_function_unchecked() };
         Ok(function!(
-            move |a, b, _| if let Some(b) = b {
+            @op; move |a, b, _| if let Some(b) = b {
                 l.dyadic_call(a, r.monadic_call(b)?)
             } else { l.dyadic_call(a.clone(), r.monadic_call(a)?) };
-            arena.clone(), scope.clone()
+            arena, scope
         ))
     }
 }
@@ -104,7 +107,7 @@ pub(crate) fn over_rank(l: Type, r: Type, arena: Arena, scope: Scope) -> Status<
     }
 
     if r.is_instant() {
-        let mut l = l.to_function(arena.clone(), scope.clone())?;
+        let mut l = unsafe { l.to_function_unchecked() };
         let r = r.to_list()?;
 
         if r.is_empty() || r.len() > 2 {
@@ -141,14 +144,89 @@ pub(crate) fn over_rank(l: Type, r: Type, arena: Arena, scope: Scope) -> Status<
         }
         Ok(l)
     } else {
-        let l = l.to_function(arena.clone(), scope.clone())?;
-        let r = r.to_function(arena.clone(), scope.clone())?;
+        let l = unsafe { l.to_function_unchecked() };
+        let r = unsafe { r.to_function_unchecked() };
         Ok(function!(
-            move |a, b, _| l.call_fn(
+            @op; move |a, b, _| l.call_fn(
                 r.monadic_call(a)?,
                 b.map(|b| r.monadic_call(b)).transpose()?,
             );
             arena.clone(), scope.clone()
+        ))
+    }
+}
+
+#[inline]
+pub fn otherwise(l: Type, b: Type, arena: Arena, scope: Scope) -> Status<Function> {
+    let f = l.to_function(arena.clone(), scope.clone())?;
+
+    if b.is_instant() {
+        Ok(function!(
+            @op; move |a, bb, o| {
+                let mut f = f.clone();
+                if let Some(bb) = bb {
+                    if o.rd != [99, 99] {
+                        std::hint::cold_path();
+                        f.apply_rd(o.rd);
+                    }
+                    match f.dyadic_call(a, bb) {
+                        Err(_) => Ok(b.clone()),
+                        ok => ok,
+                    }
+                } else {
+                    if o.rm != 99 {
+                        std::hint::cold_path();
+                        f.apply_rm(o.rm);
+                    }
+                    match f.monadic_call(a) {
+                        Err(_) => Ok(b.clone()),
+                        ok => ok,
+                    }
+                }
+            }; arena, scope
+        ))
+    } else {
+        let of = unsafe { b.to_function_unchecked() };
+        Ok(function!(
+            @op; move |a, bb, o| {
+                if let Some(bb) = bb {
+                    if o.rd != [99, 99] {
+                        let mut f = f.clone();
+                        f.apply_rd(o.rd);
+                        match f.dyadic_call(a.clone(), bb.clone()) {
+                            Err(_) => {
+                                let mut of = of.clone();
+                                of.apply_rd(o.rd);
+                                of.dyadic_call(a, bb)
+                            }
+                            ok => ok,
+                        }
+                    } else {
+                        match f.dyadic_call(a.clone(), bb.clone()) {
+                            Err(_) => of.dyadic_call(a, bb),
+                            ok => ok,
+                        }
+                    }
+                } else {
+                    if o.rm != 99 {
+                        let mut f = f.clone();
+                        f.apply_rm(o.rm);
+                        match f.monadic_call(a.clone()) {
+                            Err(_) => {
+                                let mut of = of.clone();
+                                of.apply_rm(o.rm);
+                                of.monadic_call(a)
+                            }
+                            ok => ok,
+                        }
+                    } else {
+                        match f.monadic_call(a.clone()) {
+                            Err(_) => of.monadic_call(a),
+                            ok => ok,
+                        }
+                    }
+                }
+            }; arena, scope
         ))
     }
 }
@@ -181,7 +259,7 @@ pub(crate) fn scan_table(f: Type, a: Arena, s: Scope) -> Status<Function> {
 #[inline]
 pub(crate) fn tie_commute(f: Type, a: Arena, s: Scope) -> Status<Function> {
     let f = f.to_function(a.clone(), s.clone())?;
-    Ok(function!(99, [99, 99], false, true, move |a, b, _| {
+    Ok(function!(99, [99, 99], true, true, move |a, b, _| {
         if let Some(b) = b {
             f.dyadic_call(b, a)
         } else {
